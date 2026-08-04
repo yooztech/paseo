@@ -37,11 +37,6 @@ on:
         options:
           - "true"
           - "false"
-      rollout_hours:
-        description: "Linear rollout duration in hours. Use 0 for instant rollout."
-        required: false
-        default: "36"
-        type: string
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -51,7 +46,7 @@ env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.checkout_ref || github.ref_name) || github.ref_name }}
   SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
-  ROLLOUT_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rollout_hours || '36' }}
+  ROLLOUT_HOURS: "0"
   DESKTOP_PACKAGE_PATH: "packages/desktop"
 
 jobs:
@@ -86,6 +81,7 @@ jobs:
               --repo "${{ github.repository }}" \
               --title "Paseo $RELEASE_TAG" \
               --notes "" \
+              --draft \
               $prerelease_flag || {
                 echo "Release creation raced with another workflow; continuing."
               }
@@ -423,16 +419,12 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
           retention-days: 1
 
-  finalize-rollout:
+  finalize-release:
     needs: [publish-macos, publish-linux, publish-windows]
     if: ${{ always() && (needs.publish-macos.result == 'success' || needs.publish-macos.result == 'skipped') && (needs.publish-linux.result == 'success' || needs.publish-linux.result == 'skipped') && (needs.publish-windows.result == 'success' || needs.publish-windows.result == 'skipped') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    concurrency:
-      group: desktop-rollout-${{ github.event.inputs.tag || github.ref_name }}
-      cancel-in-progress: false
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -538,3 +530,10 @@ jobs:
             }
           ' "${files[@]}"
           gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "${{ github.repository }}"
+
+      - name: Publish completed release
+        if: env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release edit "$RELEASE_TAG" --draft=false --repo "${{ github.repository }}"
