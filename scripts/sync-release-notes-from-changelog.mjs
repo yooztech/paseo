@@ -186,6 +186,7 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
     "--notes-file",
     notesPath,
     "--verify-tag",
+    "--draft",
     ...(parseReleaseVersion(releaseInfo.version).isPrerelease ? ["--prerelease"] : []),
   ];
 

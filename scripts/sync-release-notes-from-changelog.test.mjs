@@ -98,3 +98,28 @@ test("converts contributor profile links to mentions in synced release notes", (
     assert.doesNotMatch(syncedNotes, /\[@therainisme\]\(https:\/\/github\.com\/therainisme\)/);
   }, changelogText);
 });
+
+test("creates a missing release as a draft until desktop artifacts are complete", () => {
+  withTempChangelog(() => {
+    const calls = [];
+
+    const execFileSync = (command, args) => {
+      calls.push({ args, command });
+      if (args[0] === "api") throw new Error("not found");
+      if (args[0] === "release" && args[1] === "create") return "";
+      throw new Error(`Unexpected gh call: ${command} ${args.join(" ")}`);
+    };
+
+    syncReleaseNotes(
+      ["--repo", "getpaseo/paseo", "--tag", "v0.1.60-beta.1", "--create-if-missing"],
+      { execFileSync },
+    );
+
+    const createCall = calls.find(
+      (call) => call.args[0] === "release" && call.args[1] === "create",
+    );
+    assert.ok(createCall);
+    assert.ok(createCall.args.includes("--draft"));
+    assert.ok(createCall.args.includes("--prerelease"));
+  });
+});

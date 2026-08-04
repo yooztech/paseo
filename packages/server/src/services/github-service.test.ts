@@ -460,9 +460,9 @@ describe("ForgeService", () => {
   });
 
   it.each([
-    ["merge", ["pr", "merge", "42", "--merge"]],
-    ["squash", ["pr", "merge", "42", "--squash"]],
-    ["rebase", ["pr", "merge", "42", "--rebase"]],
+    ["merge", ["pr", "merge", "42", "--repo", "acme/repo", "--merge"]],
+    ["squash", ["pr", "merge", "42", "--repo", "acme/repo", "--squash"]],
+    ["rebase", ["pr", "merge", "42", "--repo", "acme/repo", "--rebase"]],
   ] as const)("merges pull requests with gh using %s", async (mergeMethod, expectedArgs) => {
     const runner = createRunner([""]);
     const service = createGitHubService({
@@ -608,9 +608,9 @@ describe("ForgeService", () => {
   });
 
   it.each([
-    ["merge", ["pr", "merge", "42", "--auto", "--merge"]],
-    ["squash", ["pr", "merge", "42", "--auto", "--squash"]],
-    ["rebase", ["pr", "merge", "42", "--auto", "--rebase"]],
+    ["merge", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--merge"]],
+    ["squash", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--squash"]],
+    ["rebase", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--rebase"]],
   ] as const)("enables auto-merge with gh using %s", async (mergeMethod, expectedArgs) => {
     const runner = createRunner([""]);
     const service = createGitHubService({
@@ -672,7 +672,7 @@ describe("ForgeService", () => {
 
     expect(runner.calls).toEqual([
       {
-        args: ["pr", "merge", "42", "--disable-auto"],
+        args: ["pr", "merge", "42", "--repo", "acme/repo", "--disable-auto"],
         cwd: "/tmp/repo",
         envOverlay: { GH_PROMPT_DISABLED: "1" },
       },
