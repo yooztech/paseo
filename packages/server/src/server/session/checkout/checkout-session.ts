@@ -468,6 +468,7 @@ export class CheckoutSession {
     const resolvedCwd = expandTilde(cwd);
 
     try {
+      this.workspaceGitService.requestFetch(resolvedCwd);
       (await this.resolveForgeService(resolvedCwd))?.service.invalidate({ cwd: resolvedCwd });
       await this.workspaceGitService.getSnapshot(resolvedCwd, {
         force: true,

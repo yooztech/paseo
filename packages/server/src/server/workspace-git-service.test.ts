@@ -603,6 +603,42 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
+  test("manual fetch requests do not wait for or queue behind an in-flight repo fetch", async () => {
+    let finishFetch: (() => void) | undefined;
+    const runGitFetch = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishFetch = resolve;
+        }),
+    );
+    const getCheckoutSnapshotFacts = vi.fn(async (cwd: string) => ({
+      ...createCheckoutSnapshotFacts(cwd),
+      gitCommonDir: join(REPO_CWD, ".git"),
+      absoluteGitDir: join(REPO_CWD, ".git"),
+    }));
+    const service = createService({ getCheckoutSnapshotFacts, runGitFetch });
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+
+    await vi.waitFor(() => {
+      expect(runGitFetch).toHaveBeenCalledTimes(1);
+    });
+
+    service.requestFetch(REPO_CWD);
+    service.requestFetch(REPO_CWD);
+
+    expect(runGitFetch).toHaveBeenCalledTimes(1);
+
+    finishFetch?.();
+    await flushPromises();
+    service.requestFetch(REPO_CWD);
+
+    expect(runGitFetch).toHaveBeenCalledTimes(2);
+
+    finishFetch?.();
+    subscription.unsubscribe();
+    service.dispose();
+  });
+
   test("explicit forced snapshot refresh recomputes github state and notifies listeners", async () => {
     const getPullRequestStatus = vi
       .fn<() => Promise<PullRequestStatusResult>>()

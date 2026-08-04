@@ -288,6 +288,7 @@ interface SessionForTestOptions {
     getCheckout?: ReturnType<typeof vi.fn>;
     getCheckoutDiff?: ReturnType<typeof vi.fn>;
     getSnapshot?: ReturnType<typeof vi.fn>;
+    requestFetch?: ReturnType<typeof vi.fn>;
     suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
     listStashes?: ReturnType<typeof vi.fn>;
     peekSnapshot?: ReturnType<typeof vi.fn>;
@@ -334,6 +335,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     getCheckout: vi.fn(),
     getCheckoutDiff: vi.fn(),
     getSnapshot: vi.fn(),
+    requestFetch: vi.fn(),
     suggestBranchesForCwd: vi.fn(),
     listStashes: vi.fn(),
     peekSnapshot: vi.fn(),
@@ -3271,7 +3273,10 @@ describe("session checkout refresh handling", () => {
   test("forces a git, GitHub, and diff refresh on demand", async () => {
     const messages: unknown[] = [];
     const github = { invalidate: vi.fn() };
-    const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({}),
+      requestFetch: vi.fn(),
+    };
     const checkoutDiffManager = { scheduleRefreshForCwd: vi.fn() };
     const session = createSessionForTest({
       github,
@@ -3287,6 +3292,7 @@ describe("session checkout refresh handling", () => {
     });
 
     expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    expect(workspaceGitService.requestFetch).toHaveBeenCalledWith("/tmp/request-worktree");
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       includeForge: true,

@@ -168,6 +168,7 @@ export interface WorkspaceGitService {
   resolveDefaultBranch(cwdOrRepoRoot: string, options?: WorkspaceGitReadOptions): Promise<string>;
   resolveRepoRemoteUrl(cwd: string, options?: WorkspaceGitReadOptions): Promise<string | null>;
   refresh(cwd: string, options?: { priority?: "normal" | "high" }): Promise<void>;
+  requestFetch(cwd: string): void;
   requestWorkingTreeWatch(
     cwd: string,
     onChange: () => void,
@@ -728,6 +729,17 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       notify: true,
     });
     this.scheduleWorkspaceObservationSetup(target);
+  }
+
+  requestFetch(cwd: string): void {
+    const target = this.workspaceTargets.get(resolve(cwd));
+    if (!target?.repoGitRoot) {
+      return;
+    }
+    const repoTarget = this.repoTargets.get(target.repoGitRoot);
+    if (repoTarget) {
+      void this.runRepoFetch(repoTarget);
+    }
   }
 
   async requestWorkingTreeWatch(
