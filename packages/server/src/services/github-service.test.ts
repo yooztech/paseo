@@ -2267,6 +2267,75 @@ describe("ForgeService", () => {
     expect(status).toMatchObject({ number: 42, state: "open" });
   });
 
+  it("scopes current PR lookup to origin when another remote has the same head SHA", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "github-service-origin-pr-"));
+    const headSha = "2222222222222222222222222222222222222222";
+    execFileSync("git", ["init", tempDir], { stdio: "pipe" });
+    execFileSync(
+      "git",
+      ["-C", tempDir, "remote", "add", "origin", "https://github.com/yooztech/paseo.git"],
+      { stdio: "pipe" },
+    );
+    execFileSync(
+      "git",
+      ["-C", tempDir, "remote", "add", "upstream", "https://github.com/getpaseo/paseo.git"],
+      { stdio: "pipe" },
+    );
+    const calls: RunnerCall[] = [];
+    const runner: GitHubCommandRunner = async (args, options) => {
+      calls.push({ args, cwd: options.cwd });
+      if (args[0] === "api") {
+        return { stdout: currentPullRequestGithubFactsJson(), stderr: "" };
+      }
+      const scopedToOrigin = args.includes("--repo") && args.includes("yooztech/paseo");
+      return {
+        stdout: currentPullRequestJson({
+          number: scopedToOrigin ? 6 : 2852,
+          url: scopedToOrigin
+            ? "https://github.com/yooztech/paseo/pull/6"
+            : "https://github.com/getpaseo/paseo/pull/2852",
+          title: scopedToOrigin ? "Origin PR" : "Upstream PR",
+          state: scopedToOrigin ? "OPEN" : "CLOSED",
+          headRefName: "demonic-shark",
+          headRefOid: headSha,
+          headRepositoryOwner: { login: "yooztech" },
+        }),
+        stderr: "",
+      };
+    };
+    const service = createGitHubService({
+      runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    try {
+      const status = await service.getCurrentPullRequestStatus({
+        cwd: tempDir,
+        headRef: "demonic-shark",
+        headSha,
+        headRepositoryOwner: "yooztech",
+      });
+
+      expect(status).toMatchObject({
+        number: 6,
+        repoOwner: "yooztech",
+        repoName: "paseo",
+        state: "open",
+      });
+      expect(calls[0]?.args).toEqual([
+        "pr",
+        "view",
+        "demonic-shark",
+        "--repo",
+        "yooztech/paseo",
+        "--json",
+        CURRENT_PR_STATUS_FIELDS,
+      ]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("loads GitHub merge, auto-merge, permission, policy, and queue facts for PR 993 shape", async () => {
     const runner = createScriptedRunner([
       currentPullRequestJson({
@@ -3401,9 +3470,10 @@ describe("ForgeService", () => {
 
     const first = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
     const second = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
-    await flushMicrotasks();
+    await vi.waitFor(() => {
+      expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
+    });
 
-    expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
     runner.resolveNext(currentPullRequestJson());
     for (let i = 0; i < 10 && runner.calls.length < 2; i += 1) {
       await Promise.resolve();
