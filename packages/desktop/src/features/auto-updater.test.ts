@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { UUID } from "builder-util-runtime";
+import { autoUpdater } from "electron-updater";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
@@ -11,7 +12,9 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("electron-updater", () => ({
-  autoUpdater: {},
+  autoUpdater: {
+    checkForUpdates: vi.fn(),
+  },
 }));
 
 vi.mock("electron-log/main", () => ({
@@ -23,12 +26,45 @@ vi.mock("electron-log/main", () => ({
 
 import {
   bucketFromStagingUserId,
+  ElectronAppUpdateRuntime,
+  isMissingUpdateManifestError,
   resolveElectronUpdateChannel,
   resolveStagingUserId,
   rolloutManifestSchema,
   shouldAdmitToRollout,
   shouldInstallAppUpdateOnQuit,
 } from "./auto-updater";
+
+function updaterError(code: string): Error {
+  return Object.assign(new Error(code), { code });
+}
+
+describe("isMissingUpdateManifestError", () => {
+  it("matches only electron-updater's missing channel manifest error", () => {
+    expect(isMissingUpdateManifestError(updaterError("ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"))).toBe(
+      true,
+    );
+    expect(isMissingUpdateManifestError(updaterError("ERR_UPDATER_INVALID_UPDATE_INFO"))).toBe(
+      false,
+    );
+    expect(isMissingUpdateManifestError(new Error("404"))).toBe(false);
+  });
+
+  it("makes a missing manifest an unavailable update result", async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(
+      updaterError("ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"),
+    );
+
+    await expect(new ElectronAppUpdateRuntime().checkForUpdates()).resolves.toBeNull();
+  });
+
+  it("keeps other updater failures actionable", async () => {
+    const error = updaterError("ERR_UPDATER_INVALID_UPDATE_INFO");
+    vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(error);
+
+    await expect(new ElectronAppUpdateRuntime().checkForUpdates()).rejects.toBe(error);
+  });
+});
 
 describe("resolveElectronUpdateChannel", () => {
   it("keeps fork builds on their isolated update channel", () => {

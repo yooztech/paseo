@@ -96,7 +96,13 @@ export function shouldInstallAppUpdateOnQuit(input: {
   return !(input.platform === "linux" && input.isAppImage);
 }
 
-class ElectronAppUpdateRuntime implements AppUpdateRuntime {
+export function isMissingUpdateManifestError(error: unknown): boolean {
+  return (
+    error instanceof Error && "code" in error && error.code === "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"
+  );
+}
+
+export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   private configured = false;
 
   configure(input: AppUpdateRuntimeConfiguration): void {
@@ -143,6 +149,11 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       input.onUpdateNotAvailable();
     });
     autoUpdater.on("error", (error) => {
+      if (isMissingUpdateManifestError(error)) {
+        log.info("[auto-updater] update-not-available", { reason: "manifest-not-found" });
+        input.onUpdateNotAvailable();
+        return;
+      }
       log.error("[auto-updater] error", error);
       input.onError(error);
     });
@@ -150,7 +161,19 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
 
   async checkForUpdates(): Promise<RuntimeUpdateCheckResult | null> {
     log.info("[auto-updater] check-for-updates.start");
-    const result = await autoUpdater.checkForUpdates();
+    let result;
+    try {
+      result = await autoUpdater.checkForUpdates();
+    } catch (error) {
+      if (isMissingUpdateManifestError(error)) {
+        log.info("[auto-updater] check-for-updates.done", {
+          result: null,
+          reason: "manifest-not-found",
+        });
+        return null;
+      }
+      throw error;
+    }
     if (!result) {
       log.info("[auto-updater] check-for-updates.done", { result: null });
       return null;
