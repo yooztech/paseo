@@ -1884,7 +1884,11 @@ async function resolveCurrentPullRequestView(options: {
   headRepositoryOwner?: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
 }): Promise<CurrentPullRequestStatus | null> {
-  const viewCandidate = await tryCurrentPullRequestView(options);
+  const originRepo = await resolveGitHubSlugFromOrigin(options.cwd);
+  const viewCandidate = await tryCurrentPullRequestView({
+    ...options,
+    repo: originRepo ?? undefined,
+  });
   const viewMatch = viewCandidate
     ? pickPullRequestCandidate({
         candidates: [viewCandidate],
@@ -1898,11 +1902,11 @@ async function resolveCurrentPullRequestView(options: {
   }
 
   let listHeadRef = options.headRef;
-  let listRepo: string | undefined;
+  let listRepo = originRepo ?? undefined;
   let headRepositoryOwner = options.headRepositoryOwner;
 
   if (!headRepositoryOwner) {
-    const repo = await getGitHubRepoView(options);
+    const repo = await getGitHubRepoView({ ...options, repo: originRepo ?? undefined });
     const forkOwner = repo?.owner?.login;
     const parentOwner = repo?.parent?.owner?.login;
     const parentName = repo?.parent?.name;
@@ -1991,15 +1995,20 @@ async function tryCurrentPullRequestView(options: {
   cwd: string;
   headRef: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+  repo?: string;
 }): Promise<ResolvedPullRequestCandidate | null> {
+  const args = ["pr", "view"];
+  if (options.repo) {
+    args.push(options.headRef, "--repo", options.repo);
+  }
   try {
     const stdout = await runCurrentPullRequestStatusCommand({
       cwd: options.cwd,
       run: options.run,
-      args: ["pr", "view"],
+      args,
     });
     return parseCurrentPullRequestCandidate(stdout, options.headRef, {
-      args: ["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS],
+      args: [...args, "--json", CURRENT_PR_STATUS_FIELDS],
       cwd: options.cwd,
     });
   } catch (error) {
@@ -2075,8 +2084,13 @@ async function resolveGitHubSlugFromOrigin(cwd: string): Promise<string | null> 
 async function getGitHubRepoView(options: {
   cwd: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+  repo?: string;
 }): Promise<z.infer<typeof GitHubRepoViewSchema> | null> {
-  const args = ["repo", "view", "--json", "owner,name,parent"];
+  const args = ["repo", "view"];
+  if (options.repo) {
+    args.push(options.repo);
+  }
+  args.push("--json", "owner,name,parent");
   try {
     const stdout = await options.run(args, {
       cwd: options.cwd,
