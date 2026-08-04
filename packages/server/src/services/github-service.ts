@@ -1457,28 +1457,59 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
 
     async mergePullRequest(input) {
       assertDirectPullRequestMergeReady(input);
-      await run(["pr", "merge", String(input.prNumber), `--${input.mergeMethod}`], {
-        cwd: input.cwd,
-        envOverlay: { GH_PROMPT_DISABLED: "1" },
-      });
+      await run(
+        [
+          "pr",
+          "merge",
+          String(input.prNumber),
+          "--repo",
+          getPullRequestRepository(input.status),
+          `--${input.mergeMethod}`,
+        ],
+        {
+          cwd: input.cwd,
+          envOverlay: { GH_PROMPT_DISABLED: "1" },
+        },
+      );
       return { success: true };
     },
 
     async enablePullRequestAutoMerge(input) {
       assertPullRequestAutoMergeEnableReady(input);
-      await run(["pr", "merge", String(input.prNumber), "--auto", `--${input.mergeMethod}`], {
-        cwd: input.cwd,
-        envOverlay: { GH_PROMPT_DISABLED: "1" },
-      });
+      await run(
+        [
+          "pr",
+          "merge",
+          String(input.prNumber),
+          "--repo",
+          getPullRequestRepository(input.status),
+          "--auto",
+          `--${input.mergeMethod}`,
+        ],
+        {
+          cwd: input.cwd,
+          envOverlay: { GH_PROMPT_DISABLED: "1" },
+        },
+      );
       return { success: true };
     },
 
     async disablePullRequestAutoMerge(input) {
       assertPullRequestAutoMergeDisableReady(input);
-      await run(["pr", "merge", String(input.prNumber), "--disable-auto"], {
-        cwd: input.cwd,
-        envOverlay: { GH_PROMPT_DISABLED: "1" },
-      });
+      await run(
+        [
+          "pr",
+          "merge",
+          String(input.prNumber),
+          "--repo",
+          getPullRequestRepository(input.status),
+          "--disable-auto",
+        ],
+        {
+          cwd: input.cwd,
+          envOverlay: { GH_PROMPT_DISABLED: "1" },
+        },
+      );
       return { success: true };
     },
 
@@ -1600,6 +1631,13 @@ function getGithubStatusFacts(
 ): GitHubPullRequestStatusFacts | null {
   const forgeSpecific = status?.forgeSpecific;
   return isGitHubPullRequestStatusFacts(forgeSpecific) ? forgeSpecific : null;
+}
+
+function getPullRequestRepository(status: PullRequestCommandStatus | null | undefined): string {
+  if (!status?.repoOwner || !status.repoName) {
+    throw new Error("GitHub pull request repository identity is unavailable");
+  }
+  return `${status.repoOwner}/${status.repoName}`;
 }
 
 function assertDirectPullRequestMergeReady(input: MergePullRequestOptions): void {
