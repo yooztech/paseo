@@ -27,6 +27,9 @@
     },
     "typecheck": {
       "command": "npm run typecheck"
+    },
+    "release-fork-daemon": {
+      "command": "node ./scripts/release-fork-daemon.mjs"
     }
   }
 }
