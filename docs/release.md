@@ -144,11 +144,11 @@ Use the beta path when you need to:
 
 ## Desktop release publication
 
-Desktop releases remain drafts while platform builds run. The macOS, Linux, and Windows jobs upload installers and packages to the draft, then `finalize-release` merges the platform manifests, stamps `rolloutHours: 0`, uploads them, and publishes the Release.
+The Release is created when the tag is pushed. The macOS, Linux, and Windows jobs upload installers and packages as they complete, then `finalize-release` merges the platform manifests, stamps `rolloutHours: 0`, and uploads them.
 
-Updater clients cannot discover draft releases. A build failure therefore leaves an invisible draft instead of exposing a new release whose channel manifest returns 404. Once the Release is published, all users can update immediately on their next check.
+While a channel manifest is not yet available, the desktop updater treats its 404 as no update. Other updater failures remain visible. Once the manifest is uploaded, all users can update immediately on their next check.
 
-`Release Notes Sync` also creates missing releases as drafts. It may update the body while builds run, but only `finalize-release` publishes the completed desktop release.
+`Release Notes Sync` creates a missing Release on tag pushes and updates its body from the changelog.
 
 There is no staged rollout or rollback. `allowDowngrade = false`; ship a superseding hotfix for a bad release.
 

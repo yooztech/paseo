@@ -499,6 +499,27 @@ describe("app update service", () => {
     });
   });
 
+  it("reports no update when the runtime has no channel manifest", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck(null);
+
+    const result = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+
+    expect(result).toEqual({
+      hasUpdate: false,
+      readyToInstall: false,
+      currentVersion: "1.2.3",
+      latestVersion: "1.2.3",
+      body: null,
+      date: null,
+      errorMessage: null,
+    });
+  });
+
   it("returns check errors so the renderer can show feedback", async () => {
     const { runtime, service } = createService();
     runtime.failNextCheck(new Error("network down"));
