@@ -277,6 +277,7 @@ describe("git-actions-policy", () => {
         hasRemote: true,
         isOnBaseBranch: false,
         behindBaseCount: 3,
+        hasChangesFromBase: true,
       }),
     );
     const updateAction = actions.secondary.find((action) => action.id === "merge-from-base");
@@ -286,6 +287,22 @@ describe("git-actions-policy", () => {
       disabled: false,
       unavailableMessage: undefined,
     });
+  });
+
+  it("does not offer update-from-base when the base has the same content", () => {
+    const actions = buildGitActions(
+      createInput({
+        hasRemote: true,
+        isOnBaseBranch: false,
+        behindBaseCount: 1,
+        hasChangesFromBase: false,
+      }),
+    );
+
+    expect(actions.primary?.id).not.toBe("merge-from-base");
+    expect(
+      actions.secondary.find((action) => action.id === "merge-from-base")?.unavailableMessage,
+    ).toBeDefined();
   });
 
   it("uses a clear sentence when pull is unavailable", () => {
