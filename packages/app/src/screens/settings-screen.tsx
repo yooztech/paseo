@@ -1139,7 +1139,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const isDesktopApp = isElectronRuntime();
   const appVersion = resolveAppVersion();
   const [desktopAppVersion, setDesktopAppVersion] = useState<string | null>(null);
-  const appVersionText = formatVersionWithPrefix(desktopAppVersion ?? appVersion);
+  const effectiveAppVersion = desktopAppVersion ?? appVersion;
+  const appVersionText = formatVersionWithPrefix(effectiveAppVersion);
   const isCompactLayout = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
   const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom }), [insets.bottom]);
@@ -1444,7 +1445,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         case "about":
           return (
             <AboutSection
-              appVersion={appVersion}
+              appVersion={effectiveAppVersion}
               appVersionText={appVersionText}
               isDesktopApp={isDesktopApp}
             />
