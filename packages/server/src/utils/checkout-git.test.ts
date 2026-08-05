@@ -251,7 +251,7 @@ describe("checkout git utilities", () => {
   afterEach(() => {
     __resetCheckoutShortstatCacheForTests();
     __resetPullRequestStatusCacheForTests();
-    rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
   it("throws NotGitRepoError for non-git directories", async () => {

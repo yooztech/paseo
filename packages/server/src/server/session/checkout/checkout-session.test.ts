@@ -375,8 +375,9 @@ describe("CheckoutSession", () => {
   });
 
   describe("refresh", () => {
-    it("forces a github-inclusive snapshot, nudges diffs, and confirms success", async () => {
+    it("requests a background fetch, forces a github-inclusive snapshot, nudges diffs, and confirms success", async () => {
       const snapshotCalls: Array<{ cwd: string; options: unknown }> = [];
+      const fetchCalls: string[] = [];
       const { subscriber, refreshedCwds } = createFakeDiffSubscriber({
         cwd: "",
         files: [],
@@ -384,6 +385,9 @@ describe("CheckoutSession", () => {
       });
       const { checkout, emitted } = makeCheckoutSession({
         git: {
+          requestFetch: (cwd) => {
+            fetchCalls.push(cwd);
+          },
           getSnapshot: async (cwd, snapshotOptions) => {
             snapshotCalls.push({ cwd, options: snapshotOptions });
             return createNoGitWorkspaceRuntimeSnapshot(cwd);
@@ -398,6 +402,7 @@ describe("CheckoutSession", () => {
         requestId: "r7",
       });
 
+      expect(fetchCalls).toEqual(["/repo"]);
       expect(snapshotCalls).toEqual([
         { cwd: "/repo", options: { force: true, includeForge: true, reason: "manual-refresh" } },
       ]);
