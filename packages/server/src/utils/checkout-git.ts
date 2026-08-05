@@ -1501,10 +1501,7 @@ async function getAheadBehind(
   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
     return null;
   }
-  const comparisonBaseRef =
-    context?.facts?.isGit && context.facts.resolvedBaseRef === baseRef
-      ? context.facts.comparisonBaseRef
-      : await resolveBestComparisonBaseRef(cwd, baseRef, context);
+  const comparisonBaseRef = await resolveMostAheadBaseRef(cwd, normalizedBaseRef);
   if (!comparisonBaseRef) {
     return null;
   }
@@ -3319,6 +3316,14 @@ export async function mergeFromBase(
   const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
   const bestBaseRef = await resolveMostAheadBaseRef(cwd, normalizedBaseRef);
   if (bestBaseRef === currentBranch) {
+    return;
+  }
+  const treeDiff = await runGitCommand(["diff", "--quiet", bestBaseRef, currentBranch], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1],
+  });
+  if (treeDiff.exitCode === 0) {
     return;
   }
 

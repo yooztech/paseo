@@ -776,6 +776,28 @@ const x = 1;
     expect(status.hasChangesFromBase).toBe(false);
   });
 
+  it("compares a feature branch against the same most-ahead base ref used for updates", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execFileSync("git", ["init", "--bare", "-b", "main", remoteDir]);
+    execFileSync("git", ["remote", "add", "origin", remoteDir], { cwd: repoDir });
+    execFileSync("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
+
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature commit");
+    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
+    execFileSync("git", ["merge", "--no-ff", "feature", "-m", "merge feature"], { cwd: repoDir });
+    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.aheadBehind?.behind).toBe(1);
+    expect(status.hasChangesFromBase).toBe(false);
+  });
+
   it("reports a PR worktree as not ahead when its branch is pushed to the configured PR remote", async () => {
     setupRemoteTrackingMain(repoDir, tempDir);
     const prRemoteDir = join(tempDir, "pr-remote.git");
@@ -1762,6 +1784,23 @@ const x = 1;
     execFileSync("git", ["merge-base", "--is-ancestor", localOnlyCommit, "feature"], {
       cwd: repoDir,
     });
+  });
+
+  it("does not create a merge commit when the base has the same tree", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "same content\n", "feature commit");
+    const featureCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir })
+      .toString()
+      .trim();
+    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "same content\n", "independent base commit");
+    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
+
+    await mergeFromBase(repoDir, { baseRef: "main", requireCleanTarget: true });
+
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir }).toString().trim()).toBe(
+      featureCommit,
+    );
   });
 
   it("aborts merge-from-base on conflicts and leaves no merge in progress", async () => {

@@ -533,6 +533,7 @@ function canMergeFromBase(input: BuildGitActionsInput): boolean {
     !input.isOnBaseBranch &&
     input.baseRefAvailable &&
     !input.hasUncommittedChanges &&
+    input.hasChangesFromBase &&
     input.behindBaseCount > 0
   );
 }
@@ -691,7 +692,7 @@ function getMergeFromBaseUnavailableMessage(input: BuildGitActionsInput): string
   if (input.hasUncommittedChanges) {
     return i18n.t("workspace.git.actions.unavailable.updateDirty");
   }
-  if (input.behindBaseCount === 0) {
+  if (input.behindBaseCount === 0 || !input.hasChangesFromBase) {
     return i18n.t("workspace.git.actions.unavailable.updateCurrent", {
       baseRef: input.baseRefLabel,
     });
