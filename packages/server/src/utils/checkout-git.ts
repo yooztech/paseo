@@ -1562,29 +1562,29 @@ async function getOriginAheadBehind(
   if (!upstreamRef) {
     return null;
   }
-  try {
-    const [{ stdout }, diffResult] = await Promise.all([
-      runGitCommand(["rev-list", "--left-right", "--count", `${currentBranch}...${upstreamRef}`], {
-        cwd,
-        envOverlay: READ_ONLY_GIT_ENV,
-        logger: context?.logger,
-      }),
-      runGitCommand(["diff", "--quiet", upstreamRef, currentBranch], {
-        cwd,
-        envOverlay: READ_ONLY_GIT_ENV,
-        acceptExitCodes: [0, 1],
-        logger: context?.logger,
-      }),
-    ]);
-    const [aheadRaw, behindRaw] = stdout.trim().split(/\s+/);
-    const ahead = Number.parseInt(aheadRaw ?? "", 10);
-    const behind = Number.parseInt(behindRaw ?? "", 10);
-    return Number.isNaN(ahead) || Number.isNaN(behind)
-      ? null
-      : { ahead, behind, hasChanges: diffResult.exitCode === 1 };
-  } catch {
+  const [revListResult, diffResult] = await Promise.allSettled([
+    runGitCommand(["rev-list", "--left-right", "--count", `${currentBranch}...${upstreamRef}`], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      logger: context?.logger,
+    }),
+    runGitCommand(["diff", "--quiet", upstreamRef, currentBranch], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      acceptExitCodes: [0, 1],
+      logger: context?.logger,
+    }),
+  ]);
+  if (revListResult.status === "rejected" || diffResult.status === "rejected") {
     return null;
   }
+
+  const [aheadRaw, behindRaw] = revListResult.value.stdout.trim().split(/\s+/);
+  const ahead = Number.parseInt(aheadRaw ?? "", 10);
+  const behind = Number.parseInt(behindRaw ?? "", 10);
+  return Number.isNaN(ahead) || Number.isNaN(behind)
+    ? null
+    : { ahead, behind, hasChanges: diffResult.value.exitCode === 1 };
 }
 
 interface CheckoutInspectionContext {
