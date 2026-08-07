@@ -68,6 +68,7 @@ function createInput(
     pullRequestIsDraft: false,
     pullRequestIsMerged: false,
     pullRequestMergeable: "UNKNOWN",
+    pullRequestChecksStatus: "none",
     mergeCapability: deriveMergeCapability(pullRequestGithub),
     hasRemote: false,
     isPaseoOwnedWorktree: false,
@@ -358,6 +359,28 @@ describe("git-actions-policy", () => {
     ).toBe(true);
   });
 
+  it("labels a conflicting pull request without changing its view action", () => {
+    const actions = buildGitActions(
+      createInput({
+        hasRemote: true,
+        isOnBaseBranch: false,
+        hasPullRequest: true,
+        pullRequestUrl: "https://example.com/pr/456",
+        pullRequestState: "open",
+        pullRequestMergeable: "CONFLICTING",
+      }),
+    );
+    const prAction = actions.secondary.find((action) => action.id === "pr");
+
+    expect(prAction).toMatchObject({
+      label: "PR conflict",
+      pendingLabel: "PR conflict",
+      successLabel: "PR conflict",
+      disabled: false,
+    });
+    expect(prAction?.handler).toEqual(expect.any(Function));
+  });
+
   it("enables pull-and-push when the branch has both incoming and outgoing commits", () => {
     const actions = buildGitActions(
       createInput({
@@ -502,6 +525,26 @@ describe("git-actions-policy", () => {
       id: "merge-pr-squash",
       label: "Merge PR (squash)",
     });
+  });
+
+  it("does not show direct merge actions while PR checks are pending", () => {
+    const actions = buildGitActions(
+      createInput({
+        hasRemote: true,
+        isOnBaseBranch: false,
+        aheadCount: 2,
+        hasPullRequest: true,
+        pullRequestUrl: "https://example.com/pr/456",
+        pullRequestState: "open",
+        pullRequestMergeable: "MERGEABLE",
+        pullRequestChecksStatus: "pending",
+        pullRequestGithub: githubStatus({ mergeStateStatus: "CLEAN" }),
+        shipDefault: "pr",
+      }),
+    );
+
+    expect(actions.primary?.id).not.toMatch(/^merge-pr-/);
+    expect(actions.secondary.some((action) => action.id === "merge-pr-squash")).toBe(false);
   });
 
   it("uses GitHub merge state, not mergeable, for direct merge readiness", () => {
@@ -833,7 +876,15 @@ describe("git-actions-policy", () => {
 
     expect(mergePrActions).toEqual([]);
     expect(actions.secondary).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "pr", label: "View PR" })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "pr",
+          label:
+            "pullRequestMergeable" in overrides && overrides.pullRequestMergeable === "CONFLICTING"
+              ? "PR conflict"
+              : "View PR",
+        }),
+      ]),
     );
   });
 

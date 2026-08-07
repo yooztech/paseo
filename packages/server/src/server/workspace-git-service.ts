@@ -37,6 +37,7 @@ import {
   type ForgeResolution,
   type ForgeResolver,
 } from "../services/forge-resolver.js";
+import { isGitLabStatusFacts } from "../services/gitlab-facts.js";
 import { parseGitRevParsePath } from "../utils/git-rev-parse-path.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { listPaseoWorktrees, type PaseoWorktreeInfo } from "../utils/worktree.js";
@@ -47,6 +48,7 @@ import { checkoutLiteFromGitSnapshot } from "./workspace-registry-model.js";
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 1_000;
 const BACKGROUND_GIT_FETCH_INTERVAL_MS = 180_000;
 export const WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS = 60_000;
+const GITLAB_MERGEABILITY_POLL_INTERVAL_MS = 3_000;
 const FORGE_PR_STATUS_POLL_FAST_INTERVAL_MS = 20_000;
 const FORGE_PR_STATUS_POLL_SLOW_INTERVAL_MS = 120_000;
 const FORGE_PR_STATUS_POLL_ERROR_BACKOFF_CAP_MS = 300_000;
@@ -2284,12 +2286,13 @@ function computeGenericForgeNextInterval(
   status: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"],
   consecutiveErrors: number,
 ): number {
-  const isPending =
-    status?.checksStatus === "pending" ||
-    status?.checks?.some((check) => check.status === "pending") === true;
-  const baseInterval = isPending
-    ? FORGE_PR_STATUS_POLL_FAST_INTERVAL_MS
-    : FORGE_PR_STATUS_POLL_SLOW_INTERVAL_MS;
+  let baseInterval = FORGE_PR_STATUS_POLL_SLOW_INTERVAL_MS;
+  if (isForgeCheckPending(status)) {
+    baseInterval = FORGE_PR_STATUS_POLL_FAST_INTERVAL_MS;
+  }
+  if (isForgeMergeabilityPending(status)) {
+    baseInterval = GITLAB_MERGEABILITY_POLL_INTERVAL_MS;
+  }
   if (consecutiveErrors <= 1) {
     return baseInterval;
   }
@@ -2297,6 +2300,31 @@ function computeGenericForgeNextInterval(
     baseInterval * 2 ** (consecutiveErrors - 1),
     FORGE_PR_STATUS_POLL_ERROR_BACKOFF_CAP_MS,
   );
+}
+
+function isForgeCheckPending(status: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"]): boolean {
+  return (
+    status?.checksStatus === "pending" ||
+    status?.checks?.some((check) => check.status === "pending") === true
+  );
+}
+
+const GITLAB_PENDING_MERGEABILITY_STATUSES = new Set(["checking", "unchecked"]);
+
+function isForgeMergeabilityPending(
+  status: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"],
+): boolean {
+  if (!status) {
+    return false;
+  }
+  if (status.mergeable != null && status.mergeable !== "UNKNOWN") {
+    return false;
+  }
+  const forgeSpecific = status.forgeSpecific;
+  if (isGitLabStatusFacts(forgeSpecific)) {
+    return GITLAB_PENDING_MERGEABILITY_STATUSES.has(forgeSpecific.detailedMergeStatus ?? "");
+  }
+  return false;
 }
 
 async function runGitFetch(cwd: string): Promise<void> {

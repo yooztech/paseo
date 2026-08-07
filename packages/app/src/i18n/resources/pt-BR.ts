@@ -662,6 +662,7 @@ export const ptBR: TranslationResources = {
           success: "Pull e push concluídos",
         },
         viewPr: "Ver PR",
+        viewPrConflict: "Conflito de PR",
         createPr: {
           label: "Criar PR",
           pending: "Criando PR...",
@@ -698,6 +699,7 @@ export const ptBR: TranslationResources = {
           success_mr: "MR mergeada",
         },
         viewPr_mr: "Ver MR",
+        viewPrConflict_mr: "Conflito de MR",
         autoMerge: {
           enableSquash: "Merge automático",
           enableMerge: "Merge automático",

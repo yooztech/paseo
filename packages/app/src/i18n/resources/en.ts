@@ -657,6 +657,8 @@ export const en = {
         },
         viewPr: "View PR",
         viewPr_mr: "View MR",
+        viewPrConflict: "PR conflict",
+        viewPrConflict_mr: "MR conflict",
         createPr: {
           label: "Create PR",
           pending: "Creating PR...",

@@ -665,6 +665,7 @@ export const es: TranslationResources = {
           success: "Tirado y empujado",
         },
         viewPr: "VerPR",
+        viewPrConflict: "Conflicto de PR",
         createPr: {
           label: "CrearPR",
           pending: "CreandoPR...",
@@ -701,6 +702,7 @@ export const es: TranslationResources = {
           success_mr: "MR fusionado",
         },
         viewPr_mr: "Ver MR",
+        viewPrConflict_mr: "Conflicto de MR",
         autoMerge: {
           enableSquash: "Fusión automática (squash)",
           enableMerge: "Fusión automática (merge)",

@@ -659,6 +659,7 @@ export const ar: TranslationResources = {
           success: "سحبت ودفعت",
         },
         viewPr: "عرض PR",
+        viewPrConflict: "تعارض PR",
         createPr: {
           label: "إنشاء PR",
           pending: "إنشاء PR...",
@@ -695,6 +696,7 @@ export const ar: TranslationResources = {
           success_mr: "تم دمج MR",
         },
         viewPr_mr: "عرض MR",
+        viewPrConflict_mr: "تعارض MR",
         autoMerge: {
           enableSquash: "دمج تلقائي (squash)",
           enableMerge: "دمج تلقائي (merge)",

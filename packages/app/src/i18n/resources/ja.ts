@@ -661,6 +661,7 @@ export const ja: TranslationResources = {
           success: "プルしてプッシュしました",
         },
         viewPr: "PRを表示",
+        viewPrConflict: "PRの競合",
         createPr: {
           label: "PRを作成",
           pending: "PRを作成中...",
@@ -697,6 +698,7 @@ export const ja: TranslationResources = {
           success_mr: "MRがマージされました",
         },
         viewPr_mr: "MRを表示",
+        viewPrConflict_mr: "MRの競合",
         autoMerge: {
           enableSquash: "自動マージ（スカッシュ）",
           enableMerge: "自動マージ（マージ）",

@@ -1241,6 +1241,92 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     }
   });
 
+  test("generic forge self-heal retries GitLab mergeability computation after three seconds", async () => {
+    const forge = {
+      ...createGitHubServiceStub(),
+      retainCurrentPullRequestStatusPoll: undefined,
+      getCurrentPullRequestStatus: vi.fn(async () =>
+        createCurrentPullRequestStatus({
+          mergeable: "UNKNOWN",
+          forgeSpecific: {
+            forge: "gitlab",
+            detailedMergeStatus: "checking",
+            mergeStatus: null,
+            hasConflicts: false,
+            blockingDiscussionsResolved: true,
+            approvalsRequired: 0,
+            approvalsGiven: 0,
+            pipelineStatus: null,
+            pipelineId: null,
+            pipelineUrl: null,
+            mergeWhenPipelineSucceeds: false,
+          },
+        }),
+      ),
+    };
+    const unregister = defaultForgeRegistry.register("forge-gitlab-checking-test", {
+      createService: () => forge,
+      matchesHost: (host) => host === "forge-gitlab-checking.test",
+    });
+    const service = createService({
+      getCheckoutSnapshotFacts: vi.fn(async (cwd: string) =>
+        createCheckoutFacts(cwd, {
+          currentBranch: "feature",
+          remoteUrl: "https://forge-gitlab-checking.test/acme/repo.git",
+          pullRequestLookupTarget: { headRef: "feature" },
+        }),
+      ),
+      getCheckoutStatus: vi.fn(async (cwd: string) =>
+        createCheckoutStatus(cwd, {
+          currentBranch: "feature",
+          remoteUrl: "https://forge-gitlab-checking.test/acme/repo.git",
+        }),
+      ),
+      getPullRequestStatus: vi.fn(async () => ({
+        status: {
+          url: "https://forge-gitlab-checking.test/acme/repo/-/merge_requests/14",
+          title: "MR self-healed",
+          state: "open",
+          baseRefName: "main",
+          headRefName: "feature",
+          isMerged: false,
+          mergeable: "UNKNOWN",
+          checks: [],
+          checksStatus: "none",
+          reviewDecision: null,
+          forgeSpecific: {
+            forge: "gitlab",
+            detailedMergeStatus: "checking",
+            mergeStatus: null,
+            hasConflicts: false,
+            blockingDiscussionsResolved: true,
+            approvalsRequired: 0,
+            approvalsGiven: 0,
+            pipelineStatus: null,
+            pipelineId: null,
+            pipelineUrl: null,
+            mergeWhenPipelineSucceeds: false,
+          },
+        },
+        authState: "authenticated",
+        featuresEnabled: true,
+      })),
+    });
+
+    try {
+      const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(3_000);
+      await flushPromises();
+
+      expect(forge.getCurrentPullRequestStatus).toHaveBeenCalledTimes(1);
+      subscription.unsubscribe();
+    } finally {
+      service.dispose();
+      unregister();
+    }
+  });
+
   test("generic forge poll refreshes immediately when checkout HEAD changes", async () => {
     let nowMs = 0;
     let headSha = "1111111111111111111111111111111111111111";
