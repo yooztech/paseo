@@ -358,6 +358,28 @@ describe("git-actions-policy", () => {
     ).toBe(true);
   });
 
+  it("labels a conflicting pull request without changing its view action", () => {
+    const actions = buildGitActions(
+      createInput({
+        hasRemote: true,
+        isOnBaseBranch: false,
+        hasPullRequest: true,
+        pullRequestUrl: "https://example.com/pr/456",
+        pullRequestState: "open",
+        pullRequestMergeable: "CONFLICTING",
+      }),
+    );
+    const prAction = actions.secondary.find((action) => action.id === "pr");
+
+    expect(prAction).toMatchObject({
+      label: "PR conflict",
+      pendingLabel: "PR conflict",
+      successLabel: "PR conflict",
+      disabled: false,
+    });
+    expect(prAction?.handler).toEqual(expect.any(Function));
+  });
+
   it("enables pull-and-push when the branch has both incoming and outgoing commits", () => {
     const actions = buildGitActions(
       createInput({
@@ -833,7 +855,15 @@ describe("git-actions-policy", () => {
 
     expect(mergePrActions).toEqual([]);
     expect(actions.secondary).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "pr", label: "View PR" })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "pr",
+          label:
+            "pullRequestMergeable" in overrides && overrides.pullRequestMergeable === "CONFLICTING"
+              ? "PR conflict"
+              : "View PR",
+        }),
+      ]),
     );
   });
 

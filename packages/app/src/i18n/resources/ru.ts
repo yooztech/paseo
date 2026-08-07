@@ -664,6 +664,7 @@ export const ru: TranslationResources = {
           success: "Вытащил и толкнул",
         },
         viewPr: "Посмотреть PR",
+        viewPrConflict: "Конфликт PR",
         createPr: {
           label: "Создать PR",
           pending: "Создание PR...",
@@ -700,6 +701,7 @@ export const ru: TranslationResources = {
           success_mr: "MR объединен",
         },
         viewPr_mr: "Посмотреть MR",
+        viewPrConflict_mr: "Конфликт MR",
         autoMerge: {
           enableSquash: "Автообъединение (squash)",
           enableMerge: "Автообъединение (merge)",

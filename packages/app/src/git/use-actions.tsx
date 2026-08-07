@@ -851,10 +851,11 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       translateGitActions(buildGitActions(gitActionsInput), {
         baseRefLabel,
         hasPullRequest,
+        pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
         forge,
         t,
       }),
-    [gitActionsInput, baseRefLabel, hasPullRequest, forge, t],
+    [gitActionsInput, baseRefLabel, hasPullRequest, prStatus?.mergeable, forge, t],
   );
 
   return { gitActions, branchLabel, isGit };
@@ -865,6 +866,7 @@ function translateGitActions(
   input: {
     baseRefLabel: string;
     hasPullRequest: boolean;
+    pullRequestMergeable: "UNKNOWN" | "MERGEABLE" | "CONFLICTING";
     forge: Forge;
     t: (key: string, options?: Record<string, unknown>) => string;
   },
@@ -881,16 +883,24 @@ function translateGitAction(
   {
     baseRefLabel,
     hasPullRequest,
+    pullRequestMergeable,
     forge,
     t,
   }: {
     baseRefLabel: string;
     hasPullRequest: boolean;
+    pullRequestMergeable: "UNKNOWN" | "MERGEABLE" | "CONFLICTING";
     forge: Forge;
     t: (key: string, options?: Record<string, unknown>) => string;
   },
 ): GitAction {
-  const labels = getTranslatedGitActionLabels(action, { baseRefLabel, hasPullRequest, forge, t });
+  const labels = getTranslatedGitActionLabels(action, {
+    baseRefLabel,
+    hasPullRequest,
+    pullRequestMergeable,
+    forge,
+    t,
+  });
   return {
     ...action,
     ...labels,
@@ -906,11 +916,13 @@ function getTranslatedGitActionLabels(
   {
     baseRefLabel,
     hasPullRequest,
+    pullRequestMergeable,
     forge,
     t,
   }: {
     baseRefLabel: string;
     hasPullRequest: boolean;
+    pullRequestMergeable: "UNKNOWN" | "MERGEABLE" | "CONFLICTING";
     forge: Forge;
     t: (key: string, options?: Record<string, unknown>) => string;
   },
@@ -943,9 +955,24 @@ function getTranslatedGitActionLabels(
     case "pr":
       return hasPullRequest
         ? {
-            label: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
-            pendingLabel: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
-            successLabel: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
+            label: t(
+              pullRequestMergeable === "CONFLICTING"
+                ? "workspace.git.actions.viewPrConflict"
+                : "workspace.git.actions.viewPr",
+              forgeVocabulary(forge),
+            ),
+            pendingLabel: t(
+              pullRequestMergeable === "CONFLICTING"
+                ? "workspace.git.actions.viewPrConflict"
+                : "workspace.git.actions.viewPr",
+              forgeVocabulary(forge),
+            ),
+            successLabel: t(
+              pullRequestMergeable === "CONFLICTING"
+                ? "workspace.git.actions.viewPrConflict"
+                : "workspace.git.actions.viewPr",
+              forgeVocabulary(forge),
+            ),
           }
         : {
             label: t("workspace.git.actions.createPr.label", forgeVocabulary(forge)),

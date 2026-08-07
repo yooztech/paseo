@@ -395,11 +395,16 @@ function getDefaultEnablePullRequestAutoMergeActionId(
 
 function buildPrAction(input: BuildGitActionsInput): GitAction {
   if (input.hasPullRequest && input.pullRequestUrl) {
+    const label = i18n.t(
+      input.pullRequestMergeable === "CONFLICTING"
+        ? "workspace.git.actions.viewPrConflict"
+        : "workspace.git.actions.viewPr",
+    );
     return {
       id: "pr",
-      label: i18n.t("workspace.git.actions.viewPr"),
-      pendingLabel: i18n.t("workspace.git.actions.viewPr"),
-      successLabel: i18n.t("workspace.git.actions.viewPr"),
+      label,
+      pendingLabel: label,
+      successLabel: label,
       disabled: input.runtime.pr.disabled,
       status: input.runtime.pr.status,
       unavailableMessage:

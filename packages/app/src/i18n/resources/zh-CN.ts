@@ -655,6 +655,7 @@ export const zhCN: TranslationResources = {
           success: "已 pull 并 push",
         },
         viewPr: "查看 PR",
+        viewPrConflict: "PR 冲突",
         createPr: {
           label: "创建 PR",
           pending: "正在创建 PR...",
@@ -691,6 +692,7 @@ export const zhCN: TranslationResources = {
           success_mr: "MR 已 merge",
         },
         viewPr_mr: "查看 MR",
+        viewPrConflict_mr: "MR 冲突",
         autoMerge: {
           enableSquash: "Auto merge (squash)",
           enableMerge: "Auto merge (merge)",
