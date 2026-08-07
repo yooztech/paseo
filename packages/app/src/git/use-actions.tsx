@@ -84,6 +84,10 @@ function formatBaseRefLabel(baseRef: string | undefined, fallbackLabel: string):
 
 type PrStatusValue = NonNullable<CheckoutPrStatusPayload["status"]> | null;
 
+function getPullRequestChecksStatus(status: PrStatusValue): string | undefined {
+  return status?.checksStatus;
+}
+
 interface DeriveGitActionsStateArgs {
   isGit: boolean;
   status: CheckoutStatusPayload | null;
@@ -664,6 +668,8 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     handleCreatePr();
   }, [prStatus?.url, handleCreatePr]);
 
+  const pullRequestChecksStatus = getPullRequestChecksStatus(prStatus);
+
   // Build actions
   const gitActionsInput = useMemo<BuildGitActionsInput>(() => {
     const presentation = getForgePresentation(forge);
@@ -679,6 +685,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       pullRequestIsDraft: prStatus?.isDraft ?? false,
       pullRequestIsMerged: prStatus?.isMerged ?? false,
       pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
+      pullRequestChecksStatus,
       mergeCapability: deriveMergeCapability(prStatus?.forgeSpecific, prStatus?.github),
       hasRemote,
       isPaseoOwnedWorktree,
@@ -796,6 +803,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     prStatus?.isDraft,
     prStatus?.isMerged,
     prStatus?.mergeable,
+    pullRequestChecksStatus,
     prStatus?.forgeSpecific,
     prStatus?.github,
     aheadCount,
@@ -954,26 +962,14 @@ function getTranslatedGitActionLabels(
       };
     case "pr":
       return hasPullRequest
-        ? {
-            label: t(
+        ? (() => {
+            const viewKey =
               pullRequestMergeable === "CONFLICTING"
                 ? "workspace.git.actions.viewPrConflict"
-                : "workspace.git.actions.viewPr",
-              forgeVocabulary(forge),
-            ),
-            pendingLabel: t(
-              pullRequestMergeable === "CONFLICTING"
-                ? "workspace.git.actions.viewPrConflict"
-                : "workspace.git.actions.viewPr",
-              forgeVocabulary(forge),
-            ),
-            successLabel: t(
-              pullRequestMergeable === "CONFLICTING"
-                ? "workspace.git.actions.viewPrConflict"
-                : "workspace.git.actions.viewPr",
-              forgeVocabulary(forge),
-            ),
-          }
+                : "workspace.git.actions.viewPr";
+            const label = t(viewKey, forgeVocabulary(forge));
+            return { label, pendingLabel: label, successLabel: label };
+          })()
         : {
             label: t("workspace.git.actions.createPr.label", forgeVocabulary(forge)),
             pendingLabel: t("workspace.git.actions.createPr.pending", forgeVocabulary(forge)),

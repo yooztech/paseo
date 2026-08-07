@@ -68,6 +68,7 @@ function createInput(
     pullRequestIsDraft: false,
     pullRequestIsMerged: false,
     pullRequestMergeable: "UNKNOWN",
+    pullRequestChecksStatus: "none",
     mergeCapability: deriveMergeCapability(pullRequestGithub),
     hasRemote: false,
     isPaseoOwnedWorktree: false,
@@ -524,6 +525,26 @@ describe("git-actions-policy", () => {
       id: "merge-pr-squash",
       label: "Merge PR (squash)",
     });
+  });
+
+  it("does not show direct merge actions while PR checks are pending", () => {
+    const actions = buildGitActions(
+      createInput({
+        hasRemote: true,
+        isOnBaseBranch: false,
+        aheadCount: 2,
+        hasPullRequest: true,
+        pullRequestUrl: "https://example.com/pr/456",
+        pullRequestState: "open",
+        pullRequestMergeable: "MERGEABLE",
+        pullRequestChecksStatus: "pending",
+        pullRequestGithub: githubStatus({ mergeStateStatus: "CLEAN" }),
+        shipDefault: "pr",
+      }),
+    );
+
+    expect(actions.primary?.id).not.toMatch(/^merge-pr-/);
+    expect(actions.secondary.some((action) => action.id === "merge-pr-squash")).toBe(false);
   });
 
   it("uses GitHub merge state, not mergeable, for direct merge readiness", () => {
