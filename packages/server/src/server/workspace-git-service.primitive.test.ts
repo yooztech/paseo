@@ -1327,6 +1327,114 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     }
   });
 
+  test("generic forge poll accelerates a pending slow timer when a refresh learns mergeability is computing", async () => {
+    let nowMs = 0;
+    let mrCreated = false;
+    const gitlabCheckingFacts = {
+      forge: "gitlab" as const,
+      detailedMergeStatus: "checking",
+      mergeStatus: null,
+      hasConflicts: false,
+      blockingDiscussionsResolved: true,
+      approvalsRequired: 0,
+      approvalsGiven: 0,
+      pipelineStatus: null,
+      pipelineId: null,
+      pipelineUrl: null,
+      mergeWhenPipelineSucceeds: false,
+    };
+    const forge = {
+      ...createGitHubServiceStub(),
+      retainCurrentPullRequestStatusPoll: undefined,
+      getCurrentPullRequestStatus: vi.fn(async () =>
+        createCurrentPullRequestStatus({
+          mergeable: "UNKNOWN",
+          forgeSpecific: gitlabCheckingFacts,
+        }),
+      ),
+    };
+    const unregister = defaultForgeRegistry.register("forge-gitlab-nudge-test", {
+      createService: () => forge,
+      matchesHost: (host) => host === "forge-gitlab-nudge.test",
+    });
+    const getPullRequestStatus = vi.fn(
+      async (): Promise<PullRequestStatusResult> =>
+        mrCreated
+          ? {
+              status: {
+                url: "https://forge-gitlab-nudge.test/acme/repo/-/merge_requests/14",
+                title: "Fresh MR",
+                state: "open",
+                baseRefName: "main",
+                headRefName: "feature",
+                isMerged: false,
+                mergeable: "UNKNOWN",
+                checks: [],
+                checksStatus: "none",
+                reviewDecision: null,
+                forgeSpecific: gitlabCheckingFacts,
+              },
+              authState: "authenticated",
+              githubFeaturesEnabled: true,
+            }
+          : { status: null, authState: "authenticated", githubFeaturesEnabled: true },
+    );
+    const service = createService({
+      now: () => new Date(nowMs),
+      getCheckoutSnapshotFacts: vi.fn(async (cwd: string) =>
+        createCheckoutFacts(cwd, {
+          currentBranch: "feature",
+          remoteUrl: "https://forge-gitlab-nudge.test/acme/repo.git",
+          pullRequestLookupTarget: { headRef: "feature" },
+        }),
+      ),
+      getCheckoutStatus: vi.fn(async (cwd: string) =>
+        createCheckoutStatus(cwd, {
+          currentBranch: "feature",
+          remoteUrl: "https://forge-gitlab-nudge.test/acme/repo.git",
+        }),
+      ),
+      getPullRequestStatus,
+    });
+
+    try {
+      // Settle the initial "no MR yet" state before subscribing so the poll
+      // loop is retained with a slow timer.
+      await service.getSnapshot(REPO_CWD);
+      expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest).toBeNull();
+
+      const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+      await flushPromises();
+
+      // No MR yet: the generic poll idles on the slow interval.
+      expect(forge.getCurrentPullRequestStatus).not.toHaveBeenCalled();
+
+      // MR created: the forced forge refresh learns GitLab is still computing
+      // mergeability while the slow poll timer is still pending.
+      mrCreated = true;
+      nowMs = 1_000;
+      await service.getSnapshot(REPO_CWD, {
+        force: true,
+        includeForge: true,
+        reason: "create-pr",
+      });
+      expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest?.title).toBe("Fresh MR");
+      expect(forge.getCurrentPullRequestStatus).not.toHaveBeenCalled();
+
+      // The pending timer is accelerated onto the mergeability cadence instead
+      // of waiting out the slow interval.
+      nowMs = 4_000;
+      await vi.advanceTimersByTimeAsync(3_000);
+      await flushPromises();
+      expect(forge.getCurrentPullRequestStatus).toHaveBeenCalledTimes(1);
+
+      subscription.unsubscribe();
+    } finally {
+      service.dispose();
+      unregister();
+    }
+  });
+
   test("generic forge poll refreshes immediately when checkout HEAD changes", async () => {
     let nowMs = 0;
     let headSha = "1111111111111111111111111111111111111111";

@@ -78,7 +78,6 @@ export interface BuildGitActionsInput {
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
   hasChangesFromOrigin: boolean | null;
-  shouldPromoteArchive: boolean;
   shipDefault: "merge" | "pr";
   runtime: Record<GitActionId, GitActionRuntimeState>;
 }
@@ -285,18 +284,6 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     handler: input.runtime["merge-from-base"].handler,
   });
 
-  allActions.set("archive-workspace", {
-    id: "archive-workspace",
-    label: i18n.t("workspace.git.actions.archive.label"),
-    pendingLabel: i18n.t("workspace.git.actions.archive.pending"),
-    successLabel: i18n.t("workspace.git.actions.archive.success"),
-    disabled: input.runtime["archive-workspace"].disabled,
-    status: input.runtime["archive-workspace"].status,
-    icon: input.runtime["archive-workspace"].icon,
-    startsGroup: true,
-    handler: input.runtime["archive-workspace"].handler,
-  });
-
   const primaryActionId = getPrimaryActionId(input);
   const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
 
@@ -304,21 +291,15 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
   if (!input.isOnBaseBranch) {
     secondaryIds.push(...getFeatureActionIds(input));
   }
-  secondaryIds.push("archive-workspace");
 
   return {
     primary,
-    secondary: secondaryIds
-      .filter((id) => id !== "archive-workspace" || primaryActionId !== "archive-workspace")
-      .map((id) => allActions.get(id)!),
+    secondary: secondaryIds.map((id) => allActions.get(id)!),
     menu: [],
   };
 }
 
 function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
-  if (input.shouldPromoteArchive) {
-    return "archive-workspace";
-  }
   if (input.hasUncommittedChanges) {
     return "commit";
   }
@@ -348,12 +329,6 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   }
   if (input.githubFeaturesEnabled && input.hasPullRequest && input.pullRequestUrl) {
     return "pr";
-  }
-
-  // Only Paseo-owned worktrees get Archive as a fallback primary action.
-  // Regular Git checkouts should not show the destructive archive CTA by default.
-  if (input.isPaseoOwnedWorktree) {
-    return "archive-workspace";
   }
 
   return null;
@@ -527,7 +502,7 @@ function canPush(input: BuildGitActionsInput): boolean {
 
 function hasPushableCommits(input: BuildGitActionsInput): boolean {
   if ((input.aheadOfOrigin ?? 0) > 0) {
-    return input.hasChangesFromOrigin !== false;
+    return input.hasChangesFromBase;
   }
   // No-upstream Paseo worktrees are first-pushable: the daemon push sets upstream with `git push -u`.
   // Do not fold this into aheadOfOrigin; null also covers deleted/pruned upstream branches.
