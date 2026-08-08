@@ -453,6 +453,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.listeners.add(listener);
     if (target.listeners.size === 1) {
       this.startWorkspaceSubscriptionTimers(target);
+      this.requestFetch(cwd);
     }
     if (!target.latestSnapshot) {
       this.scheduleInitialWorkspaceRefresh(target);
