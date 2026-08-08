@@ -1435,6 +1435,96 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     }
   });
 
+  test("generic forge poll accelerates onto the CI attach wait after create-pr", async () => {
+    let nowMs = 0;
+    let mrCreated = false;
+    const forge = {
+      ...createGitHubServiceStub(),
+      retainCurrentPullRequestStatusPoll: undefined,
+      getCurrentPullRequestStatus: vi.fn(async () =>
+        createCurrentPullRequestStatus({
+          number: 42,
+          url: "https://forge-ci-attach.test/acme/repo/-/merge_requests/42",
+          title: "Fresh CI-less MR",
+          checksStatus: "none",
+          checks: [],
+        }),
+      ),
+    };
+    const unregister = defaultForgeRegistry.register("forge-ci-attach-test", {
+      createService: () => forge,
+      matchesHost: (host) => host === "forge-ci-attach.test",
+    });
+    const getPullRequestStatus = vi.fn(async () =>
+      mrCreated
+        ? {
+            status: {
+              number: 42,
+              url: "https://forge-ci-attach.test/acme/repo/-/merge_requests/42",
+              title: "Fresh CI-less MR",
+              state: "open" as const,
+              baseRefName: "main",
+              headRefName: "feature",
+              isMerged: false,
+              mergeable: "MERGEABLE" as const,
+              checks: [],
+              checksStatus: "none" as const,
+              reviewDecision: null,
+            },
+            authState: "authenticated" as const,
+            featuresEnabled: true,
+            githubFeaturesEnabled: true,
+          }
+        : { status: null, authState: "authenticated", githubFeaturesEnabled: true },
+    );
+    const service = createService({
+      now: () => new Date(nowMs),
+      getCheckoutSnapshotFacts: vi.fn(async (cwd: string) =>
+        createCheckoutFacts(cwd, {
+          currentBranch: "feature",
+          remoteUrl: "https://forge-ci-attach.test/acme/repo.git",
+          pullRequestLookupTarget: { headRef: "feature" },
+        }),
+      ),
+      getCheckoutStatus: vi.fn(async (cwd: string) =>
+        createCheckoutStatus(cwd, {
+          currentBranch: "feature",
+          remoteUrl: "https://forge-ci-attach.test/acme/repo.git",
+        }),
+      ),
+      getPullRequestStatus,
+    });
+
+    try {
+      await service.getSnapshot(REPO_CWD);
+      expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest).toBeNull();
+
+      const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+      await flushPromises();
+      expect(forge.getCurrentPullRequestStatus).not.toHaveBeenCalled();
+
+      mrCreated = true;
+      nowMs = 1_000;
+      await service.getSnapshot(REPO_CWD, {
+        force: true,
+        includeForge: true,
+        reason: "create-pr",
+      });
+      expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest?.title).toBe("Fresh CI-less MR");
+      expect(forge.getCurrentPullRequestStatus).not.toHaveBeenCalled();
+
+      nowMs = 6_000;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await flushPromises();
+      expect(forge.getCurrentPullRequestStatus).toHaveBeenCalledTimes(1);
+
+      subscription.unsubscribe();
+    } finally {
+      service.dispose();
+      unregister();
+    }
+  });
+
   test("generic forge poll refreshes immediately when checkout HEAD changes", async () => {
     let nowMs = 0;
     let headSha = "1111111111111111111111111111111111111111";

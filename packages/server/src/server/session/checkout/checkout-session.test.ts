@@ -29,6 +29,10 @@ function isCheckDetailsResponse(msg: SessionOutboundMessage): boolean {
   return msg.type === "checkout.forge.get_check_details.response";
 }
 
+function isBranchPipelineResponse(msg: SessionOutboundMessage): boolean {
+  return msg.type === "checkout.forge.get_branch_pipeline.response";
+}
+
 function isTimelineResponse(msg: SessionOutboundMessage): boolean {
   return msg.type === "pull_request_timeline_response";
 }
@@ -995,6 +999,166 @@ describe("CheckoutSession", () => {
         payload: {
           success: true,
           details: { pipeline: { id: 306, stages: [{ name: "test" }] } },
+        },
+      });
+    });
+  });
+
+  describe("branch pipeline routing", () => {
+    it("routes get-branch-pipeline through the resolved GitLab adapter", async () => {
+      const githubCalls: string[] = [];
+      const gitlabCalls: Array<{ cwd: string; branch: string }> = [];
+      const gitlabService: Partial<ForgeService> = {
+        async getBranchPipeline(input) {
+          gitlabCalls.push({ cwd: input.cwd, branch: input.branch });
+          return {
+            id: 501,
+            status: "running",
+            rawStatus: "running",
+            url: "https://gitlab.example.com/g/r/-/pipelines/501",
+            ref: input.branch,
+            sha: "def",
+            stages: [],
+          };
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          async getBranchPipeline(input) {
+            githubCalls.push(input.branch);
+            throw new Error("github adapter should not be reached for a gitlab cwd");
+          },
+        },
+        git: {
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
+        type: "checkout.forge.get_branch_pipeline.request",
+        cwd: "/repo",
+        branch: "feature",
+        requestId: "bp1",
+      });
+
+      expect(githubCalls).toEqual([]);
+      expect(gitlabCalls).toEqual([{ cwd: "/repo", branch: "feature" }]);
+      const response = emitted.find(isBranchPipelineResponse);
+      expect(response).toMatchObject({
+        type: "checkout.forge.get_branch_pipeline.response",
+        payload: {
+          cwd: "/repo",
+          branch: "feature",
+          success: true,
+          supported: true,
+          pipeline: { id: 501, status: "running", ref: "feature" },
+          error: null,
+          requestId: "bp1",
+        },
+      });
+    });
+
+    it("reports unsupported when the resolved forge cannot read branch pipelines", async () => {
+      const gitlabService: Partial<ForgeService> = {};
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
+        type: "checkout.forge.get_branch_pipeline.request",
+        cwd: "/repo",
+        branch: "feature",
+        requestId: "bp-unsupported",
+      });
+
+      expect(emitted.find(isBranchPipelineResponse)).toMatchObject({
+        payload: {
+          success: true,
+          supported: false,
+          pipeline: null,
+          branch: "feature",
+          requestId: "bp-unsupported",
+        },
+      });
+    });
+
+    it("falls back to the workspace current branch when the request omits branch", async () => {
+      const gitlabCalls: string[] = [];
+      const gitlabService: Partial<ForgeService> = {
+        async getBranchPipeline(input) {
+          gitlabCalls.push(input.branch);
+          return null;
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          peekSnapshot: () => createGitSnapshot("/repo", "from-snapshot"),
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
+        type: "checkout.forge.get_branch_pipeline.request",
+        cwd: "/repo",
+        requestId: "bp-fallback",
+      });
+
+      expect(gitlabCalls).toEqual(["from-snapshot"]);
+      expect(emitted.find(isBranchPipelineResponse)).toMatchObject({
+        payload: {
+          success: true,
+          supported: true,
+          pipeline: null,
+          branch: "from-snapshot",
+          requestId: "bp-fallback",
+        },
+      });
+    });
+
+    it("returns an error when no branch can be resolved", async () => {
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          peekSnapshot: () => null,
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: {
+              async getBranchPipeline() {
+                throw new Error("should not be called without a branch");
+              },
+            } as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
+        type: "checkout.forge.get_branch_pipeline.request",
+        cwd: "/repo",
+        requestId: "bp-no-branch",
+      });
+
+      expect(emitted.find(isBranchPipelineResponse)).toMatchObject({
+        payload: {
+          success: false,
+          supported: true,
+          pipeline: null,
+          branch: null,
+          error: { code: "UNKNOWN", message: "Branch pipeline request requires a branch name" },
+          requestId: "bp-no-branch",
         },
       });
     });

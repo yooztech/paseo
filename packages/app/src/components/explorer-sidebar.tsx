@@ -20,6 +20,7 @@ import {
   PullRequestTabIcon,
   usePrPaneData,
 } from "@/git/pull-request-panel";
+import { BranchCiPane, useBranchCiPipeline } from "@/git/branch-ci-panel";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
 import { usePanelStore, selectIsFileExplorerOpen, type ExplorerTab } from "@/stores/panel-store";
@@ -33,6 +34,9 @@ import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useHasOwnedWindowChromeObstruction, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
+import { useWorkspaceFields } from "@/stores/session-store-hooks";
+import { useSessionStore } from "@/stores/session-store";
+import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -284,6 +288,67 @@ function resolveExplorerTab(activeTab: ExplorerTab, isGit: boolean): ExplorerTab
   return isGit || activeTab === "files" ? activeTab : "files";
 }
 
+function resolveExplorerContentTab(input: {
+  activeTab: ExplorerTab;
+  isGit: boolean;
+  showPrTab: boolean;
+  showCiTab: boolean;
+}): ExplorerTab {
+  const requestedTab = resolveExplorerTab(input.activeTab, input.isGit);
+  if (requestedTab === "pr" && !input.showPrTab) {
+    return "changes";
+  }
+  if (requestedTab === "ci" && !input.showCiTab) {
+    return "changes";
+  }
+  return requestedTab;
+}
+
+function useExplorerBranchCiTab(input: {
+  serverId: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
+  isGit: boolean;
+  isOpen: boolean;
+  activeTab: ExplorerTab;
+  hasPullRequest: boolean;
+  prLoading: boolean;
+  prForge: string | null;
+}) {
+  const forgeBranchPipelineEnabled = useSessionStore(
+    (state) => state.sessions[input.serverId]?.serverInfo?.features?.forgeBranchPipeline === true,
+  );
+  const currentBranch = useWorkspaceFields(
+    input.serverId,
+    input.workspaceId ?? null,
+    (workspace) => workspace.gitRuntime?.currentBranch ?? null,
+  );
+  const canQuery = input.isGit && Boolean(input.workspaceRoot);
+  const branchCiEnabled =
+    canQuery &&
+    input.isOpen &&
+    !input.hasPullRequest &&
+    !input.prLoading &&
+    forgeBranchPipelineEnabled &&
+    input.prForge === "gitlab" &&
+    Boolean(currentBranch);
+  const branchCi = useBranchCiPipeline({
+    serverId: input.serverId,
+    cwd: input.workspaceRoot,
+    branch: currentBranch,
+    enabled: branchCiEnabled || (input.activeTab === "ci" && canQuery && input.isOpen),
+  });
+  const showPrTab = input.hasPullRequest || (input.activeTab === "pr" && input.prLoading);
+  const showCiTab =
+    !showPrTab &&
+    forgeBranchPipelineEnabled &&
+    input.prForge === "gitlab" &&
+    (branchCi.pipeline !== null ||
+      branchCi.isLoading ||
+      (input.activeTab === "ci" && branchCi.supported));
+  return { branchCi, showCiTab };
+}
+
 function ExplorerSidebarContent({
   activeTab,
   onTabPress,
@@ -308,8 +373,23 @@ function ExplorerSidebarContent({
   });
   const hasPullRequest = prPane.prNumber !== null;
   const showPrTab = hasPullRequest || (activeTab === "pr" && prPane.isLoading);
-  const requestedTab = resolveExplorerTab(activeTab, isGit);
-  const resolvedTab: ExplorerTab = requestedTab === "pr" && !showPrTab ? "changes" : requestedTab;
+  const { branchCi, showCiTab } = useExplorerBranchCiTab({
+    serverId,
+    workspaceId,
+    workspaceRoot,
+    isGit,
+    isOpen,
+    activeTab,
+    hasPullRequest,
+    prLoading: prPane.isLoading,
+    prForge: prPane.forge,
+  });
+  const resolvedTab = resolveExplorerContentTab({
+    activeTab,
+    isGit,
+    showPrTab,
+    showCiTab,
+  });
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const refreshGitActions = useCheckoutGitActionsStore((s) => s.refresh);
   const handlePrRetry = useCallback(() => {
@@ -324,121 +404,222 @@ function ExplorerSidebarContent({
 
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
-      {/* Header with tabs and close button */}
-      <WindowChromeSafeArea
-        placement="inline"
-        horizontalPadding={theme.spacing[2]}
-        style={styles.header}
-        testID="explorer-header"
-      >
-        <TitlebarDragRegion />
-        <View style={styles.tabsContainer}>
-          {isGit && (
-            <ExplorerTabButton
-              tab="changes"
-              active={resolvedTab === "changes"}
-              label={t("workspace.tabs.explorer.changes")}
-              onTabPress={onTabPress}
-              testID="explorer-tab-changes"
-            />
-          )}
-          {isGit && (
-            <ExplorerTabButton
-              tab="repository_graph"
-              active={resolvedTab === "repository_graph"}
-              label={t("workspace.tabs.explorer.repositoryGraph")}
-              onTabPress={onTabPress}
-              testID="explorer-tab-repository-graph"
-            />
-          )}
-          <ExplorerTabButton
-            tab="files"
-            active={resolvedTab === "files"}
-            label={t("workspace.tabs.explorer.files")}
-            onTabPress={onTabPress}
-            testID="explorer-tab-files"
-          />
-          {isGit && showPrTab && (
-            <ExplorerTabButton
-              tab="pr"
-              active={resolvedTab === "pr"}
-              label={prTabLabel}
-              onTabPress={onTabPress}
-              testID="explorer-tab-pr"
-            >
-              <PullRequestTabIcon
-                forge={prPane.forge}
-                size={13}
-                color={
-                  resolvedTab === "pr" ? theme.colors.foreground : theme.colors.foregroundMuted
-                }
-              />
-            </ExplorerTabButton>
-          )}
-        </View>
-        <View style={styles.headerRightSection}>
-          {!hasRightWindowControls && (
-            <Pressable
-              onPress={onClose}
-              style={styles.closeButton}
-              testID="explorer-close"
-              nativeID="explorer-close"
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={t("workspace.tabs.explorer.close")}
-              hitSlop={8}
-            >
-              {({ hovered, pressed }) => (
-                <X
-                  size={18}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
-          )}
-        </View>
-      </WindowChromeSafeArea>
-
-      {/* Content based on active tab */}
+      <ExplorerSidebarHeader
+        theme={theme}
+        t={t}
+        isGit={isGit}
+        resolvedTab={resolvedTab}
+        showPrTab={showPrTab}
+        showCiTab={showCiTab}
+        prTabLabel={prTabLabel}
+        prForge={prPane.forge}
+        onTabPress={onTabPress}
+        onClose={onClose}
+        hasRightWindowControls={hasRightWindowControls}
+      />
       <View style={styles.contentArea} testID="explorer-content-area">
-        {resolvedTab === "changes" && (
-          <ChangedFilesPane
-            serverId={serverId}
-            workspaceId={workspaceId}
-            workspaceRoot={workspaceRoot}
-            isOpen={isOpen}
-            onOpenFile={onOpenFile}
-          />
-        )}
-        {resolvedTab === "files" && (
-          <FilesPane
-            serverId={serverId}
-            workspaceId={workspaceId}
-            workspaceRoot={workspaceRoot}
-            onOpenFile={onOpenFile}
-          />
-        )}
-        {resolvedTab === "repository_graph" && (
-          <RepositoryGraphPane
-            serverId={serverId}
-            cwd={workspaceRoot}
-            enabled={isOpen && resolvedTab === "repository_graph"}
-          />
-        )}
-        {resolvedTab === "pr" && (
-          <PrTabContent
-            serverId={serverId}
-            cwd={workspaceRoot}
-            prPane={prPane}
-            workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
-            onRetry={handlePrRetry}
-          />
-        )}
+        <ExplorerSidebarBody
+          resolvedTab={resolvedTab}
+          serverId={serverId}
+          workspaceId={workspaceId}
+          workspaceRoot={workspaceRoot}
+          isOpen={isOpen}
+          onOpenFile={onOpenFile}
+          prPane={prPane}
+          workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
+          onPrRetry={handlePrRetry}
+          branchCi={branchCi}
+        />
       </View>
     </View>
   );
+}
+
+function ExplorerSidebarHeader({
+  theme,
+  t,
+  isGit,
+  resolvedTab,
+  showPrTab,
+  showCiTab,
+  prTabLabel,
+  prForge,
+  onTabPress,
+  onClose,
+  hasRightWindowControls,
+}: {
+  theme: ReturnType<typeof useUnistyles>["theme"];
+  t: ReturnType<typeof useTranslation>["t"];
+  isGit: boolean;
+  resolvedTab: ExplorerTab;
+  showPrTab: boolean;
+  showCiTab: boolean;
+  prTabLabel: string;
+  prForge: UsePrPaneDataResult["forge"];
+  onTabPress: (tab: ExplorerTab) => void;
+  onClose: () => void;
+  hasRightWindowControls: boolean;
+}) {
+  return (
+    <WindowChromeSafeArea
+      placement="inline"
+      horizontalPadding={theme.spacing[2]}
+      style={styles.header}
+      testID="explorer-header"
+    >
+      <TitlebarDragRegion />
+      <View style={styles.tabsContainer}>
+        {isGit ? (
+          <ExplorerTabButton
+            tab="changes"
+            active={resolvedTab === "changes"}
+            label={t("workspace.tabs.explorer.changes")}
+            onTabPress={onTabPress}
+            testID="explorer-tab-changes"
+          />
+        ) : null}
+        {isGit ? (
+          <ExplorerTabButton
+            tab="repository_graph"
+            active={resolvedTab === "repository_graph"}
+            label={t("workspace.tabs.explorer.repositoryGraph")}
+            onTabPress={onTabPress}
+            testID="explorer-tab-repository-graph"
+          />
+        ) : null}
+        <ExplorerTabButton
+          tab="files"
+          active={resolvedTab === "files"}
+          label={t("workspace.tabs.explorer.files")}
+          onTabPress={onTabPress}
+          testID="explorer-tab-files"
+        />
+        {isGit && showPrTab ? (
+          <ExplorerTabButton
+            tab="pr"
+            active={resolvedTab === "pr"}
+            label={prTabLabel}
+            onTabPress={onTabPress}
+            testID="explorer-tab-pr"
+          >
+            <PullRequestTabIcon
+              forge={prForge}
+              size={13}
+              color={resolvedTab === "pr" ? theme.colors.foreground : theme.colors.foregroundMuted}
+            />
+          </ExplorerTabButton>
+        ) : null}
+        {isGit && showCiTab ? (
+          <ExplorerTabButton
+            tab="ci"
+            active={resolvedTab === "ci"}
+            label={t("workspace.tabs.explorer.ci")}
+            onTabPress={onTabPress}
+            testID="explorer-tab-ci"
+          >
+            <GitLabIcon
+              size={13}
+              color={resolvedTab === "ci" ? theme.colors.foreground : theme.colors.foregroundMuted}
+            />
+          </ExplorerTabButton>
+        ) : null}
+      </View>
+      <View style={styles.headerRightSection}>
+        {!hasRightWindowControls ? (
+          <Pressable
+            onPress={onClose}
+            style={styles.closeButton}
+            testID="explorer-close"
+            nativeID="explorer-close"
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={t("workspace.tabs.explorer.close")}
+            hitSlop={8}
+          >
+            {({ hovered, pressed }) => (
+              <X
+                size={18}
+                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+    </WindowChromeSafeArea>
+  );
+}
+
+function ExplorerSidebarBody({
+  resolvedTab,
+  serverId,
+  workspaceId,
+  workspaceRoot,
+  isOpen,
+  onOpenFile,
+  prPane,
+  workspaceAttachmentScopeKey,
+  onPrRetry,
+  branchCi,
+}: {
+  resolvedTab: ExplorerTab;
+  serverId: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
+  isOpen: boolean;
+  onOpenFile?: (filePath: string) => void;
+  prPane: UsePrPaneDataResult;
+  workspaceAttachmentScopeKey: string;
+  onPrRetry: () => void;
+  branchCi: ReturnType<typeof useBranchCiPipeline>;
+}) {
+  if (resolvedTab === "changes") {
+    return (
+      <ChangedFilesPane
+        serverId={serverId}
+        workspaceId={workspaceId}
+        workspaceRoot={workspaceRoot}
+        isOpen={isOpen}
+        onOpenFile={onOpenFile}
+      />
+    );
+  }
+  if (resolvedTab === "files") {
+    return (
+      <FilesPane
+        serverId={serverId}
+        workspaceId={workspaceId}
+        workspaceRoot={workspaceRoot}
+        onOpenFile={onOpenFile}
+      />
+    );
+  }
+  if (resolvedTab === "repository_graph") {
+    return <RepositoryGraphPane serverId={serverId} cwd={workspaceRoot} enabled={isOpen} />;
+  }
+  if (resolvedTab === "pr") {
+    return (
+      <PrTabContent
+        serverId={serverId}
+        cwd={workspaceRoot}
+        prPane={prPane}
+        workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
+        onRetry={onPrRetry}
+      />
+    );
+  }
+  if (resolvedTab === "ci") {
+    return (
+      <BranchCiPane
+        serverId={serverId}
+        cwd={workspaceRoot}
+        pipeline={branchCi.pipeline}
+        branch={branchCi.branch}
+        isLoading={branchCi.isLoading}
+        error={branchCi.error}
+      />
+    );
+  }
+  return null;
 }
 
 /**

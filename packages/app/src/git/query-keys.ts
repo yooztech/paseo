@@ -1,4 +1,5 @@
 import type { Query, QueryClient } from "@tanstack/react-query";
+import { branchCiPipelineQueryKind } from "./branch-ci-panel/query-keys";
 import { prPanePipelineQueryKind, prPaneTimelineQueryKind } from "./pull-request-panel/query-keys";
 
 interface CheckoutQueryIdentity {
@@ -78,6 +79,9 @@ export async function invalidateCheckoutGitQueriesForClient(
     queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate(prPanePipelineQueryKind, identity),
     }),
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate(branchCiPipelineQueryKind, identity),
+    }),
   ]);
 }
 
@@ -95,6 +99,7 @@ export async function invalidateCheckoutGitQueriesForServer(
     "repositoryGraph",
     prPaneTimelineQueryKind,
     prPanePipelineQueryKind,
+    branchCiPipelineQueryKind,
   ];
   await Promise.all(
     kinds.map((kind) =>

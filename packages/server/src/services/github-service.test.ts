@@ -686,11 +686,16 @@ describe("ForgeService", () => {
       checks: [{ name: "ci", status: "pending", url: null }],
     });
     const stableStatus = createCurrentPullRequestStatus({ checksStatus: "success" });
+    const emptyChecksStatus = createCurrentPullRequestStatus({ checksStatus: "none" });
 
     expect(computeGithubNextInterval(pendingStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
     expect(computeGithubNextInterval(runningCheckStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
     expect(computeGithubNextInterval(stableStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
     expect(computeGithubNextInterval(null, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
+    expect(computeGithubNextInterval(emptyChecksStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
+    expect(computeGithubNextInterval(emptyChecksStatus, 0, { ciAttachWaitActive: true })).toBe(
+      5_000,
+    );
   });
 
   it("computes exponential error backoff up to the cap", () => {

@@ -535,6 +535,7 @@ export const zhCN: TranslationResources = {
         changes: "变更",
         repositoryGraph: "仓库图",
         files: "文件",
+        ci: "CI",
       },
       toasts: {
         copyFailed: "复制失败",
@@ -830,6 +831,7 @@ export const zhCN: TranslationResources = {
         },
         empty: {
           noJobs: "无作业",
+          noChecks: "无检查",
           loadingPipeline: "正在加载流水线...",
           pipelineJobsLoadFailed: "无法加载流水线作业",
           allowedToFail: "允许失败",

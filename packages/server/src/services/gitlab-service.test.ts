@@ -28,6 +28,7 @@ function makeService(responder: Responder, overrides: Partial<CreateGitLabServic
     runner,
     resolveGlabPath: async () => "/usr/bin/glab",
     resolveRemoteUrl: async () => "git@gitlab.example.com:example-group/example-project.git",
+    resolveBranchTipSha: async () => null,
     ...overrides,
   });
   return { service, calls };
@@ -757,6 +758,173 @@ describe("createGitLabService", () => {
 
     const details = await service.getCheckDetails({ cwd: "/repo", checkRunId: 306 });
     expect(details.pipeline?.stages[0]?.status).toBe("success");
+  });
+
+  it("fetches the newest pipeline across branch refs and tag scope", async () => {
+    const { service, calls } = makeService((args) => {
+      if (args[0] === "ci" && args[1] === "list" && args.includes("--ref")) {
+        return ok(
+          JSON.stringify([
+            {
+              id: 3031,
+              status: "success",
+              ref: "master",
+              sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            },
+          ]),
+        );
+      }
+      if (args[0] === "ci" && args[1] === "list" && args.includes("--scope")) {
+        return ok(
+          JSON.stringify([
+            {
+              id: 3103,
+              status: "failed",
+              ref: "v1.2.3",
+              tag: true,
+              sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            },
+            {
+              id: 3090,
+              status: "success",
+              ref: "v1.2.2",
+              tag: true,
+              sha: "cccccccccccccccccccccccccccccccccccccccc",
+            },
+          ]),
+        );
+      }
+      if (args[0] === "ci" && args[1] === "get") {
+        return ok(
+          JSON.stringify({
+            ...PIPELINE_WITH_JOBS,
+            id: 3103,
+            status: "failed",
+            ref: "v1.2.3",
+            sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          }),
+        );
+      }
+      throw new Error(`unexpected call: ${args.join(" ")}`);
+    });
+
+    const pipeline = await service.getBranchPipeline?.({
+      cwd: "/repo",
+      branch: "master",
+    });
+
+    const listCalls = calls.filter((args) => args[0] === "ci" && args[1] === "list");
+    expect(listCalls).toHaveLength(2);
+    expect(listCalls).toEqual(
+      expect.arrayContaining([
+        [
+          "ci",
+          "list",
+          "--ref",
+          "master",
+          "--order",
+          "id",
+          "--sort",
+          "desc",
+          "--per-page",
+          "30",
+          "-F",
+          "json",
+        ],
+        [
+          "ci",
+          "list",
+          "--scope",
+          "tags",
+          "--order",
+          "id",
+          "--sort",
+          "desc",
+          "--per-page",
+          "30",
+          "-F",
+          "json",
+        ],
+      ]),
+    );
+    expect(calls.find((args) => args[0] === "ci" && args[1] === "get")).toEqual([
+      "ci",
+      "get",
+      "--pipeline-id",
+      "3103",
+      "--with-job-details",
+      "-F",
+      "json",
+    ]);
+    expect(pipeline).toMatchObject({
+      id: 3103,
+      status: "failed",
+      rawStatus: "failed",
+      ref: "v1.2.3",
+    });
+  });
+
+  it("also considers tip-sha pipelines when resolving branch tip", async () => {
+    const tipSha = "dddddddddddddddddddddddddddddddddddddddd";
+    const { service, calls } = makeService(
+      (args) => {
+        if (args[0] === "ci" && args[1] === "list" && args.includes("--ref")) {
+          return ok(JSON.stringify([{ id: 3031, status: "success", ref: "master" }]));
+        }
+        if (args[0] === "ci" && args[1] === "list" && args.includes("--scope")) {
+          return ok(JSON.stringify([]));
+        }
+        if (args[0] === "ci" && args[1] === "list" && args.includes("--sha")) {
+          return ok(
+            JSON.stringify([
+              { id: 3103, status: "running", ref: "v9.9.9", tag: true, sha: tipSha },
+            ]),
+          );
+        }
+        if (args[0] === "ci" && args[1] === "get") {
+          return ok(JSON.stringify({ ...PIPELINE_WITH_JOBS, id: 3103, status: "running" }));
+        }
+        throw new Error(`unexpected call: ${args.join(" ")}`);
+      },
+      { resolveBranchTipSha: async () => tipSha },
+    );
+
+    const pipeline = await service.getBranchPipeline?.({
+      cwd: "/repo",
+      branch: "master",
+    });
+
+    expect(calls.some((args) => args.includes("--sha") && args.includes(tipSha))).toBe(true);
+    expect(pipeline?.id).toBe(3103);
+  });
+
+  it("returns null when the branch has never produced a pipeline", async () => {
+    const { service, calls } = makeService(() => ok(JSON.stringify([])));
+
+    await expect(
+      service.getBranchPipeline?.({ cwd: "/repo", branch: "feat/missing" }),
+    ).resolves.toBeNull();
+    expect(calls.filter((args) => args[1] === "list")).toHaveLength(2);
+  });
+
+  it("returns null when list-by-ref reports no pipeline text error", async () => {
+    const { service } = makeService(() => {
+      throw { code: 1, stderr: "No pipeline found for branch feat/missing" };
+    });
+
+    await expect(
+      service.getBranchPipeline?.({ cwd: "/repo", branch: "feat/missing" }),
+    ).resolves.toBeNull();
+  });
+
+  it("does not treat auth failures as a missing branch pipeline", async () => {
+    const { service } = makeService(() => {
+      throw { code: 1, stderr: "error: 401 Unauthorized — not logged in" };
+    });
+
+    await expect(
+      service.getBranchPipeline?.({ cwd: "/repo", branch: "feat/sample-change" }),
+    ).rejects.toBeInstanceOf(GlabAuthenticationError);
   });
 
   it("populates approval counts from the approvals endpoint", async () => {

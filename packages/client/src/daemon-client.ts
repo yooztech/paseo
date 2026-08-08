@@ -47,6 +47,7 @@ import type {
   CheckoutForgeSetAutoMergeResponse,
   CheckoutGithubSetAutoMergeResponse,
   CheckoutForgeGetCheckDetailsResponse,
+  CheckoutForgeGetBranchPipelineResponse,
   CheckoutGithubGetCheckDetailsResponse,
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
@@ -386,6 +387,7 @@ type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
 type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
 type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
+type CheckoutForgeGetBranchPipelinePayload = CheckoutForgeGetBranchPipelineResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
@@ -3817,6 +3819,26 @@ export class DaemonClient {
           checkRunId: input.checkRunId,
           workflowRunId: input.workflowRunId,
           changeRequestNumber: input.changeRequestNumber,
+        },
+        timeout: 60000,
+      },
+    );
+  }
+
+  async checkoutForgeGetBranchPipeline(
+    input: {
+      cwd: string;
+      branch?: string;
+    },
+    requestId?: string,
+  ): Promise<CheckoutForgeGetBranchPipelinePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.get_branch_pipeline.response">(
+      {
+        requestId,
+        message: {
+          type: "checkout.forge.get_branch_pipeline.request",
+          cwd: input.cwd,
+          branch: input.branch,
         },
         timeout: 60000,
       },

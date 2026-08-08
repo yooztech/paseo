@@ -54,10 +54,10 @@ Add a `serviceProxy` block under `daemon` in `~/.paseo/config.json`:
 }
 ```
 
-| Field           | Required | Description                                                                                                                                   |
-| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `listen`        | No       | Starts a separate service-only listener at this address. If omitted, services are still reachable on the daemon listener via localhost hosts. |
-| `publicBaseUrl` | No       | Adds public service host aliases and public service links. If omitted, links use localhost addresses only.                                    |
+| Field           | Required | Description                                                                                                                                                                                                                                                                                                |
+| --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listen`        | No       | Starts a separate service-only listener at this address. If omitted, services are still reachable on the daemon listener via localhost hosts.                                                                                                                                                              |
+| `publicBaseUrl` | No       | Adds public service host aliases and public service links. If omitted, links use localhost addresses only. Also auto-allows that host (and its subdomains) for daemon Host/CORS checks. Workspace daemons additionally derive the same allowlist from injected `PASEO_URL` / `PASEO_SERVICE_*_URL` values. |
 
 `enabled` is accepted for old configs but no longer enables a mode. `enabled: false` suppresses optional `listen`/`publicBaseUrl` layers only; localhost service proxying remains always enabled.
 

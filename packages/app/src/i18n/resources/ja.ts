@@ -540,6 +540,7 @@ export const ja: TranslationResources = {
         changes: "変更",
         repositoryGraph: "リポジトリグラフ",
         files: "ファイル",
+        ci: "CI",
       },
       toasts: {
         copyFailed: "コピーに失敗しました",
@@ -849,6 +850,7 @@ export const ja: TranslationResources = {
         },
         empty: {
           noJobs: "ジョブなし",
+          noChecks: "チェックなし",
           loadingPipeline: "パイプラインを読み込み中...",
           pipelineJobsLoadFailed: "パイプラインのジョブを読み込めませんでした",
           allowedToFail: "失敗を許可",

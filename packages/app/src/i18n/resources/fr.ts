@@ -540,6 +540,7 @@ export const fr: TranslationResources = {
         changes: "Changements",
         repositoryGraph: "Graphe du dépôt",
         files: "Fichiers",
+        ci: "CI",
       },
       toasts: {
         copyFailed: "Échec de la copie",
@@ -868,6 +869,7 @@ export const fr: TranslationResources = {
         },
         empty: {
           noJobs: "Aucune tâche",
+          noChecks: "Aucun check",
           loadingPipeline: "Chargement du pipeline...",
           pipelineJobsLoadFailed: "Impossible de charger les tâches du pipeline",
           allowedToFail: "autorisé à échouer",

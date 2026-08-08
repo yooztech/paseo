@@ -535,6 +535,7 @@ export const ar: TranslationResources = {
         changes: "التغييرات",
         repositoryGraph: "مخطط المستودع",
         files: "ملفات",
+        ci: "CI",
       },
       toasts: {
         copyFailed: "فشل النسخ",
@@ -838,6 +839,7 @@ export const ar: TranslationResources = {
         },
         empty: {
           noJobs: "لا توجد مهام",
+          noChecks: "لا توجد فحوصات",
           loadingPipeline: "جارٍ تحميل خط المعالجة...",
           pipelineJobsLoadFailed: "تعذر تحميل مهام خط المعالجة",
           allowedToFail: "مسموح بالفشل",

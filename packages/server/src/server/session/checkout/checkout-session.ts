@@ -1301,6 +1301,64 @@ export class CheckoutSession {
     }
   }
 
+  async handleCheckoutForgeGetBranchPipelineRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.forge.get_branch_pipeline.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    try {
+      const { service } = await this.requireForgeService(cwd);
+      const snapshot = this.workspaceGitService.peekSnapshot(cwd);
+      const branch = msg.branch?.trim() || snapshot?.git.currentBranch || null;
+      if (!branch) {
+        throw new Error("Branch pipeline request requires a branch name");
+      }
+      if (!service.getBranchPipeline) {
+        this.host.emit({
+          type: "checkout.forge.get_branch_pipeline.response",
+          payload: {
+            cwd,
+            branch,
+            success: true,
+            pipeline: null,
+            supported: false,
+            error: null,
+            requestId,
+          },
+        });
+        return;
+      }
+      const pipeline = await service.getBranchPipeline({ cwd, branch });
+      this.host.emit({
+        type: "checkout.forge.get_branch_pipeline.response",
+        payload: {
+          cwd,
+          branch,
+          success: true,
+          pipeline,
+          supported: true,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.forge.get_branch_pipeline.response",
+        payload: {
+          cwd,
+          branch: msg.branch?.trim() || null,
+          success: false,
+          pipeline: null,
+          supported: true,
+          error: {
+            code: "UNKNOWN",
+            message: error instanceof Error ? error.message : String(error),
+          },
+          requestId,
+        },
+      });
+    }
+  }
+
   async handleForgeSearchRequest(
     msg: Extract<SessionInboundMessage, { type: "forge.search.request" | "github_search_request" }>,
   ): Promise<void> {

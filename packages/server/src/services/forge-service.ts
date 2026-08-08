@@ -464,6 +464,12 @@ export interface ForgeService {
   ): Promise<CurrentPullRequestStatus | null>;
   getPullRequestTimeline(options: GetPullRequestTimelineOptions): Promise<PullRequestTimeline>;
   getCheckDetails(options: GetCheckDetailsOptions): Promise<CheckDetails>;
+  /**
+   * Latest pipeline for a branch when there is no open change request.
+   * Adapters that cannot report branch pipelines leave this unimplemented;
+   * callers treat that as `supported: false`.
+   */
+  getBranchPipeline?(options: { cwd: string; branch: string }): Promise<PipelineDetails | null>;
   searchIssuesAndPrs(options: SearchIssuesAndPrsOptions): Promise<SearchResult>;
   createPullRequest(options: CreatePullRequestOptions): Promise<PullRequestCreateResult>;
   mergePullRequest(options: MergePullRequestOptions): Promise<PullRequestMergeResult>;
@@ -501,9 +507,11 @@ export interface ForgeService {
     headRef: string;
     headSha?: string;
     headRepositoryOwner?: string;
+    /** Optional deadline owned by the workspace poller for post-create CI attach. */
+    getCiAttachWaitUntilMs?: () => number | null;
     onStatus?: (status: CurrentPullRequestStatus | null) => void;
     onError?: (error: unknown) => void;
-  }): { unsubscribe: () => void };
+  }): { unsubscribe: () => void; nudge?: () => void };
   invalidate(options: { cwd: string }): void;
   dispose?(): void;
 }

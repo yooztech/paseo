@@ -534,6 +534,7 @@ export const en = {
         changes: "Changes",
         repositoryGraph: "Repository Graph",
         files: "Files",
+        ci: "CI",
       },
       toasts: {
         copyFailed: "Copy failed",
@@ -848,6 +849,7 @@ export const en = {
         },
         empty: {
           noJobs: "No jobs",
+          noChecks: "No checks",
           loadingPipeline: "Loading pipeline…",
           pipelineJobsLoadFailed: "Could not load pipeline jobs",
           allowedToFail: "allowed to fail",

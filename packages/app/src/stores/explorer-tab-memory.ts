@@ -1,7 +1,13 @@
-export type ExplorerTab = "changes" | "files" | "repository_graph" | "pr";
+export type ExplorerTab = "changes" | "files" | "repository_graph" | "pr" | "ci";
 
 export function isExplorerTab(value: unknown): value is ExplorerTab {
-  return value === "changes" || value === "files" || value === "repository_graph" || value === "pr";
+  return (
+    value === "changes" ||
+    value === "files" ||
+    value === "repository_graph" ||
+    value === "pr" ||
+    value === "ci"
+  );
 }
 
 export function buildExplorerCheckoutKey(serverId: string, cwd: string): string | null {
