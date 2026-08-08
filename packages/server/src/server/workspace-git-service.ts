@@ -310,7 +310,7 @@ interface WorkspaceGitTarget {
   debounceTimer: NodeJS.Timeout | null;
   pendingDebounceRequest: WorkspaceGitRefreshRequest | null;
   selfHealTimer: NodeJS.Timeout | null;
-  forgePrStatusPollSubscription: { unsubscribe: () => void } | null;
+  forgePrStatusPollSubscription: { unsubscribe: () => void; nudge?: () => void } | null;
   forgePrStatusPollKey: string | null;
   refreshState: WorkspaceGitRefreshState;
   latestGit: WorkspaceGitRuntimeSnapshot["git"] | null;
@@ -1290,6 +1290,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     });
     const previousPollKey = target.forgePrStatusPollKey;
     if (target.forgePrStatusPollKey === pollKey && target.forgePrStatusPollSubscription) {
+      target.forgePrStatusPollSubscription.nudge?.();
       return;
     }
     const pollImmediately = previousPollKey !== null && previousPollKey !== pollKey;
@@ -1354,9 +1355,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     service: ForgeService;
     pollTarget: WorkspaceForgePrStatusPollTarget;
     pollImmediately: boolean;
-  }): { unsubscribe: () => void } {
+  }): { unsubscribe: () => void; nudge: () => void } {
     let closed = false;
     let timer: NodeJS.Timeout | null = null;
+    let nextFireAtMs: number | null = null;
     let latestStatus: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"] =
       target.latestForge?.pullRequest ?? null;
     let consecutiveErrors = 0;
@@ -1365,8 +1367,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       if (closed) {
         return;
       }
+      nextFireAtMs = this.deps.now().getTime() + delayMs;
       timer = setTimeout(() => {
         timer = null;
+        nextFireAtMs = null;
         void poll();
       }, delayMs);
     };
@@ -1422,7 +1426,29 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         if (timer) {
           clearTimeout(timer);
           timer = null;
+          nextFireAtMs = null;
         }
+      },
+      nudge: () => {
+        // An out-of-band forge refresh (e.g. right after MR creation) can learn
+        // that mergeability is still computing while a slow poll timer is
+        // pending. Accelerate the pending timer onto the mergeability cadence
+        // instead of waiting out the slow interval.
+        if (closed || timer === null) {
+          return;
+        }
+        const snapshotStatus = target.latestForge?.pullRequest;
+        if (snapshotStatus) {
+          latestStatus = snapshotStatus;
+        }
+        const desiredDelayMs = computeGenericForgeNextInterval(latestStatus, consecutiveErrors);
+        const desiredFireAtMs = this.deps.now().getTime() + desiredDelayMs;
+        if (nextFireAtMs === null || desiredFireAtMs >= nextFireAtMs) {
+          return;
+        }
+        clearTimeout(timer);
+        timer = null;
+        schedule(desiredDelayMs);
       },
     };
   }

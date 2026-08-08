@@ -93,8 +93,6 @@ interface DeriveGitActionsStateArgs {
   status: CheckoutStatusPayload | null;
   gitStatus: CheckoutStatusPayload | null;
   prStatus: PrStatusValue;
-  hasUncommittedChanges: boolean;
-  postShipArchiveSuggested: boolean;
   isStatusLoading: boolean;
   baseRefLabel: string;
 }
@@ -111,7 +109,6 @@ interface DerivedGitActionsState {
   hasRemote: boolean;
   isPaseoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
-  shouldPromoteArchive: boolean;
 }
 
 interface GitCommitCounts {
@@ -138,30 +135,10 @@ function extractGitCommitCounts(gitStatus: CheckoutStatusPayload | null): GitCom
   };
 }
 
-function computeShouldPromoteArchive(input: {
-  hasUncommittedChanges: boolean;
-  postShipArchiveSuggested: boolean;
-  isMergedPullRequest: boolean;
-}): boolean {
-  return (
-    !input.hasUncommittedChanges && (input.postShipArchiveSuggested || input.isMergedPullRequest)
-  );
-}
-
 function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActionsState {
-  const {
-    isGit,
-    status,
-    gitStatus,
-    prStatus,
-    hasUncommittedChanges,
-    postShipArchiveSuggested,
-    isStatusLoading,
-    baseRefLabel,
-  } = args;
+  const { isGit, status, gitStatus, prStatus, isStatusLoading, baseRefLabel } = args;
   const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
   const isPaseoOwnedWorktree = gitStatus?.isPaseoOwnedWorktree ?? false;
-  const isMergedPullRequest = Boolean(prStatus?.isMerged);
   return {
     actionsDisabled,
     ...extractGitCommitCounts(gitStatus),
@@ -169,11 +146,6 @@ function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActio
     hasRemote: gitStatus?.hasRemote ?? false,
     isPaseoOwnedWorktree,
     isOnBaseBranch: gitStatus?.currentBranch === baseRefLabel,
-    shouldPromoteArchive: computeShouldPromoteArchive({
-      hasUncommittedChanges,
-      postShipArchiveSuggested,
-      isMergedPullRequest,
-    }),
   };
 }
 
@@ -306,7 +278,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const { t } = useTranslation();
   const toast = useToast();
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("pr");
 
   const { status, isLoading: isStatusLoading } = useCheckoutStatusQuery({ serverId, cwd });
@@ -381,10 +352,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     },
     [shipDefaultStorageKey],
   );
-
-  useEffect(() => {
-    setPostShipArchiveSuggested(false);
-  }, [cwd]);
 
   const commitStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "commit" }),
@@ -535,7 +502,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       void persistShipDefault("pr");
       void runMergePr({ serverId, cwd, method })
         .then(() => {
-          setPostShipArchiveSuggested(true);
           toastActionSuccess(t("workspace.git.actions.mergePr.success", forgeVocabulary(forge)));
           return;
         })
@@ -588,7 +554,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     void persistShipDefault("merge");
     void runMergeBranch({ serverId, cwd, baseRef })
       .then(() => {
-        setPostShipArchiveSuggested(true);
         toastActionSuccess(t("workspace.git.actions.mergeBranch.success"));
         return;
       })
@@ -640,8 +605,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     status,
     gitStatus,
     prStatus,
-    hasUncommittedChanges,
-    postShipArchiveSuggested,
     isStatusLoading,
     baseRefLabel,
   });
@@ -657,7 +620,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     hasRemote,
     isPaseoOwnedWorktree,
     isOnBaseBranch,
-    shouldPromoteArchive,
   } = derived;
 
   const handlePrAction = useCallback(() => {
@@ -699,7 +661,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       aheadOfOrigin,
       behindOfOrigin,
       hasChangesFromOrigin,
-      shouldPromoteArchive,
       shipDefault,
       runtime: {
         commit: {
@@ -820,7 +781,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     hasChangesFromOrigin,
     shipDefault,
     baseRefLabel,
-    shouldPromoteArchive,
     actionsDisabled,
     commitStatus,
     pullStatus,
