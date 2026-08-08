@@ -223,6 +223,26 @@ describe("git-actions-policy", () => {
     });
   });
 
+  it("keeps push enabled when branch is ahead of origin even if hasChangesFromOrigin is null", () => {
+    const actions = buildGitActions(
+      createInput({
+        hasRemote: true,
+        isOnBaseBranch: false,
+        aheadCount: 2,
+        hasChangesFromBase: true,
+        aheadOfOrigin: 2,
+        hasChangesFromOrigin: null,
+        behindOfOrigin: 0,
+      }),
+    );
+    const pushAction = actions.secondary.find((action) => action.id === "push");
+
+    expect(pushAction).toMatchObject({
+      disabled: false,
+      unavailableMessage: undefined,
+    });
+  });
+
   it("prioritizes push over pull request merge when local commits are unpushed", () => {
     const actions = buildGitActions(
       createInput({
