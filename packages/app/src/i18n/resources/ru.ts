@@ -539,6 +539,7 @@ export const ru: TranslationResources = {
         changes: "Изменения",
         repositoryGraph: "Граф репозитория",
         files: "Файлы",
+        ci: "CI",
       },
       toasts: {
         copyFailed: "Не удалось скопировать",
@@ -860,6 +861,7 @@ export const ru: TranslationResources = {
         },
         empty: {
           noJobs: "Нет задач",
+          noChecks: "Нет проверок",
           loadingPipeline: "Загрузка пайплайна...",
           pipelineJobsLoadFailed: "Не удалось загрузить задачи пайплайна",
           allowedToFail: "допускается сбой",

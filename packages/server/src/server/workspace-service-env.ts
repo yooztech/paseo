@@ -38,6 +38,13 @@ export function buildWorkspaceServiceEnv(
     PASEO_PORT: String(selfPeer.port),
   };
 
+  if (options.serviceProxyPublicBaseUrl) {
+    // Workspace daemons behind the proxy see public Host/Origin values
+    // (app--*/daemon--*). Pass the base URL through so their Host allowlist and CORS
+    // can admit the same aliases the parent registered.
+    env.PASEO_SERVICE_PROXY_PUBLIC_BASE_URL = options.serviceProxyPublicBaseUrl;
+  }
+
   const selfProxyUrl = buildServiceProxyUrl({
     projectSlug: options.projectSlug,
     branchName: options.branchName,

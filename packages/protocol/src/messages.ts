@@ -1813,6 +1813,18 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
     type: z.literal("checkout.github.get_check_details.request"),
   });
 
+/**
+ * Latest pipeline for a branch when there is no open PR/MR. Used by the
+ * independent CI explorer tab. `branch` defaults to the checkout's current
+ * branch when omitted.
+ */
+export const CheckoutForgeGetBranchPipelineRequestSchema = z.object({
+  type: z.literal("checkout.forge.get_branch_pipeline.request"),
+  cwd: z.string(),
+  branch: z.string().optional(),
+  requestId: z.string(),
+});
+
 export const CheckoutPrStatusRequestSchema = z.object({
   type: z.literal("checkout_pr_status_request"),
   cwd: z.string(),
@@ -2548,6 +2560,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
   CheckoutGithubGetCheckDetailsRequestSchema,
+  CheckoutForgeGetBranchPipelineRequestSchema,
   CheckoutPrStatusRequestSchema,
   PullRequestTimelineRequestSchema,
   CheckoutSwitchBranchRequestSchema,
@@ -2796,6 +2809,8 @@ export const ServerInfoStatusPayloadSchema = z
         githubCheckDetails: z.boolean().optional(),
         // COMPAT(forgeCheckDetails): added in v0.1.106, remove githubCheckDetails fallback after 2026-12-28.
         forgeCheckDetails: z.boolean().optional(),
+        // COMPAT(forgeBranchPipeline): added in v0.2.5, remove gate after 2027-02-08.
+        forgeBranchPipeline: z.boolean().optional(),
         // COMPAT(forgeSearch): added in v0.1.106, remove github_search fallback after 2026-12-28.
         forgeSearch: z.boolean().optional(),
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.
@@ -4434,6 +4449,19 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
   }),
 });
 
+export const CheckoutForgeGetBranchPipelineResponseSchema = z.object({
+  type: z.literal("checkout.forge.get_branch_pipeline.response"),
+  payload: z.object({
+    cwd: z.string(),
+    branch: z.string().nullable(),
+    success: z.boolean(),
+    pipeline: CheckoutPipelineSchema.nullable().optional().default(null),
+    supported: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutPrStatusResponseSchema = z.object({
   type: z.literal("checkout_pr_status_response"),
   payload: CheckoutPrStatusPayloadSchema,
@@ -5332,6 +5360,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
   CheckoutGithubGetCheckDetailsResponseSchema,
+  CheckoutForgeGetBranchPipelineResponseSchema,
   CheckoutPrStatusResponseSchema,
   PullRequestTimelineResponseSchema,
   CheckoutSwitchBranchResponseSchema,
@@ -5701,6 +5730,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
 export type CheckoutGithubGetCheckDetailsRequest = z.infer<
   typeof CheckoutGithubGetCheckDetailsRequestSchema
 >;
+export type CheckoutForgeGetBranchPipelineRequest = z.infer<
+  typeof CheckoutForgeGetBranchPipelineRequestSchema
+>;
 export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
 export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
 export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
@@ -5711,6 +5743,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
 >;
 export type CheckoutGithubGetCheckDetailsResponse = z.infer<
   typeof CheckoutGithubGetCheckDetailsResponseSchema
+>;
+export type CheckoutForgeGetBranchPipelineResponse = z.infer<
+  typeof CheckoutForgeGetBranchPipelineResponseSchema
 >;
 export type PullRequestMergeable = z.infer<typeof CheckoutPrStatusSchema>["mergeable"];
 export type CheckoutPrStatusRequest = z.infer<typeof CheckoutPrStatusRequestSchema>;

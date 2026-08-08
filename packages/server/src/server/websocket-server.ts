@@ -31,7 +31,7 @@ import {
 import { asUint8Array, decodeBinaryFrame } from "@getpaseo/protocol/binary-frames/index";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { HostnamesConfig } from "./hostnames.js";
-import { isHostnameAllowed } from "./hostnames.js";
+import { isHostnameAllowed, isOriginHostnameAllowed } from "./hostnames.js";
 import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
@@ -829,7 +829,13 @@ export class VoiceAssistantWebSocketServer {
     }
     const sameOrigin = isWebSocketSameOrigin(origin, requestHost);
 
-    if (!origin || allowedOrigins.has("*") || allowedOrigins.has(origin) || sameOrigin) {
+    if (
+      !origin ||
+      allowedOrigins.has("*") ||
+      allowedOrigins.has(origin) ||
+      sameOrigin ||
+      isOriginHostnameAllowed(origin, hostnames)
+    ) {
       callback(true);
     } else {
       this.incrementRuntimeCounter("originRejected");
@@ -1522,6 +1528,8 @@ export class VoiceAssistantWebSocketServer {
         githubCheckDetails: true,
         // COMPAT(forgeCheckDetails): added in v0.1.106, remove githubCheckDetails fallback after 2026-12-28.
         forgeCheckDetails: true,
+        // COMPAT(forgeBranchPipeline): added in v0.2.5, remove gate after 2027-02-08.
+        forgeBranchPipeline: true,
         // COMPAT(forgeSearch): added in v0.1.106, remove github_search fallback after 2026-12-28.
         forgeSearch: true,
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.

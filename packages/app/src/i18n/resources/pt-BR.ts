@@ -539,6 +539,7 @@ export const ptBR: TranslationResources = {
         changes: "Alterações",
         repositoryGraph: "Gráfico do repositório",
         files: "Arquivos",
+        ci: "CI",
       },
       toasts: {
         copyFailed: "Falha ao copiar",
@@ -860,6 +861,7 @@ export const ptBR: TranslationResources = {
         },
         empty: {
           noJobs: "Sem jobs",
+          noChecks: "Sem checks",
           loadingPipeline: "Carregando pipeline...",
           pipelineJobsLoadFailed: "Não foi possível carregar os jobs do pipeline",
           allowedToFail: "permitido falhar",

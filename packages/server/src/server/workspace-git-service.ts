@@ -37,6 +37,12 @@ import {
   type ForgeResolution,
   type ForgeResolver,
 } from "../services/forge-resolver.js";
+import {
+  CI_ATTACH_POLL_INTERVAL_MS,
+  isCiAttachWaitActive,
+  nextCiAttachWaitUntilMs,
+  observeCiAttachWaitUntilMs,
+} from "../services/ci-attach-wait.js";
 import { isGitLabStatusFacts } from "../services/gitlab-facts.js";
 import { parseGitRevParsePath } from "../utils/git-rev-parse-path.js";
 import { runGitCommand } from "../utils/run-git-command.js";
@@ -312,6 +318,12 @@ interface WorkspaceGitTarget {
   selfHealTimer: NodeJS.Timeout | null;
   forgePrStatusPollSubscription: { unsubscribe: () => void; nudge?: () => void } | null;
   forgePrStatusPollKey: string | null;
+  /**
+   * After a PR/MR first appears without CI, keep fast-polling until checks attach
+   * or this deadline passes — distinguishes "CI not attached yet" from "no CI".
+   */
+  ciAttachWaitUntilMs: number | null;
+  ciAttachWaitPrKey: string | null;
   refreshState: WorkspaceGitRefreshState;
   latestGit: WorkspaceGitRuntimeSnapshot["git"] | null;
   latestGitLoadedAtMs: number | null;
@@ -909,6 +921,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       selfHealTimer: null,
       forgePrStatusPollSubscription: null,
       forgePrStatusPollKey: null,
+      ciAttachWaitUntilMs: null,
+      ciAttachWaitPrKey: null,
       refreshState: { status: "idle" },
       latestGit: null,
       latestGitLoadedAtMs: null,
@@ -1306,6 +1320,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         ...(pollTarget.headRepositoryOwner
           ? { headRepositoryOwner: pollTarget.headRepositoryOwner }
           : {}),
+        getCiAttachWaitUntilMs: () => target.ciAttachWaitUntilMs,
         onStatus: (status) => {
           if (!this.isActiveObservedWorkspaceTarget(target)) {
             return;
@@ -1411,7 +1426,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           "Failed to run forge PR status self-heal refresh",
         );
       } finally {
-        schedule(computeGenericForgeNextInterval(latestStatus, consecutiveErrors));
+        schedule(
+          computeGenericForgeNextInterval(latestStatus, consecutiveErrors, {
+            ciAttachWaitActive: isCiAttachWaitActive(
+              target.ciAttachWaitUntilMs,
+              this.deps.now().getTime(),
+            ),
+          }),
+        );
       }
     };
 
@@ -1419,7 +1441,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     // changes. Revalidate that new identity immediately instead of leaving the
     // PR panel empty for the full stable polling interval.
     schedule(
-      pollImmediately ? 0 : computeGenericForgeNextInterval(latestStatus, consecutiveErrors),
+      pollImmediately
+        ? 0
+        : computeGenericForgeNextInterval(latestStatus, consecutiveErrors, {
+            ciAttachWaitActive: isCiAttachWaitActive(
+              target.ciAttachWaitUntilMs,
+              this.deps.now().getTime(),
+            ),
+          }),
     );
     return {
       unsubscribe: () => {
@@ -1442,7 +1471,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         if (snapshotStatus) {
           latestStatus = snapshotStatus;
         }
-        const desiredDelayMs = computeGenericForgeNextInterval(latestStatus, consecutiveErrors);
+        const desiredDelayMs = computeGenericForgeNextInterval(latestStatus, consecutiveErrors, {
+          ciAttachWaitActive: isCiAttachWaitActive(
+            target.ciAttachWaitUntilMs,
+            this.deps.now().getTime(),
+          ),
+        });
         const desiredFireAtMs = this.deps.now().getTime() + desiredDelayMs;
         if (nextFireAtMs === null || desiredFireAtMs >= nextFireAtMs) {
           return;
@@ -1931,6 +1965,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     // self-managed GitLab hosts correctly instead of falling back to "github".
     target.latestForge = { ...forgeSnapshot, forge: resolution.forge };
     target.latestForgeLoadedAtMs = this.deps.now().getTime();
+    // Create-PR must arm the attach wait here — otherwise only self-heal polls
+    // see the empty PR and a pending slow timer never enters the post-create
+    // window. Other forge refreshes only observe/clear an existing wait.
+    this.updateCiAttachWaitForTarget(target, target.latestForge.pullRequest, {
+      arm: request.reason === "create-pr",
+    });
   }
 
   private combineSnapshot(target: WorkspaceGitTarget): WorkspaceGitRuntimeSnapshot {
@@ -1979,10 +2019,40 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
     target.latestForge = github;
     target.latestForgeLoadedAtMs = this.deps.now().getTime();
+    this.updateCiAttachWaitForTarget(target, github.pullRequest);
     this.rememberSnapshot(target, this.combineSnapshot(target), {
       notify: options?.notify,
       forceEmit: false,
     });
+  }
+
+  private updateCiAttachWaitForTarget(
+    target: WorkspaceGitTarget,
+    status: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"],
+    options?: { arm?: boolean },
+  ): void {
+    const previousWaitUntilMs = target.ciAttachWaitUntilMs;
+    const next = options?.arm
+      ? nextCiAttachWaitUntilMs({
+          previousWaitUntilMs,
+          previousPrKey: target.ciAttachWaitPrKey,
+          status,
+          nowMs: this.deps.now().getTime(),
+        })
+      : observeCiAttachWaitUntilMs({
+          previousWaitUntilMs,
+          previousPrKey: target.ciAttachWaitPrKey,
+          status,
+        });
+    target.ciAttachWaitUntilMs = next.waitUntilMs;
+    target.ciAttachWaitPrKey = next.prKey;
+    // Newly armed wait may need to accelerate a pending slow timer.
+    if (
+      previousWaitUntilMs !== next.waitUntilMs &&
+      isCiAttachWaitActive(next.waitUntilMs, this.deps.now().getTime())
+    ) {
+      target.forgePrStatusPollSubscription?.nudge?.();
+    }
   }
 
   private rememberSnapshot(
@@ -2312,10 +2382,14 @@ function buildWorkspaceForgePrStatusPollKey({
 function computeGenericForgeNextInterval(
   status: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"],
   consecutiveErrors: number,
+  options?: { ciAttachWaitActive?: boolean },
 ): number {
   let baseInterval = FORGE_PR_STATUS_POLL_SLOW_INTERVAL_MS;
   if (isForgeCheckPending(status)) {
     baseInterval = FORGE_PR_STATUS_POLL_FAST_INTERVAL_MS;
+  }
+  if (options?.ciAttachWaitActive) {
+    baseInterval = CI_ATTACH_POLL_INTERVAL_MS;
   }
   if (isForgeMergeabilityPending(status)) {
     baseInterval = GITLAB_MERGEABILITY_POLL_INTERVAL_MS;

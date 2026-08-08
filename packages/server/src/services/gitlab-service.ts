@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
+import { runGitCommand } from "../utils/run-git-command.js";
 import {
   createCachedCliPathResolver,
   createForgeCliRunner,
@@ -108,6 +109,65 @@ export interface CreateGitLabServiceOptions {
   runner?: GlabCommandRunner;
   resolveGlabPath?: () => Promise<string | null>;
   resolveRemoteUrl?: (cwd: string) => Promise<string | null>;
+  /** Tip SHA for the branch; used to find tag/web pipelines for that commit. */
+  resolveBranchTipSha?: (cwd: string, branch: string) => Promise<string | null>;
+}
+
+const GitLabBranchPipelineListItemSchema = z
+  .object({
+    id: z.number(),
+    sha: z.string().optional(),
+    ref: z.string().optional(),
+    tag: z.boolean().optional(),
+  })
+  .passthrough();
+
+type GitLabBranchPipelineListItem = z.infer<typeof GitLabBranchPipelineListItemSchema>;
+
+/** Newest pipeline = highest numeric id. Never trust list array order alone. */
+function pickNewestBranchPipeline(
+  listed: GitLabBranchPipelineListItem[],
+): GitLabBranchPipelineListItem | null {
+  if (listed.length === 0) {
+    return null;
+  }
+  return listed.reduce((newest, item) => (item.id > newest.id ? item : newest));
+}
+
+function mergePipelineListItems(
+  groups: GitLabBranchPipelineListItem[][],
+): GitLabBranchPipelineListItem[] {
+  const byId = new Map<number, GitLabBranchPipelineListItem>();
+  for (const group of groups) {
+    for (const item of group) {
+      byId.set(item.id, item);
+    }
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Prefer the remote-tracking tip when present so tag pipelines for the remote
+ * tip match what GitLab shows after fetch.
+ */
+async function defaultResolveBranchTipSha(cwd: string, branch: string): Promise<string | null> {
+  for (const ref of [`refs/remotes/origin/${branch}`, `refs/heads/${branch}`, branch]) {
+    try {
+      const result = await runGitCommand(["rev-parse", "--verify", "--quiet", ref], {
+        cwd,
+        acceptExitCodes: [0, 1],
+      });
+      if (result.exitCode === 0) {
+        const sha = result.stdout.trim();
+        if (sha.length > 0) {
+          return sha;
+        }
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
 }
 
 const GitLabPipelineSchema = z
@@ -533,6 +593,19 @@ function classifyGlabTimelineErrorKind(stderr: string): PullRequestTimelineError
   return "unknown";
 }
 
+function isGitLabNoPipelineError(error: unknown): boolean {
+  if (!(error instanceof GlabCommandError)) {
+    return false;
+  }
+  const normalized = `${error.stderr} ${error.message}`.toLowerCase();
+  return (
+    normalized.includes("no pipeline") ||
+    normalized.includes("pipeline not found") ||
+    normalized.includes("404") ||
+    normalized.includes("not found")
+  );
+}
+
 function mapGlabTimelineError(error: unknown): PullRequestTimelineError {
   if (error instanceof GlabAuthenticationError) {
     return { kind: "forbidden", message: error.stderr || error.message };
@@ -824,6 +897,7 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
   const runner = options.runner ?? runGlabCommand;
   const resolveGlab = createCachedCliPathResolver(options.resolveGlabPath ?? resolveGlabPath);
   const resolveRemoteUrl = options.resolveRemoteUrl ?? defaultResolveRemoteUrl;
+  const resolveBranchTipSha = options.resolveBranchTipSha ?? defaultResolveBranchTipSha;
 
   async function run(args: string[], runOptions: GlabCommandRunnerOptions): Promise<string> {
     const glabPath = await resolveGlab();
@@ -1186,6 +1260,99 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
         GitLabPipelineDetailsSchema,
       );
       return toCheckDetails(pipeline);
+    },
+
+    async getBranchPipeline(input: {
+      cwd: string;
+      branch: string;
+    }): Promise<PipelineDetails | null> {
+      try {
+        // Branch push pipelines (`--ref <branch>`) miss tag-triggered release CI
+        // after teams stop pushing branch pipelines. Also collect:
+        // - `--scope tags` (latest pipeline per tag ref)
+        // - `--sha <tip>` (any source for the branch tip, including tag/web)
+        // then pick the highest pipeline id across those sets.
+        const tipSha = await resolveBranchTipSha(input.cwd, input.branch);
+        const listQueries: string[][] = [
+          [
+            "ci",
+            "list",
+            "--ref",
+            input.branch,
+            "--order",
+            "id",
+            "--sort",
+            "desc",
+            "--per-page",
+            "30",
+            "-F",
+            "json",
+          ],
+          [
+            "ci",
+            "list",
+            "--scope",
+            "tags",
+            "--order",
+            "id",
+            "--sort",
+            "desc",
+            "--per-page",
+            "30",
+            "-F",
+            "json",
+          ],
+        ];
+        if (tipSha) {
+          listQueries.push([
+            "ci",
+            "list",
+            "--sha",
+            tipSha,
+            "--order",
+            "id",
+            "--sort",
+            "desc",
+            "--per-page",
+            "30",
+            "-F",
+            "json",
+          ]);
+        }
+
+        const listedGroups = await Promise.all(
+          listQueries.map(async (args) => {
+            try {
+              return await runJson(
+                args,
+                { cwd: input.cwd },
+                z.array(GitLabBranchPipelineListItemSchema),
+              );
+            } catch (error) {
+              if (isGitLabNoPipelineError(error)) {
+                return [];
+              }
+              throw error;
+            }
+          }),
+        );
+        const selected = pickNewestBranchPipeline(mergePipelineListItems(listedGroups));
+        if (selected == null) {
+          return null;
+        }
+        const pipeline = await runJson(
+          ["ci", "get", "--pipeline-id", String(selected.id), "--with-job-details", "-F", "json"],
+          { cwd: input.cwd },
+          GitLabPipelineDetailsSchema,
+        );
+        return toPipelineDetails(pipeline);
+      } catch (error) {
+        // glab exits non-zero when the branch has never produced a pipeline.
+        if (isGitLabNoPipelineError(error)) {
+          return null;
+        }
+        throw error;
+      }
     },
 
     async searchIssuesAndPrs(input: SearchIssuesAndPrsOptions): Promise<SearchResult> {

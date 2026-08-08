@@ -21,7 +21,13 @@ import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import { AgentProviderSchema } from "@getpaseo/protocol/provider-manifest";
 import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
-import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
+import {
+  hostnamesFromPublicBaseUrl,
+  hostnamesFromServiceProxyEnv,
+  mergeHostnames,
+  parseHostnamesEnv,
+  type HostnamesConfig,
+} from "./hostnames.js";
 
 const DEFAULT_PORT = 6767;
 const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
@@ -491,7 +497,11 @@ export function loadConfig(
     desktopManaged: env.PASEO_DESKTOP_MANAGED === "1",
     worktreesRoot: resolveWorktreesRoot(paseoHome, persisted),
     corsAllowedOrigins: resolveCorsAllowedOrigins(env, persisted),
-    hostnames,
+    hostnames: mergeHostnames([
+      hostnames,
+      hostnamesFromPublicBaseUrl(serviceProxy.publicBaseUrl),
+      hostnamesFromServiceProxyEnv(env),
+    ]),
     trustedProxies,
     mcpEnabled,
     mcpInjectIntoAgents,

@@ -2051,6 +2051,8 @@ export class Session {
       case "checkout.forge.get_check_details.request":
       case "checkout.github.get_check_details.request":
         return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);
+      case "checkout.forge.get_branch_pipeline.request":
+        return this.checkoutSession.handleCheckoutForgeGetBranchPipelineRequest(msg);
       case "checkout_pr_status_request":
         return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
       case "pull_request_timeline_request":
