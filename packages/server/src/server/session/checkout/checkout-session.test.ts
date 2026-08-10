@@ -389,7 +389,7 @@ describe("CheckoutSession", () => {
       });
       const { checkout, emitted } = makeCheckoutSession({
         git: {
-          requestFetch: (cwd) => {
+          requestFetch: async (cwd) => {
             fetchCalls.push(cwd);
           },
           getSnapshot: async (cwd, snapshotOptions) => {

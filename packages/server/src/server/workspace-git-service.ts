@@ -177,7 +177,7 @@ export interface WorkspaceGitService {
   resolveDefaultBranch(cwdOrRepoRoot: string, options?: WorkspaceGitReadOptions): Promise<string>;
   resolveRepoRemoteUrl(cwd: string, options?: WorkspaceGitReadOptions): Promise<string | null>;
   refresh(cwd: string, options?: { priority?: "normal" | "high" }): Promise<void>;
-  requestFetch(cwd: string): void;
+  requestFetch(cwd: string): Promise<void>;
   requestWorkingTreeWatch(
     cwd: string,
     onChange: () => void,
@@ -351,6 +351,7 @@ interface RepoGitTarget {
   workspaceKeys: Set<string>;
   intervalId: NodeJS.Timeout | null;
   fetchInFlight: boolean;
+  fetchPromise: Promise<void> | null;
 }
 
 interface WorkingTreeWatchTarget {
@@ -748,15 +749,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.scheduleWorkspaceObservationSetup(target);
   }
 
-  requestFetch(cwd: string): void {
+  requestFetch(cwd: string): Promise<void> {
     const target = this.workspaceTargets.get(resolve(cwd));
     if (!target?.repoGitRoot) {
-      return;
+      return Promise.resolve();
     }
     const repoTarget = this.repoTargets.get(target.repoGitRoot);
-    if (repoTarget) {
-      void this.runRepoFetch(repoTarget);
-    }
+    return repoTarget ? this.runRepoFetch(repoTarget) : Promise.resolve();
   }
 
   async requestWorkingTreeWatch(
@@ -1247,6 +1246,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         void this.runRepoFetch(repoTarget);
       }, BACKGROUND_GIT_FETCH_INTERVAL_MS),
       fetchInFlight: false,
+      fetchPromise: null,
     };
     this.repoTargets.set(repoGitRoot, repoTarget);
     void this.runRepoFetch(repoTarget);
@@ -2133,40 +2133,46 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   private async runRepoFetch(target: RepoGitTarget): Promise<void> {
-    if (target.fetchInFlight) {
-      return;
+    if (target.fetchPromise) {
+      return target.fetchPromise;
     }
 
-    target.fetchInFlight = true;
-    this.logger.debug(
-      { repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-      "Running background git fetch",
-    );
+    target.fetchPromise = (async () => {
+      target.fetchInFlight = true;
+      this.logger.debug(
+        { repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+        "Running background git fetch",
+      );
 
-    try {
-      await this.deps.runGitFetch(target.cwd);
-    } catch (error) {
-      this.logger.warn(
-        { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-        "Background git fetch failed",
-      );
-    } finally {
-      target.fetchInFlight = false;
-      await Promise.all(
-        Array.from(target.workspaceKeys, async (workspaceKey) => {
-          const workspaceTarget = this.workspaceTargets.get(workspaceKey);
-          if (!workspaceTarget) {
-            return;
-          }
-          await this.refreshWorkspaceTarget(workspaceTarget, {
-            force: false,
-            includeForge: false,
-            reason: "repo-fetch",
-            notify: true,
-          });
-        }),
-      );
-    }
+      try {
+        await this.deps.runGitFetch(target.cwd);
+      } catch (error) {
+        this.logger.warn(
+          { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+          "Background git fetch failed",
+        );
+      } finally {
+        target.fetchInFlight = false;
+        await Promise.all(
+          Array.from(target.workspaceKeys, async (workspaceKey) => {
+            const workspaceTarget = this.workspaceTargets.get(workspaceKey);
+            if (!workspaceTarget) {
+              return;
+            }
+            await this.refreshWorkspaceTarget(workspaceTarget, {
+              force: false,
+              includeForge: false,
+              reason: "repo-fetch",
+              notify: true,
+            });
+          }),
+        );
+      }
+    })().finally(() => {
+      target.fetchPromise = null;
+    });
+
+    return target.fetchPromise;
   }
 
   private removeWorkspaceListener(cwd: string, listener: WorkspaceGitListener): void {
