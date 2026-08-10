@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSy
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   assertPullRequestAutoMergeDisableReady,
@@ -2246,10 +2246,20 @@ diff --git a/file.txt b/file.txt
 `;
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  async function completePrCreate(request: Promise<void>): Promise<void> {
+    await vi.advanceTimersByTimeAsync(5_000);
+    await request;
+  }
 
   function makeRoot(): string {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "pr-metadata-session-test-")));
@@ -2296,14 +2306,16 @@ diff --git a/file.txt b/file.txt
     });
     const session = createSessionForTest({ workspaceGitService });
 
-    await session.handleMessage({
-      type: "checkout_pr_create_request",
-      cwd: join(repoRoot, "nested"),
-      baseRef: "main",
-      title: "",
-      body: "",
-      requestId: "request-generated-pr",
-    });
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: join(repoRoot, "nested"),
+        baseRef: "main",
+        title: "",
+        body: "",
+        requestId: "request-generated-pr",
+      }),
+    );
 
     return agentResponseMocks.generateStructuredAgentResponseWithFallback.mock.calls[0]?.[0];
   }
@@ -2341,14 +2353,16 @@ diff --git a/file.txt b/file.txt
     });
     const session = createSessionForTest({ workspaceGitService, messages });
 
-    await session.handleMessage({
-      type: "checkout_pr_create_request",
-      cwd: "/tmp/request-worktree",
-      baseRef: "main",
-      title: "",
-      body: "",
-      requestId: "request-generated-pr",
-    });
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: "/tmp/request-worktree",
+        baseRef: "main",
+        title: "",
+        body: "",
+        requestId: "request-generated-pr",
+      }),
+    );
 
     expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledTimes(1);
     expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledWith("/tmp/request-worktree", {
@@ -2480,14 +2494,16 @@ diff --git a/file.txt b/file.txt
     });
     const session = createSessionForTest({ workspaceGitService, messages });
 
-    await session.handleMessage({
-      type: "checkout_pr_create_request",
-      cwd: "/tmp/request-worktree",
-      baseRef: "main",
-      title: "",
-      body: "",
-      requestId: "request-generated-pr-fallback",
-    });
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: "/tmp/request-worktree",
+        baseRef: "main",
+        title: "",
+        body: "",
+        requestId: "request-generated-pr-fallback",
+      }),
+    );
 
     expect(checkoutGitMocks.createPullRequest).toHaveBeenCalledWith(
       "/tmp/request-worktree",
@@ -2522,19 +2538,23 @@ diff --git a/file.txt b/file.txt
     });
     const session = createSessionForTest({ github, workspaceGitService, messages });
 
-    await session.handleMessage({
-      type: "checkout_pr_create_request",
-      cwd: "/tmp/request-worktree",
-      baseRef: "main",
-      title: "Update file",
-      body: "Updates file.",
-      requestId: "request-pr-create",
-    });
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: "/tmp/request-worktree",
+        baseRef: "main",
+        title: "Update file",
+        body: "Updates file.",
+        requestId: "request-pr-create",
+      }),
+    );
 
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(2);
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       reason: "create-pr",
     });
+    expect(github.invalidate).toHaveBeenCalledTimes(2);
     expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",

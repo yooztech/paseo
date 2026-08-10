@@ -65,6 +65,7 @@ export interface BuildGitActionsInput {
   pullRequestIsMerged: boolean;
   pullRequestMergeable: PullRequestMergeable;
   pullRequestChecksStatus?: string;
+  prCreationPending: boolean;
   mergeCapability: MergeCapability | null;
   hasRemote: boolean;
   isPaseoOwnedWorktree: boolean;
@@ -537,6 +538,7 @@ function canMergePr(input: BuildGitActionsInput): boolean {
     input.pullRequestState === "open" &&
     !input.pullRequestIsDraft &&
     !input.pullRequestIsMerged &&
+    !input.prCreationPending &&
     input.pullRequestMergeable !== "CONFLICTING" &&
     !hasPendingPullRequestChecks(input) &&
     input.hasChangesFromBase &&
@@ -576,6 +578,7 @@ function canEnablePrAutoMerge(input: BuildGitActionsInput): boolean {
     input.pullRequestState === "open" &&
     !input.pullRequestIsDraft &&
     !input.pullRequestIsMerged &&
+    !input.prCreationPending &&
     input.pullRequestMergeable !== "CONFLICTING" &&
     capability !== null &&
     !capability.autoMergeEnabled &&

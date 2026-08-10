@@ -57,6 +57,12 @@ import { execCommand } from "../../../utils/spawn.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
+const PR_CREATE_STATUS_SETTLE_MS = 5_000;
+
+function waitForPrCreateStatusSettle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, PR_CREATE_STATUS_SETTLE_MS));
+}
+
 /**
  * The collaborators a checkout command reaches that are NOT part of the checkout
  * domain and stay owned by the Session shell: client emit, workspace-update
@@ -929,6 +935,10 @@ export class CheckoutSession {
         },
         service,
       );
+      await this.gitMutation.notifyGitMutation(cwd, "create-pr", { invalidateForge: true });
+      // Forge providers can briefly report an empty checks rollup immediately after
+      // creation. Keep the action pending until a second forced snapshot settles it.
+      await waitForPrCreateStatusSettle();
       await this.gitMutation.notifyGitMutation(cwd, "create-pr", { invalidateForge: true });
 
       this.host.emit({
