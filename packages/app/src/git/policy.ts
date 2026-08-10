@@ -503,7 +503,7 @@ function canPush(input: BuildGitActionsInput): boolean {
 
 function hasPushableCommits(input: BuildGitActionsInput): boolean {
   if ((input.aheadOfOrigin ?? 0) > 0) {
-    return input.hasChangesFromBase;
+    return true;
   }
   // No-upstream Paseo worktrees are first-pushable: the daemon push sets upstream with `git push -u`.
   // Do not fold this into aheadOfOrigin; null also covers deleted/pruned upstream branches.

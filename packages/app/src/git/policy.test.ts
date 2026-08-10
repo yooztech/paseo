@@ -264,7 +264,7 @@ describe("git-actions-policy", () => {
     expect(actions.primary).toMatchObject({ id: "push", label: "Push" });
   });
 
-  it("does not suggest push or creating a change request for commits with no base changes", () => {
+  it("allows pushing commits ahead of origin even when they have no base changes", () => {
     const actions = buildGitActions(
       createInput({
         hasRemote: true,
@@ -278,10 +278,11 @@ describe("git-actions-policy", () => {
       }),
     );
 
-    expect(actions.primary).toBeNull();
-    expect(actions.secondary.find((action) => action.id === "push")?.unavailableMessage).toBe(
-      "Push isn't available because there is nothing new to send",
-    );
+    expect(actions.primary).toMatchObject({ id: "push", label: "Push" });
+    expect(actions.secondary.find((action) => action.id === "push")).toMatchObject({
+      disabled: false,
+      unavailableMessage: undefined,
+    });
     expect(actions.secondary.find((action) => action.id === "pr")?.unavailableMessage).toBe(
       "Create PR isn't available because this branch doesn't have any new commits yet",
     );
