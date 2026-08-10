@@ -1948,10 +1948,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       isDirty: checkoutStatus.isDirty,
       baseRef: checkoutStatus.baseRef,
       aheadBehind: checkoutStatus.aheadBehind,
-      hasChangesFromBase: checkoutStatus.hasChangesFromBase,
+      ...(checkoutStatus.hasChangesFromBase !== undefined
+        ? { hasChangesFromBase: checkoutStatus.hasChangesFromBase }
+        : {}),
       aheadOfOrigin: checkoutStatus.aheadOfOrigin,
       behindOfOrigin: checkoutStatus.behindOfOrigin,
-      hasChangesFromOrigin: checkoutStatus.hasChangesFromOrigin,
+      ...(checkoutStatus.hasChangesFromOrigin !== undefined
+        ? { hasChangesFromOrigin: checkoutStatus.hasChangesFromOrigin }
+        : {}),
       hasRemote: checkoutStatus.hasRemote,
       diffStat,
     };
@@ -2008,16 +2012,19 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   private combineSnapshot(target: WorkspaceGitTarget): WorkspaceGitRuntimeSnapshot {
-    if (!target.latestGit) {
-      return target.latestSnapshot ?? buildNotGitSnapshot(target.cwd);
-    }
-
+    const snapshotBase = target.latestGit
+      ? {
+          cwd: target.cwd,
+          git: target.latestGit,
+          forge: target.latestForge ?? buildForgeUnavailableSnapshot(),
+        }
+      : (target.latestSnapshot ?? buildNotGitSnapshot(target.cwd));
+    const { pullRequestStatusSettling: _settling, ...forgeBase } = snapshotBase.forge;
     return {
-      cwd: target.cwd,
-      git: target.latestGit,
+      ...snapshotBase,
       forge: {
-        ...(target.latestForge ?? buildForgeUnavailableSnapshot()),
-        pullRequestStatusSettling: target.pullRequestStatusSettling,
+        ...forgeBase,
+        ...(target.pullRequestStatusSettling ? { pullRequestStatusSettling: true } : {}),
       },
     };
   }

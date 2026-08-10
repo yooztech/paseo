@@ -327,6 +327,53 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
+  test("pull request settling state is shared without changing ordinary snapshots", async () => {
+    const service = createService();
+    const listener = vi.fn();
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, listener);
+
+    service.setPullRequestStatusSettling(REPO_CWD, true);
+
+    expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequestStatusSettling).toBe(true);
+    expect(listener).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        forge: expect.objectContaining({ pullRequestStatusSettling: true }),
+      }),
+    );
+
+    service.setPullRequestStatusSettling(REPO_CWD, false);
+
+    expect(service.peekSnapshot(REPO_CWD)?.forge).not.toHaveProperty("pullRequestStatusSettling");
+    expect(listener).toHaveBeenLastCalledWith(
+      createSnapshot(REPO_CWD, {
+        git: {
+          isGit: false,
+          repoRoot: null,
+          mainRepoRoot: null,
+          currentBranch: null,
+          remoteUrl: null,
+          isPaseoOwnedWorktree: false,
+          isDirty: null,
+          baseRef: null,
+          aheadBehind: null,
+          aheadOfOrigin: null,
+          behindOfOrigin: null,
+          hasRemote: false,
+          diffStat: null,
+        },
+        forge: {
+          featuresEnabled: false,
+          authState: "no_remote",
+          forge: undefined,
+          pullRequest: null,
+        },
+      }),
+    );
+
+    subscription.unsubscribe();
+    service.dispose();
+  });
+
   test("onSnapshotUpdated emits only for observed workspace snapshots and can unsubscribe", async () => {
     const service = createService();
     const snapshotListener = vi.fn();
