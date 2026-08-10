@@ -4169,6 +4169,8 @@ const CheckoutPrStatusPayloadSchema = z.object({
   // and may remain true for non-auth error payloads so old clients still show the error.
   // Drop the boolean once the daemon floor >= v0.1.106.
   authState: ForgeAuthStateSchema,
+  // COMPAT(pullRequestStatusSettling): added in v0.2.6, remove after 2027-02-10 once daemon floor >= v0.2.6.
+  pullRequestStatusSettling: z.boolean().optional(),
   // COMPAT(forge): added in v0.1.106, remove the default after 2026-12-27 once daemon floor >= v0.1.106.
   forge: z.string().optional().default("github"),
   error: CheckoutErrorSchema.nullable(),

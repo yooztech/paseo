@@ -283,6 +283,28 @@ describe("checkout status projection", () => {
     });
   });
 
+  test("projects the shared pull request status settling state", () => {
+    const snapshot = {
+      git: { remoteUrl: "https://github.com/getpaseo/paseo.git" },
+      forge: {
+        featuresEnabled: true,
+        authState: "authenticated",
+        forge: "github",
+        pullRequestStatusSettling: true,
+        error: null,
+        pullRequest: null,
+      },
+    } as unknown as WorkspaceGitRuntimeSnapshot;
+
+    const payload = buildCheckoutPrStatusPayloadFromSnapshot({
+      cwd: "/repo",
+      requestId: "req-settling",
+      snapshot,
+    });
+
+    expect(payload.pullRequestStatusSettling).toBe(true);
+  });
+
   test("a forgejo-resolved snapshot keeps Forgejo branding with Gitea-family facts", () => {
     const snapshot = {
       git: { remoteUrl: "git@codeberg.org:example/repo.git" },

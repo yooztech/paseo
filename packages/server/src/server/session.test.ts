@@ -299,6 +299,7 @@ interface SessionForTestOptions {
     resolveForge?: ReturnType<typeof vi.fn>;
     getWorkspaceGitMetadata?: ReturnType<typeof vi.fn>;
     getProjectSlug?: ReturnType<typeof vi.fn>;
+    setPullRequestStatusSettling?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
@@ -348,6 +349,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     // Mirror production: invalidateForge resolves the forge and busts the
     // adapter's cache. The resolved forge here is github, so delegate to it.
     invalidateForge: vi.fn((cwd: string) => github.invalidate({ cwd })),
+    setPullRequestStatusSettling: vi.fn(),
     getProjectSlug: vi.fn(),
     ...options.workspaceGitService,
   };
@@ -2257,7 +2259,7 @@ diff --git a/file.txt b/file.txt
   });
 
   async function completePrCreate(request: Promise<void>): Promise<void> {
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.runAllTimersAsync();
     await request;
   }
 
@@ -2526,11 +2528,12 @@ diff --git a/file.txt b/file.txt
     });
   });
 
-  test("forces workspace git and GitHub refresh after creating a pull request", async () => {
+  test("polls workspace git and forge status after creating a pull request", async () => {
     const messages: unknown[] = [];
     const github = { invalidate: vi.fn() };
     const workspaceGitService = {
-      getSnapshot: vi.fn().mockResolvedValue({}),
+      getSnapshot: vi.fn().mockResolvedValue({ forge: { pullRequest: null } }),
+      setPullRequestStatusSettling: vi.fn(),
     };
     checkoutGitMocks.createPullRequest.mockResolvedValue({
       url: "https://github.com/getpaseo/paseo/pull/2",
@@ -2549,13 +2552,24 @@ diff --git a/file.txt b/file.txt
       }),
     );
 
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(2);
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(3);
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
+      includeForge: true,
       reason: "create-pr",
     });
-    expect(github.invalidate).toHaveBeenCalledTimes(2);
+    expect(github.invalidate).toHaveBeenCalledTimes(3);
     expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenNthCalledWith(
+      1,
+      "/tmp/request-worktree",
+      true,
+    );
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenNthCalledWith(
+      2,
+      "/tmp/request-worktree",
+      false,
+    );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
       payload: {
@@ -2564,6 +2578,90 @@ diff --git a/file.txt b/file.txt
         number: 2,
         error: null,
         requestId: "request-pr-create",
+      },
+    });
+  });
+
+  test("stops polling once mergeability and CI status are available", async () => {
+    const messages: unknown[] = [];
+    const github = { invalidate: vi.fn() };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        forge: {
+          pullRequest: {
+            number: 2,
+            url: "https://github.com/getpaseo/paseo/pull/2",
+            mergeable: "MERGEABLE",
+            checksStatus: "pending",
+          },
+        },
+      }),
+    };
+    checkoutGitMocks.createPullRequest.mockResolvedValue({
+      url: "https://github.com/getpaseo/paseo/pull/2",
+      number: 2,
+    });
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await session.handleMessage({
+      type: "checkout_pr_create_request",
+      cwd: "/tmp/request-worktree",
+      baseRef: "main",
+      title: "Update file",
+      body: "Updates file.",
+      requestId: "request-pr-create-ready",
+    });
+
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(messages).toContainEqual({
+      type: "checkout_pr_create_response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        url: "https://github.com/getpaseo/paseo/pull/2",
+        number: 2,
+        error: null,
+        requestId: "request-pr-create-ready",
+      },
+    });
+  });
+
+  test("reports successful creation when status confirmation fails", async () => {
+    const messages: unknown[] = [];
+    const github = { invalidate: vi.fn() };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockRejectedValue(new Error("forge status unavailable")),
+      setPullRequestStatusSettling: vi.fn(),
+    };
+    checkoutGitMocks.createPullRequest.mockResolvedValue({
+      url: "https://github.com/getpaseo/paseo/pull/3",
+      number: 3,
+    });
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: "/tmp/request-worktree",
+        baseRef: "main",
+        title: "Update file",
+        body: "Updates file.",
+        requestId: "request-pr-create-refresh-failure",
+      }),
+    );
+
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(3);
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenLastCalledWith(
+      "/tmp/request-worktree",
+      false,
+    );
+    expect(messages).toContainEqual({
+      type: "checkout_pr_create_response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        url: "https://github.com/getpaseo/paseo/pull/3",
+        number: 3,
+        error: null,
+        requestId: "request-pr-create-refresh-failure",
       },
     });
   });

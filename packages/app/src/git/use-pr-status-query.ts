@@ -49,6 +49,7 @@ export function useCheckoutPrStatusQuery({
     status: query.data?.status ?? null,
     githubFeaturesEnabled: query.data?.githubFeaturesEnabled ?? true,
     authState: query.data?.authState,
+    pullRequestStatusSettling: query.data?.pullRequestStatusSettling ?? false,
     forge: normalizeForge(query.data?.forge),
     // Null until a response arrives, so callers that can infer the forge from
     // the remote URL (e.g. web-URL grammar) don't act on the github default.

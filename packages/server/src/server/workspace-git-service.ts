@@ -98,6 +98,7 @@ export interface WorkspaceGitRuntimeSnapshot {
   forge: {
     featuresEnabled: boolean;
     authState: ForgeAuthState;
+    pullRequestStatusSettling?: boolean;
     /**
      * Forge resolved for this workspace from its remote — including the per-host
      * probe, so self-managed GitLab hosts (no "gitlab" in the name) are labeled
@@ -184,6 +185,7 @@ export interface WorkspaceGitService {
   scheduleRefreshForCwd(cwd: string): void;
   onWorkspaceStateMayHaveChanged(cwd: string): void;
   invalidateForge(cwd: string): void;
+  setPullRequestStatusSettling(cwd: string, settling: boolean): void;
   getMetrics(): WorkspaceGitServiceMetrics;
   dispose(): void;
 }
@@ -324,6 +326,7 @@ interface WorkspaceGitTarget {
    */
   ciAttachWaitUntilMs: number | null;
   ciAttachWaitPrKey: string | null;
+  pullRequestStatusSettling: boolean;
   refreshState: WorkspaceGitRefreshState;
   latestGit: WorkspaceGitRuntimeSnapshot["git"] | null;
   latestGitLoadedAtMs: number | null;
@@ -803,6 +806,15 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.forgeResolver.invalidate(resolve(cwd));
   }
 
+  setPullRequestStatusSettling(cwd: string, settling: boolean): void {
+    const target = this.ensureWorkspaceTarget(resolve(cwd));
+    if (target.pullRequestStatusSettling === settling) {
+      return;
+    }
+    target.pullRequestStatusSettling = settling;
+    this.rememberSnapshot(target, this.combineSnapshot(target), { notify: true });
+  }
+
   dispose(): void {
     for (const target of this.workspaceTargets.values()) {
       this.closeWorkspaceTarget(target);
@@ -922,6 +934,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       forgePrStatusPollKey: null,
       ciAttachWaitUntilMs: null,
       ciAttachWaitPrKey: null,
+      pullRequestStatusSettling: false,
       refreshState: { status: "idle" },
       latestGit: null,
       latestGitLoadedAtMs: null,
@@ -2002,7 +2015,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     return {
       cwd: target.cwd,
       git: target.latestGit,
-      forge: target.latestForge ?? buildForgeUnavailableSnapshot(),
+      forge: {
+        ...(target.latestForge ?? buildForgeUnavailableSnapshot()),
+        pullRequestStatusSettling: target.pullRequestStatusSettling,
+      },
     };
   }
 

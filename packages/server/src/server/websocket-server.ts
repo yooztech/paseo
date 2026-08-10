@@ -232,6 +232,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     scheduleRefreshForCwd: () => {},
     onWorkspaceStateMayHaveChanged: () => {},
     invalidateForge: () => {},
+    setPullRequestStatusSettling: () => {},
     getMetrics: () => ({
       workspaceTargetCount: 0,
       workspaceListenerCount: 0,
