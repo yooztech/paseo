@@ -465,7 +465,6 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.listeners.add(listener);
     if (target.listeners.size === 1) {
       this.startWorkspaceSubscriptionTimers(target);
-      this.requestFetch(cwd);
     }
     if (!target.latestSnapshot) {
       this.scheduleInitialWorkspaceRefresh(target);
@@ -952,11 +951,33 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       }
       void this.refreshWorkspaceTarget(target, {
         force: false,
-        includeForge: true,
+        // Pull/push availability comes from local Git state. Do not make the
+        // initial workspace status wait for a remote forge/PR lookup.
+        includeForge: false,
         reason: "initial",
         notify: true,
-      });
+      }).then(() => this.refreshInitialForgeSnapshot(target));
     });
+  }
+
+  private async refreshInitialForgeSnapshot(target: WorkspaceGitTarget): Promise<void> {
+    if (!this.isActiveObservedWorkspaceTarget(target) || !target.latestFacts) {
+      return;
+    }
+    try {
+      // PR state can arrive later through the same pushed snapshot channel.
+      await this.refreshForgeSnapshot(
+        target,
+        { force: false, includeForge: true, reason: "initial-forge", notify: true },
+        target.latestFacts,
+      );
+      this.rememberSnapshot(target, this.combineSnapshot(target), { notify: true });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, cwd: target.cwd, reason: "initial-forge" },
+        "Failed to refresh initial workspace forge snapshot",
+      );
+    }
   }
 
   private scheduleWorkspaceObservationSetup(target: WorkspaceGitTarget): void {

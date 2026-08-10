@@ -327,38 +327,6 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
-  test("registerWorkspace requests an immediate fetch to refresh origin refs", async () => {
-    const service = createService();
-    const requestFetchSpy = vi.spyOn(service, "requestFetch");
-
-    const listener = vi.fn();
-    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, listener);
-
-    expect(requestFetchSpy).toHaveBeenCalledWith(REPO_CWD);
-
-    subscription.unsubscribe();
-    service.dispose();
-  });
-
-  test("registerWorkspace does not request fetch on second listener addition", async () => {
-    const service = createService();
-    const requestFetchSpy = vi.spyOn(service, "requestFetch");
-
-    const listener1 = vi.fn();
-    const subscription1 = service.registerWorkspace({ cwd: REPO_CWD }, listener1);
-
-    expect(requestFetchSpy).toHaveBeenCalledTimes(1);
-
-    const listener2 = vi.fn();
-    const subscription2 = service.registerWorkspace({ cwd: REPO_CWD }, listener2);
-
-    expect(requestFetchSpy).toHaveBeenCalledTimes(1);
-
-    subscription1.unsubscribe();
-    subscription2.unsubscribe();
-    service.dispose();
-  });
-
   test("onSnapshotUpdated emits only for observed workspace snapshots and can unsubscribe", async () => {
     const service = createService();
     const snapshotListener = vi.fn();
@@ -587,7 +555,7 @@ describe("WorkspaceGitServiceImpl", () => {
       createSnapshot(REPO_CWD),
     );
 
-    expect(getPullRequestStatus).toHaveBeenCalledTimes(1);
+    expect(getPullRequestStatus).toHaveBeenCalledTimes(2);
     expect(resolveAbsoluteGitDir).toHaveBeenCalledTimes(0);
 
     subscription.unsubscribe();
