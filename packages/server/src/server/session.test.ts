@@ -201,8 +201,11 @@ const agentResponseMocks = vi.hoisted(() => ({
 }));
 
 const spawnMocks = vi.hoisted(() => ({
-  execCommand: vi.fn(),
   spawnWorkspaceScript: vi.fn(),
+}));
+
+const gitCommandMocks = vi.hoisted(() => ({
+  runGitCommand: vi.fn(),
 }));
 
 const paseoWorktreeServiceMocks = vi.hoisted(() => ({
@@ -253,11 +256,11 @@ vi.mock("./paseo-worktree-service.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../utils/spawn.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../utils/spawn.js")>();
+vi.mock("../utils/run-git-command.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/run-git-command.js")>();
   return {
     ...actual,
-    execCommand: spawnMocks.execCommand,
+    runGitCommand: gitCommandMocks.runGitCommand,
   };
 });
 
@@ -371,6 +374,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     paseoHome: options.paseoHome ?? "/tmp/paseo-home",
     agentManager: asAgentManager({
       listAgents: vi.fn(() => []),
+      listProviderSubagentActivity: vi.fn(() => []),
       subscribe: vi.fn(() => () => {}),
       ...options.agentManager,
     }),
@@ -672,6 +676,7 @@ describe("project command-center RPCs", () => {
               projectId: "prj_created_directory",
               projectDisplayName: "new-project",
               projectCustomName: null,
+              projectCustomIconRevision: null,
               projectRootPath: directoryPath,
               projectKind: "non_git",
             },
@@ -1428,7 +1433,7 @@ describe("daemon status + pairing RPC", () => {
       paseoHome: makeHome(),
       serverId: "srv-test",
       daemonVersion: "9.9.9",
-      daemonRuntimeConfig: { listen: "127.0.0.1:6767", relay: null },
+      daemonRuntimeConfig: { listen: "127.0.0.1:6767", getRelayConfig: () => null },
       agentManager: {
         listProviderAvailability: vi.fn().mockResolvedValue([
           { provider: "claude", available: true },
@@ -1467,7 +1472,7 @@ describe("daemon status + pairing RPC", () => {
       paseoHome: makeHome(),
       serverId: "srv-test",
       daemonVersion: "9.9.9",
-      daemonRuntimeConfig: { listen: "127.0.0.1:6767", relay: null },
+      daemonRuntimeConfig: { listen: "127.0.0.1:6767", getRelayConfig: () => null },
       agentManager: {
         listProviderAvailability: vi.fn().mockRejectedValue(new Error("provider listing failed")),
       },
@@ -1503,13 +1508,13 @@ describe("daemon status + pairing RPC", () => {
       paseoHome: makeHome(),
       daemonRuntimeConfig: {
         listen: "127.0.0.1:6767",
-        relay: {
+        getRelayConfig: () => ({
           enabled: false,
           endpoint: "relay.paseo.sh:443",
           publicEndpoint: "relay.paseo.sh:443",
           useTls: true,
           publicUseTls: true,
-        },
+        }),
       },
     });
 
@@ -3492,6 +3497,7 @@ describe("session checkout status handling", () => {
         aheadBehind: { ahead: 2, behind: 1 },
         aheadOfOrigin: 2,
         behindOfOrigin: 1,
+        upstreamRef: null,
         hasRemote: true,
         remoteUrl: "https://github.com/getpaseo/paseo.git",
         isPaseoOwnedWorktree: false,
@@ -4167,7 +4173,7 @@ describe("session stash mutation handling", () => {
     const messages: unknown[] = [];
     const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const session = createSessionForTest({ workspaceGitService, messages });
-    spawnMocks.execCommand.mockResolvedValue({
+    gitCommandMocks.runGitCommand.mockResolvedValue({
       stdout: "",
       stderr: "",
       exitCode: 0,
@@ -4182,6 +4188,10 @@ describe("session stash mutation handling", () => {
       requestId: "request-stash-push",
     });
 
+    expect(gitCommandMocks.runGitCommand).toHaveBeenCalledWith(
+      ["stash", "push", "--include-untracked", "-m", "paseo-auto-stash: feature"],
+      { cwd: "/tmp/repo", timeout: 120_000 },
+    );
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo", {
       force: true,
       reason: "stash-push",
@@ -4201,7 +4211,7 @@ describe("session stash mutation handling", () => {
     const messages: unknown[] = [];
     const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const session = createSessionForTest({ workspaceGitService, messages });
-    spawnMocks.execCommand.mockResolvedValue({
+    gitCommandMocks.runGitCommand.mockResolvedValue({
       stdout: "",
       stderr: "",
       exitCode: 0,
@@ -4216,6 +4226,10 @@ describe("session stash mutation handling", () => {
       requestId: "request-stash-pop",
     });
 
+    expect(gitCommandMocks.runGitCommand).toHaveBeenCalledWith(["stash", "pop", "stash@{0}"], {
+      cwd: "/tmp/repo",
+      timeout: 120_000,
+    });
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo", {
       force: true,
       reason: "stash-pop",
@@ -5074,6 +5088,7 @@ test("project.list returns every active project descriptor", async () => {
             projectKey: "remote:github.com/acme/app",
             projectDisplayName: "acme/app",
             projectCustomName: null,
+            projectCustomIconRevision: null,
             projectRootPath: "/tmp/project-active",
             projectKind: "git",
           },

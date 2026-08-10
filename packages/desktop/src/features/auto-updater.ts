@@ -44,6 +44,15 @@ export function resolveElectronUpdateChannel(
 
 let cachedStagingUserIdPromise: Promise<string> | null = null;
 
+export function isMissingUpdateManifestError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"
+  );
+}
+
 export function shouldAdmitToRollout(args: {
   channel: AppReleaseChannel;
   rolloutHours: number | undefined;
@@ -96,12 +105,6 @@ export function shouldInstallAppUpdateOnQuit(input: {
   return !(input.platform === "linux" && input.isAppImage);
 }
 
-export function isMissingUpdateManifestError(error: unknown): boolean {
-  return (
-    error instanceof Error && "code" in error && error.code === "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"
-  );
-}
-
 export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   private configured = false;
 
@@ -135,6 +138,18 @@ export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
 
     if (this.configured) return;
     this.configured = true;
+
+    // electron-updater logs every emitted error before consumers can classify it.
+    // Paseo reports genuine check, runtime, and install failures through the
+    // callbacks below, so leave internal error logging disabled to avoid both
+    // duplicate logs and expected missing-channel noise.
+    const updaterLogger = autoUpdater.logger;
+    autoUpdater.logger = {
+      debug: updaterLogger?.debug ? (message) => updaterLogger.debug?.(message) : undefined,
+      error: () => undefined,
+      info: (message) => updaterLogger?.info(message),
+      warn: (message) => updaterLogger?.warn(message),
+    };
 
     autoUpdater.on("update-available", (info) => {
       log.info("[auto-updater] update-available", { version: info.version });

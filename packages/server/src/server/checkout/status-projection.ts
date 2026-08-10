@@ -25,22 +25,7 @@ export function buildCheckoutStatusPayloadFromSnapshot({
   snapshot: WorkspaceGitRuntimeSnapshot;
 }): CheckoutStatusResponse["payload"] {
   if (!snapshot.git.isGit) {
-    return {
-      cwd,
-      isGit: false,
-      repoRoot: null,
-      currentBranch: null,
-      isDirty: null,
-      baseRef: null,
-      aheadBehind: null,
-      aheadOfOrigin: null,
-      behindOfOrigin: null,
-      hasRemote: false,
-      remoteUrl: null,
-      isPaseoOwnedWorktree: false,
-      error: null,
-      requestId,
-    };
+    return buildNotGitCheckoutStatusPayload(cwd, requestId);
   }
 
   if (snapshot.git.repoRoot === null || snapshot.git.isDirty === null) {
@@ -52,54 +37,64 @@ export function buildCheckoutStatusPayloadFromSnapshot({
       throw new Error("Workspace git snapshot is missing required worktree status fields");
     }
 
-    return {
-      cwd,
-      isGit: true,
-      repoRoot: snapshot.git.repoRoot,
-      mainRepoRoot: snapshot.git.mainRepoRoot,
-      currentBranch: snapshot.git.currentBranch ?? null,
-      isDirty: snapshot.git.isDirty,
-      baseRef: snapshot.git.baseRef,
-      aheadBehind: snapshot.git.aheadBehind ?? null,
-      ...(snapshot.git.hasChangesFromBase !== undefined
-        ? { hasChangesFromBase: snapshot.git.hasChangesFromBase }
-        : {}),
-      aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
-      behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
-      ...(snapshot.git.hasChangesFromOrigin !== undefined
-        ? { hasChangesFromOrigin: snapshot.git.hasChangesFromOrigin }
-        : {}),
-      hasRemote: snapshot.git.hasRemote,
-      remoteUrl: snapshot.git.remoteUrl,
-      isPaseoOwnedWorktree: true,
-      error: null,
-      requestId,
-    };
+    return buildGitCheckoutStatusPayload(cwd, requestId, snapshot, true);
   }
 
+  return buildGitCheckoutStatusPayload(cwd, requestId, snapshot, false);
+}
+
+function buildNotGitCheckoutStatusPayload(
+  cwd: string,
+  requestId: string,
+): CheckoutStatusResponse["payload"] {
   return {
     cwd,
-    isGit: true,
-    repoRoot: snapshot.git.repoRoot,
-    mainRepoRoot: snapshot.git.mainRepoRoot,
-    currentBranch: snapshot.git.currentBranch ?? null,
-    isDirty: snapshot.git.isDirty,
-    baseRef: snapshot.git.baseRef ?? null,
-    aheadBehind: snapshot.git.aheadBehind ?? null,
-    ...(snapshot.git.hasChangesFromBase !== undefined
-      ? { hasChangesFromBase: snapshot.git.hasChangesFromBase }
-      : {}),
-    aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
-    behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
-    ...(snapshot.git.hasChangesFromOrigin !== undefined
-      ? { hasChangesFromOrigin: snapshot.git.hasChangesFromOrigin }
-      : {}),
-    hasRemote: snapshot.git.hasRemote,
-    remoteUrl: snapshot.git.remoteUrl,
+    isGit: false,
+    repoRoot: null,
+    currentBranch: null,
+    isDirty: null,
+    baseRef: null,
+    aheadBehind: null,
+    upstreamRef: null,
+    aheadOfOrigin: null,
+    behindOfOrigin: null,
+    hasRemote: false,
+    remoteUrl: null,
     isPaseoOwnedWorktree: false,
     error: null,
     requestId,
   };
+}
+
+function buildGitCheckoutStatusPayload(
+  cwd: string,
+  requestId: string,
+  snapshot: WorkspaceGitRuntimeSnapshot,
+  isPaseoOwnedWorktree: true | false,
+): CheckoutStatusResponse["payload"] {
+  const { git } = snapshot;
+  return {
+    cwd,
+    isGit: true,
+    repoRoot: git.repoRoot,
+    mainRepoRoot: git.mainRepoRoot,
+    currentBranch: git.currentBranch ?? null,
+    isDirty: git.isDirty,
+    baseRef: isPaseoOwnedWorktree ? git.baseRef : (git.baseRef ?? null),
+    aheadBehind: git.aheadBehind ?? null,
+    ...(git.hasChangesFromBase !== undefined ? { hasChangesFromBase: git.hasChangesFromBase } : {}),
+    upstreamRef: git.upstreamRef ?? null,
+    aheadOfOrigin: git.aheadOfOrigin ?? null,
+    behindOfOrigin: git.behindOfOrigin ?? null,
+    ...(git.hasChangesFromOrigin !== undefined
+      ? { hasChangesFromOrigin: git.hasChangesFromOrigin }
+      : {}),
+    hasRemote: git.hasRemote,
+    remoteUrl: git.remoteUrl,
+    isPaseoOwnedWorktree,
+    error: null,
+    requestId,
+  } as CheckoutStatusResponse["payload"];
 }
 
 export function buildCheckoutPrStatusPayloadFromSnapshot({

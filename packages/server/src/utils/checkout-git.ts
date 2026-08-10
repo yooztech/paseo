@@ -7,6 +7,7 @@ import type {
   CheckoutCommitFile,
   RepositoryGraphCommit,
 } from "@getpaseo/protocol/messages";
+import { parseGitHubRemoteIdentity, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import { maxBase64EncryptedPlaintextByteLength } from "@getpaseo/relay";
 import type { Logger } from "pino";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
@@ -32,7 +33,13 @@ import {
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
 import { isPaseoOwnedWorktreeCwd, resolvePaseoWorktreesBaseRoot } from "./worktree.js";
-import { type PaseoWorktreeMetadata, readPaseoWorktreeMetadata } from "./worktree-metadata.js";
+import {
+  branchNameFromRef,
+  getPaseoWorktreeChangeRequestHintForBranch,
+  type PaseoWorktreeMetadata,
+  readPaseoWorktreeMetadata,
+  rebindPaseoWorktreeChangeRequestHint,
+} from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV = {
   GIT_OPTIONAL_LOCKS: "0",
   LC_ALL: "C",
@@ -229,6 +236,7 @@ function normalizeBranchSuggestionName(raw: string): string | null {
 interface GitRef {
   name: string;
   committerDate: number;
+  oid: string;
 }
 
 export interface BranchSuggestion {
@@ -236,6 +244,8 @@ export interface BranchSuggestion {
   committerDate: number;
   hasLocal: boolean;
   hasRemote: boolean;
+  localAhead?: number;
+  localBehind?: number;
 }
 
 async function listGitRefs(cwd: string, refPrefix: string): Promise<GitRef[]> {
@@ -243,7 +253,7 @@ async function listGitRefs(cwd: string, refPrefix: string): Promise<GitRef[]> {
     [
       "for-each-ref",
       "--sort=-committerdate",
-      "--format=%(refname)%09%(committerdate:unix)",
+      "--format=%(refname)%09%(committerdate:unix)%09%(objectname)",
       refPrefix,
     ],
     { cwd, envOverlay: READ_ONLY_GIT_ENV },
@@ -253,9 +263,9 @@ async function listGitRefs(cwd: string, refPrefix: string): Promise<GitRef[]> {
     .map((line) => {
       const trimmed = line.trim();
       if (!trimmed) return null;
-      const [name, dateStr] = trimmed.split("\t");
-      if (!name) return null;
-      return { name, committerDate: Number(dateStr) || 0 };
+      const [name, dateStr, oid] = trimmed.split("\t");
+      if (!name || !oid) return null;
+      return { name, committerDate: Number(dateStr) || 0, oid };
     })
     .filter((ref): ref is GitRef => ref !== null);
 }
@@ -264,6 +274,8 @@ interface BranchSuggestionMeta {
   committerDate: number;
   hasLocal: boolean;
   hasRemote: boolean;
+  localOid?: string;
+  remoteOid?: string;
 }
 
 function sortBranchSuggestions(
@@ -302,7 +314,8 @@ export async function listBranchSuggestions(
 
   const requestedLimit = options?.limit ?? 50;
   const limit = Math.max(1, Math.min(200, requestedLimit));
-  const query = options?.query?.trim().toLowerCase() ?? "";
+  const rawQuery = options?.query?.trim().toLowerCase() ?? "";
+  const query = normalizeBranchSuggestionName(rawQuery) ?? rawQuery;
 
   const [localRefs, remoteRefs] = await Promise.all([
     listGitRefs(cwd, "refs/heads"),
@@ -318,6 +331,8 @@ export async function listBranchSuggestions(
     branchMeta.set(normalized, {
       hasLocal: true,
       hasRemote: existing?.hasRemote ?? false,
+      localOid: ref.oid,
+      ...(existing?.remoteOid ? { remoteOid: existing.remoteOid } : {}),
       committerDate: Math.max(ref.committerDate, existing?.committerDate ?? 0),
     });
   }
@@ -330,12 +345,14 @@ export async function listBranchSuggestions(
       branchMeta.set(normalized, {
         hasLocal: false,
         hasRemote: true,
+        remoteOid: ref.oid,
         committerDate: ref.committerDate,
       });
     } else {
       branchMeta.set(normalized, {
         ...existing,
         hasRemote: true,
+        remoteOid: ref.oid,
         committerDate: Math.max(ref.committerDate, existing.committerDate),
       });
     }
@@ -349,15 +366,46 @@ export async function listBranchSuggestions(
   }
 
   const ordered = sortBranchSuggestions(filteredNames, branchMeta, query);
-  return ordered.slice(0, limit).map((name) => {
-    const meta = branchMeta.get(name);
-    return {
-      name,
-      committerDate: meta?.committerDate ?? 0,
-      hasLocal: meta?.hasLocal ?? false,
-      hasRemote: meta?.hasRemote ?? false,
-    };
-  });
+  return Promise.all(
+    ordered.slice(0, limit).map(async (name): Promise<BranchSuggestion> => {
+      const meta = branchMeta.get(name);
+      const suggestion: BranchSuggestion = {
+        name,
+        committerDate: meta?.committerDate ?? 0,
+        hasLocal: meta?.hasLocal ?? false,
+        hasRemote: meta?.hasRemote ?? false,
+      };
+      if (!suggestion.hasLocal || !suggestion.hasRemote) {
+        return suggestion;
+      }
+      if (meta?.localOid && meta.localOid === meta.remoteOid) {
+        suggestion.localAhead = 0;
+        suggestion.localBehind = 0;
+        return suggestion;
+      }
+
+      try {
+        const { stdout } = await runGitCommand(
+          [
+            "rev-list",
+            "--left-right",
+            "--count",
+            `refs/heads/${name}...refs/remotes/origin/${name}`,
+          ],
+          { cwd, envOverlay: READ_ONLY_GIT_ENV },
+        );
+        const [localAhead, localBehind] = stdout.trim().split(/\s+/).map(Number);
+        if (Number.isFinite(localAhead) && Number.isFinite(localBehind)) {
+          suggestion.localAhead = localAhead;
+          suggestion.localBehind = localBehind;
+        }
+      } catch {
+        // A ref may disappear between listing and comparison. Keep the branch
+        // available without divergence metadata and let creation re-resolve it.
+      }
+      return suggestion;
+    }),
+  );
 }
 
 export interface LocalBranchCheckoutResolution {
@@ -748,6 +796,10 @@ export interface CheckoutStatusGitNonPaseo {
   baseRef: string | null;
   aheadBehind: AheadBehind | null;
   hasChangesFromBase: boolean | null;
+  // Remote-tracking ref for currentBranch, e.g. "refs/remotes/origin/main". Null when the
+  // branch has no upstream or git could not resolve it. aheadOfOrigin/behindOfOrigin are
+  // measured against exactly this ref.
+  upstreamRef: string | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
   hasChangesFromOrigin: boolean | null;
@@ -765,6 +817,7 @@ export interface CheckoutStatusGitPaseo {
   baseRef: string;
   aheadBehind: AheadBehind | null;
   hasChangesFromBase: boolean | null;
+  upstreamRef: string | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
   hasChangesFromOrigin: boolean | null;
@@ -824,6 +877,7 @@ export type CheckoutSnapshotFacts =
       comparisonBaseRef: string | null;
       branchRemoteName: string | null;
       branchMergeRef: string | null;
+      upstreamStatus: UpstreamStatus | null;
       pullRequestLookupTarget: PullRequestStatusLookupTarget | null;
     };
 
@@ -834,6 +888,22 @@ function isNotGitRepositoryError(error: unknown): boolean {
 async function requireGitRepo(cwd: string): Promise<void> {
   try {
     await runGitCommand(["rev-parse", "--git-dir"], { cwd, envOverlay: READ_ONLY_GIT_ENV });
+  } catch {
+    throw new NotGitRepoError(cwd);
+  }
+}
+
+async function requireGitWorktreeRoot(cwd: string): Promise<string> {
+  try {
+    const { stdout } = await runGitCommand(["rev-parse", "--show-toplevel"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+    });
+    const worktreeRoot = parseGitRevParsePath(stdout);
+    if (!worktreeRoot) {
+      throw new Error("Git returned no worktree root");
+    }
+    return worktreeRoot;
   } catch {
     throw new NotGitRepoError(cwd);
   }
@@ -1049,7 +1119,7 @@ export async function renameCurrentBranch(
   cwd: string,
   newName: string,
 ): Promise<{ previousBranch: string | null; currentBranch: string | null }> {
-  await requireGitRepo(cwd);
+  const worktreeRoot = await requireGitWorktreeRoot(cwd);
 
   const previousBranch = await getCurrentBranch(cwd);
   if (!previousBranch || previousBranch === "HEAD") {
@@ -1062,6 +1132,9 @@ export async function renameCurrentBranch(
   });
 
   const currentBranch = await getCurrentBranch(cwd);
+  if (currentBranch) {
+    rebindPaseoWorktreeChangeRequestHint(worktreeRoot, previousBranch, currentBranch);
+  }
   return { previousBranch, currentBranch };
 }
 
@@ -1099,8 +1172,14 @@ async function getPaseoWorktreeForCwd(
   };
 }
 
+// Worktrees created before baseRef existed only stored the stripped name; it resolves
+// local-first, which is the base they were actually cut from.
+function storedBaseRefFromMetadata(metadata: PaseoWorktreeMetadata | null): string | null {
+  return metadata?.baseRef ?? metadata?.baseRefName ?? null;
+}
+
 function readPaseoWorktreeBaseRef(worktreeRoot: string): string | null {
-  return readPaseoWorktreeMetadata(worktreeRoot)?.baseRefName ?? null;
+  return storedBaseRefFromMetadata(readPaseoWorktreeMetadata(worktreeRoot));
 }
 
 async function getStoredBaseRefForCwd(
@@ -1151,10 +1230,35 @@ async function resolveBaseRefForCwd(
   };
 }
 
+// The worktree stores the exact ref it was cut from ("refs/remotes/upstream/main") while
+// callers still send its display name ("main"). A different qualified ref retains its own
+// identity even when it has the same branch name.
+function isSameBaseRef(stored: string, requested: string): boolean {
+  return stored === requested || branchNameFromRef(stored) === requested;
+}
+
 // Names both refs rather than labelling either one correct: a caller's ref can be stale, but the
 // stored ref can equally be wrong, so the message states the two facts and leaves the diagnosis open.
 function baseRefMismatchError(refs: { stored: string; requested: string }): Error {
   return new Error(`Base ref mismatch: stored ${refs.stored}, requested ${refs.requested}`);
+}
+
+function resolveOperationBaseRef(input: {
+  storedBaseRef: string | null;
+  resolvedBaseRef: string | null;
+  requestedBaseRef?: string;
+}): string | null {
+  if (
+    input.storedBaseRef &&
+    input.requestedBaseRef &&
+    !isSameBaseRef(input.storedBaseRef, input.requestedBaseRef)
+  ) {
+    throw baseRefMismatchError({
+      stored: input.storedBaseRef,
+      requested: input.requestedBaseRef,
+    });
+  }
+  return input.storedBaseRef ?? input.requestedBaseRef ?? input.resolvedBaseRef;
 }
 
 async function isWorkingTreeDirty(cwd: string, context?: CheckoutContext): Promise<boolean> {
@@ -1396,27 +1500,23 @@ async function resolveBaseRef(repoRoot: string): Promise<string | null> {
   return resolveRepositoryDefaultBranch(repoRoot);
 }
 
-function normalizeLocalBranchRefName(input: string): string {
-  if (input.startsWith("refs/remotes/origin/")) {
-    return input.slice("refs/remotes/origin/".length);
-  }
-  if (input.startsWith("refs/heads/")) {
-    return input.slice("refs/heads/".length);
-  }
-  if (input.startsWith("origin/")) {
-    return input.slice("origin/".length);
-  }
-  return input;
-}
-
 interface ComparisonBaseRefName {
   localName: string;
   originRef: string;
 }
 
 function normalizeComparisonBaseRefName(input: string): ComparisonBaseRefName {
-  const localName = normalizeLocalBranchRefName(input);
+  const localName = branchNameFromRef(input);
   return { localName, originRef: `origin/${localName}` };
+}
+
+function resolveMergeTargetBranch(baseRef: string): string {
+  const remotePrefix = "refs/remotes/";
+  const originPrefix = `${remotePrefix}origin/`;
+  if (baseRef.startsWith(remotePrefix) && !baseRef.startsWith(originPrefix)) {
+    throw new Error(`No local merge target is recorded for base ref ${baseRef}`);
+  }
+  return branchNameFromRef(baseRef);
 }
 
 async function doesGitRefExist(
@@ -1433,11 +1533,23 @@ async function doesGitRefExist(
   return result.exitCode === 0;
 }
 
+function isQualifiedBranchRef(ref: string): boolean {
+  return ref.startsWith("refs/heads/") || ref.startsWith("refs/remotes/");
+}
+
 async function resolveBestComparisonBaseRef(
   cwd: string,
   baseRef: string,
   context?: CheckoutContext,
 ): Promise<string> {
+  // A fully qualified branch ref names the exact commit stream to compare against. Bare names
+  // keep going through the local-vs-origin heuristic below for legacy worktree metadata.
+  if (isQualifiedBranchRef(baseRef)) {
+    if (await doesGitRefExist(cwd, baseRef, context)) {
+      return baseRef;
+    }
+    throw new Error(`Base ref not found: ${baseRef}`);
+  }
   const normalized = normalizeComparisonBaseRefName(baseRef);
   const [hasLocal, hasOrigin] = await Promise.all([
     doesGitRefExist(cwd, `refs/heads/${normalized.localName}`, context),
@@ -1458,7 +1570,14 @@ async function resolveBestComparisonBaseRef(
   throw new Error(`Base branch not found locally or on origin: ${refName}`);
 }
 
-async function resolveMostAheadBaseRef(cwd: string, normalizedBaseRef: string): Promise<string> {
+async function resolveMostAheadBaseRef(cwd: string, baseRef: string): Promise<string> {
+  if (isQualifiedBranchRef(baseRef)) {
+    if (await doesGitRefExist(cwd, baseRef)) {
+      return baseRef;
+    }
+    throw new Error(`Base ref not found: ${baseRef}`);
+  }
+  const normalizedBaseRef = branchNameFromRef(baseRef);
   const [hasLocal, hasOrigin] = await Promise.all([
     doesGitRefExist(cwd, `refs/heads/${normalizedBaseRef}`),
     doesGitRefExist(cwd, `refs/remotes/origin/${normalizedBaseRef}`),
@@ -1497,7 +1616,7 @@ async function getAheadBehind(
   currentBranch: string,
   context?: CheckoutContext,
 ): Promise<RefComparison | null> {
-  const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
+  const normalizedBaseRef = branchNameFromRef(baseRef);
   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
     return null;
   }
@@ -1524,6 +1643,59 @@ async function getAheadBehind(
     return null;
   }
   return { ahead, behind, hasChanges: diffResult.exitCode === 1 };
+}
+
+async function getAheadBehindForComparisonRef(
+  cwd: string,
+  comparisonRef: string,
+  currentBranch: string,
+  context?: CheckoutContext,
+): Promise<AheadBehind | null> {
+  if (!comparisonRef || !currentBranch || comparisonRef === currentBranch) {
+    return null;
+  }
+  const { stdout } = await runGitCommand(
+    ["rev-list", "--left-right", "--count", `${comparisonRef}...${currentBranch}`],
+    { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+  );
+  const [behindRaw, aheadRaw] = stdout.trim().split(/\s+/);
+  const behind = Number.parseInt(behindRaw ?? "0", 10);
+  const ahead = Number.parseInt(aheadRaw ?? "0", 10);
+  if (Number.isNaN(behind) || Number.isNaN(ahead)) {
+    return null;
+  }
+  return { ahead, behind };
+}
+
+async function getUpstreamStatus(
+  cwd: string,
+  currentBranch: string,
+  context?: CheckoutContext,
+): Promise<UpstreamStatus | null> {
+  try {
+    const { stdout } = await runGitCommand(
+      [
+        "for-each-ref",
+        "--format=%(upstream)%00%(upstream:track,nobracket)",
+        `refs/heads/${currentBranch}`,
+      ],
+      { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+    );
+    const [ref = "", track = ""] = stdout.trim().split("\0", 2);
+    if (!ref || track === "gone") {
+      return null;
+    }
+    const ahead = Number.parseInt(track.match(/ahead (\d+)/)?.[1] ?? "0", 10);
+    const behind = Number.parseInt(track.match(/behind (\d+)/)?.[1] ?? "0", 10);
+    return { ref, aheadBehind: { ahead, behind } };
+  } catch {
+    return null;
+  }
+}
+
+export interface UpstreamStatus {
+  ref: string;
+  aheadBehind: AheadBehind;
 }
 
 async function getConfiguredUpstreamRef(
@@ -1628,22 +1800,23 @@ function buildPullRequestLookupTargetFromBranchConfig(
   input: PullRequestLookupTargetBranchConfig,
 ): PullRequestStatusLookupTarget {
   const trackedHeadRef = parseBranchMergeHeadRef(input.branchMergeRef);
-  if (!input.branchRemoteName || !trackedHeadRef || trackedHeadRef === input.currentBranch) {
+  if (!input.branchRemoteName || !trackedHeadRef) {
     return { headRef: input.currentBranch };
   }
 
-  const remoteRepo = input.branchRemoteUrl
-    ? parseGitHubRepoFromRemote(input.branchRemoteUrl)
-    : null;
-  const originRepo = input.originRemoteUrl
-    ? parseGitHubRepoFromRemote(input.originRemoteUrl)
-    : null;
-  const isSameRepo = Boolean(remoteRepo && originRepo && remoteRepo === originRepo);
+  const remoteRepo = parseRepositoryIdentityFromRemote(input.branchRemoteUrl);
+  const originRepo = parseRepositoryIdentityFromRemote(input.originRemoteUrl);
+  const isSameRepo = areSameGitHubRepository(remoteRepo, originRepo);
   const headRepositoryOwner = remoteRepo && !isSameRepo ? remoteRepo.split("/")[0] : null;
-  const normalizedBaseRef = input.resolvedBaseRef
-    ? normalizeLocalBranchRefName(input.resolvedBaseRef)
-    : null;
-  if (trackedHeadRef === normalizedBaseRef && !headRepositoryOwner) {
+  const normalizedBaseRef = input.resolvedBaseRef ? branchNameFromRef(input.resolvedBaseRef) : null;
+  if (
+    trackedHeadRef === normalizedBaseRef &&
+    !doesLocalBranchNameIdentifyTrackedHead(
+      input.currentBranch,
+      trackedHeadRef,
+      headRepositoryOwner,
+    )
+  ) {
     return { headRef: input.currentBranch };
   }
 
@@ -1655,6 +1828,34 @@ function buildPullRequestLookupTargetFromBranchConfig(
     headRef: trackedHeadRef,
     ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
   };
+}
+
+function parseRepositoryIdentityFromRemote(remoteUrl: string | null): string | null {
+  if (!remoteUrl) {
+    return null;
+  }
+  const location = parseGitRemoteLocation(remoteUrl);
+  return location ? (parseGitHubRemoteIdentity(location.path)?.repo ?? null) : null;
+}
+
+function areSameGitHubRepository(left: string | null, right: string | null): boolean {
+  return Boolean(left && right && left.toLowerCase() === right.toLowerCase());
+}
+
+function doesLocalBranchNameIdentifyTrackedHead(
+  currentBranch: string,
+  trackedHeadRef: string,
+  headRepositoryOwner: string | null,
+): boolean {
+  if (currentBranch === trackedHeadRef) {
+    return true;
+  }
+  if (!headRepositoryOwner) {
+    return false;
+  }
+  return [headRepositoryOwner, headRepositoryOwner.toLowerCase()].some(
+    (owner) => currentBranch === `${owner}/${trackedHeadRef}`,
+  );
 }
 
 function buildPullRequestLookupTargetFromPushConfig(
@@ -1669,11 +1870,9 @@ function buildPullRequestLookupTargetFromPushConfig(
   const originRepo = input.originRemoteUrl
     ? parseGitHubRepoFromRemote(input.originRemoteUrl)
     : null;
-  const isSameRepo = Boolean(remoteRepo && originRepo && remoteRepo === originRepo);
+  const isSameRepo = areSameGitHubRepository(remoteRepo, originRepo);
   const headRepositoryOwner = remoteRepo && !isSameRepo ? remoteRepo.split("/")[0] : null;
-  const normalizedBaseRef = input.resolvedBaseRef
-    ? normalizeLocalBranchRefName(input.resolvedBaseRef)
-    : null;
+  const normalizedBaseRef = input.resolvedBaseRef ? branchNameFromRef(input.resolvedBaseRef) : null;
   if (pushedHeadRef === normalizedBaseRef && !headRepositoryOwner) {
     return null;
   }
@@ -1686,8 +1885,9 @@ function buildPullRequestLookupTargetFromPushConfig(
 
 function buildPullRequestLookupTargetFromMetadata(
   metadata: PaseoWorktreeMetadata | null,
+  currentBranch: string,
 ): PullRequestStatusLookupTarget | null {
-  const target = metadata?.changeRequestLookupTarget;
+  const target = getPaseoWorktreeChangeRequestHintForBranch(metadata, currentBranch);
   if (!target) {
     return null;
   }
@@ -1710,8 +1910,22 @@ function buildInitialPullRequestLookupTarget(input: {
     return null;
   }
 
+  const hasConfiguredBranchTarget = Boolean(
+    input.branchRemoteName && parseBranchMergeHeadRef(input.branchMergeRef),
+  );
+  if (hasConfiguredBranchTarget) {
+    return buildPullRequestLookupTargetFromBranchConfig({
+      currentBranch: input.currentBranch,
+      branchRemoteName: input.branchRemoteName,
+      branchMergeRef: input.branchMergeRef,
+      branchRemoteUrl: input.branchRemoteUrl,
+      originRemoteUrl: input.originRemoteUrl,
+      resolvedBaseRef: input.resolvedBaseRef,
+    });
+  }
+
   return (
-    buildPullRequestLookupTargetFromMetadata(input.metadata) ??
+    buildPullRequestLookupTargetFromMetadata(input.metadata, input.currentBranch) ??
     buildPullRequestLookupTargetFromBranchConfig({
       currentBranch: input.currentBranch,
       branchRemoteName: input.branchRemoteName,
@@ -1771,7 +1985,7 @@ export async function getCheckoutSnapshotFacts(
   const paseoWorktreeMetadata = inspected.paseoWorktree.isPaseoOwnedWorktree
     ? readPaseoWorktreeMetadata(inspected.paseoWorktree.worktreeRoot)
     : null;
-  const storedBaseRef = paseoWorktreeMetadata?.baseRefName ?? null;
+  const storedBaseRef = storedBaseRefFromMetadata(paseoWorktreeMetadata);
   const resolvedBaseRef = storedBaseRef ?? (await resolveBaseRef(cwd));
   const mainRepoRoot = await getMainRepoRootFromCommonDir(
     cwd,
@@ -1782,7 +1996,7 @@ export async function getCheckoutSnapshotFacts(
   if (
     resolvedBaseRef &&
     inspected.currentBranch &&
-    normalizeLocalBranchRefName(resolvedBaseRef) !== inspected.currentBranch
+    branchNameFromRef(resolvedBaseRef) !== inspected.currentBranch
   ) {
     comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, resolvedBaseRef, context).catch(
       () => null,
@@ -1792,6 +2006,9 @@ export async function getCheckoutSnapshotFacts(
   let branchRemoteName: string | null = null;
   let branchMergeRef: string | null = null;
   let branchRemoteUrl: string | null = null;
+  const upstreamStatusPromise = inspected.currentBranch
+    ? getUpstreamStatus(cwd, inspected.currentBranch, context)
+    : Promise.resolve(null);
   if (inspected.currentBranch) {
     branchRemoteName = await getGitConfigValue(
       cwd,
@@ -1835,6 +2052,7 @@ export async function getCheckoutSnapshotFacts(
     pullRequestLookupTarget,
     context,
   );
+  const upstreamStatus = await upstreamStatusPromise;
 
   return {
     isGit: true,
@@ -1850,6 +2068,7 @@ export async function getCheckoutSnapshotFacts(
     comparisonBaseRef,
     branchRemoteName,
     branchMergeRef,
+    upstreamStatus,
     pullRequestLookupTarget,
   };
 }
@@ -2004,41 +2223,82 @@ export async function getCheckoutStatus(
     return { isGit: false };
   }
 
-  const worktreeRoot = facts.worktreeRoot;
   const currentBranch = facts.currentBranch;
   const remoteUrl = facts.remoteUrl;
-  const paseoWorktree = facts.paseoWorktree;
   const isDirty = await isWorkingTreeDirty(cwd, context);
   const hasRemote = remoteUrl !== null;
   const baseRef = facts.resolvedBaseRef;
-  const mainRepoRoot = facts.mainRepoRoot;
   const factsContext = { ...context, facts };
-  const [aheadBehind, originAheadBehind] = await Promise.all([
+  const baseComparison =
     baseRef && currentBranch
-      ? getAheadBehind(cwd, baseRef, currentBranch, factsContext)
-      : Promise.resolve(null),
-    hasRemote && currentBranch
-      ? getOriginAheadBehind(cwd, currentBranch, factsContext)
-      : Promise.resolve(null),
-  ]);
-  const aheadOfOrigin = originAheadBehind?.ahead ?? null;
-  const behindOfOrigin = originAheadBehind?.behind ?? null;
-  const hasChangesFromBase = aheadBehind?.hasChanges ?? null;
-  const hasChangesFromOrigin = originAheadBehind?.hasChanges ?? null;
-  const baseAheadBehind = aheadBehind
-    ? { ahead: aheadBehind.ahead, behind: aheadBehind.behind }
+      ? await getAheadBehind(cwd, baseRef, currentBranch, factsContext)
+      : null;
+  const upstreamStatus = facts.upstreamStatus;
+  // The wire carries the display name: clients label the base with it and send it back to
+  // request diffs and merges. The exact ref stays in worktree.json and in facts, where the
+  // comparisons and actions read it.
+  const displayBaseRef = baseRef ? branchNameFromRef(baseRef) : null;
+  const upstreamRef = upstreamStatus?.ref ?? null;
+  const aheadOfOrigin = upstreamStatus?.aheadBehind.ahead ?? null;
+  const behindOfOrigin = upstreamStatus?.aheadBehind.behind ?? null;
+  const originComparison = await (hasRemote && currentBranch
+    ? getOriginAheadBehind(cwd, currentBranch, factsContext)
+    : Promise.resolve(null));
+  const aheadBehind = baseComparison
+    ? { ahead: baseComparison.ahead, behind: baseComparison.behind }
     : null;
+  const hasChangesFromBase = baseComparison?.hasChanges ?? null;
+  const hasChangesFromOrigin = originComparison?.hasChanges ?? null;
 
-  if (paseoWorktree.isPaseoOwnedWorktree && baseRef) {
+  return buildCheckoutStatusFromFacts({
+    facts,
+    isDirty,
+    displayBaseRef,
+    aheadBehind,
+    hasChangesFromBase,
+    upstreamRef,
+    aheadOfOrigin,
+    behindOfOrigin,
+    hasChangesFromOrigin,
+  });
+}
+
+function buildCheckoutStatusFromFacts({
+  facts,
+  isDirty,
+  displayBaseRef,
+  aheadBehind,
+  hasChangesFromBase,
+  upstreamRef,
+  aheadOfOrigin,
+  behindOfOrigin,
+  hasChangesFromOrigin,
+}: {
+  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>;
+  isDirty: boolean;
+  displayBaseRef: string | null;
+  aheadBehind: AheadBehind | null;
+  hasChangesFromBase: boolean | null;
+  upstreamRef: string | null;
+  aheadOfOrigin: number | null;
+  behindOfOrigin: number | null;
+  hasChangesFromOrigin: boolean | null;
+}): CheckoutStatusGit {
+  const { worktreeRoot, currentBranch, remoteUrl, paseoWorktree, resolvedBaseRef, mainRepoRoot } =
+    facts;
+  const hasRemote = remoteUrl !== null;
+
+  if (paseoWorktree.isPaseoOwnedWorktree && resolvedBaseRef) {
     return {
       isGit: true,
       repoRoot: worktreeRoot,
       mainRepoRoot: mainRepoRoot ?? worktreeRoot,
       currentBranch,
       isDirty,
-      baseRef,
-      aheadBehind: baseAheadBehind,
+      baseRef: displayBaseRef ?? resolvedBaseRef,
+      aheadBehind,
       hasChangesFromBase,
+      upstreamRef,
       aheadOfOrigin,
       behindOfOrigin,
       hasChangesFromOrigin,
@@ -2055,9 +2315,10 @@ export async function getCheckoutStatus(
       mainRepoRoot && resolve(mainRepoRoot) !== resolve(worktreeRoot) ? mainRepoRoot : null,
     currentBranch,
     isDirty,
-    baseRef,
-    aheadBehind: baseAheadBehind,
+    baseRef: displayBaseRef,
+    aheadBehind,
     hasChangesFromBase,
+    upstreamRef,
     aheadOfOrigin,
     behindOfOrigin,
     hasChangesFromOrigin,
@@ -2370,11 +2631,18 @@ async function tryResolveCheckoutCommitsBaseRef(
   if (!baseRef) {
     return null;
   }
-  const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
+  const normalizedBaseRef = branchNameFromRef(baseRef);
   if (!normalizedBaseRef || normalizedBaseRef === currentBranch) {
     return null;
   }
-  return resolveMostAheadBaseRef(cwd, normalizedBaseRef).catch(() => null);
+  try {
+    return await resolveMostAheadBaseRef(cwd, baseRef);
+  } catch (error) {
+    if (isQualifiedBranchRef(baseRef)) {
+      throw error;
+    }
+    return null;
+  }
 }
 
 export async function listCheckoutCommits({
@@ -2390,7 +2658,7 @@ export async function listCheckoutCommits({
   }
 
   const { resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
-  const normalizedBaseRef = resolvedBaseRef ? normalizeLocalBranchRefName(resolvedBaseRef) : null;
+  const normalizedBaseRef = resolvedBaseRef ? branchNameFromRef(resolvedBaseRef) : null;
   let comparisonBaseRef = await tryResolveCheckoutCommitsBaseRef(
     cwd,
     resolvedBaseRef,
@@ -2530,7 +2798,7 @@ function parseCheckoutShortstat(text: string): CheckoutShortstat | null {
 
 const UNTRACKED_SHORTSTAT_MAX_FILES = 500;
 
-async function countUntrackedAdditions(cwd: string): Promise<number> {
+async function countUntrackedAdditions(cwd: string, throwOnGitError = false): Promise<number> {
   try {
     const { stdout } = await runGitCommand(["ls-files", "--others", "--exclude-standard"], {
       cwd,
@@ -2558,14 +2826,25 @@ async function countUntrackedAdditions(cwd: string): Promise<number> {
       }
     }
     return additions;
-  } catch {
+  } catch (error) {
+    if (throwOnGitError) {
+      throw error;
+    }
     return 0;
   }
+}
+
+function handleShortstatGitError(error: unknown, throwOnGitError = false): null {
+  if (throwOnGitError) {
+    throw error;
+  }
+  return null;
 }
 
 async function getCheckoutShortstatUncached(
   cwd: string,
   context?: CheckoutContext,
+  options?: { throwOnGitError?: boolean },
 ): Promise<CheckoutShortstat | null> {
   if (context?.facts?.isGit === false) {
     return null;
@@ -2608,7 +2887,7 @@ async function getCheckoutShortstatUncached(
         cwd,
         envOverlay: READ_ONLY_GIT_ENV,
       }),
-      countUntrackedAdditions(cwd),
+      countUntrackedAdditions(cwd, options?.throwOnGitError),
     ]);
 
     const tracked = parseCheckoutShortstat(stdout);
@@ -2620,8 +2899,8 @@ async function getCheckoutShortstatUncached(
       return { additions: untrackedAdditions, deletions: 0 };
     }
     return null;
-  } catch {
-    return null;
+  } catch (error) {
+    return handleShortstatGitError(error, options?.throwOnGitError);
   }
 }
 
@@ -2687,6 +2966,133 @@ export async function getCheckoutShortstat(
   options?: CheckoutReadCacheOptions,
 ): Promise<CheckoutShortstat | null> {
   return getOrLoadCheckoutShortstat(cwd, context, options);
+}
+
+export interface CheckoutRefDerivedState {
+  aheadBehind: AheadBehind | null;
+  diffStat: CheckoutShortstat | null;
+  upstreamStatus: UpstreamStatus | null;
+}
+
+function normalizeRemoteTrackingRef(ref: string): string {
+  return ref.startsWith("refs/remotes/") ? ref.slice("refs/remotes/".length) : ref;
+}
+
+function checkoutFactsConfiguredRemoteRef(
+  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
+): string | null {
+  const trackedBranch = facts.branchMergeRef?.startsWith("refs/heads/")
+    ? facts.branchMergeRef.slice("refs/heads/".length)
+    : null;
+  return facts.branchRemoteName && facts.branchRemoteName !== "." && trackedBranch
+    ? `${facts.branchRemoteName}/${trackedBranch}`
+    : null;
+}
+
+function getCheckoutRefMovement(
+  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
+  movedRemoteRefs: ReadonlySet<string>,
+): {
+  baseMoved: boolean;
+  comparisonRef: string | null;
+  currentBranch: string | null;
+  normalizedResolvedBase: string | null;
+  upstreamMoved: boolean;
+  upstreamRef: string | null;
+} {
+  const currentBranch = facts.currentBranch;
+  const comparisonRef = facts.comparisonBaseRef;
+  const normalizedMoves = new Set([...movedRemoteRefs].map(normalizeRemoteTrackingRef));
+  const normalizedResolvedBase = facts.resolvedBaseRef
+    ? branchNameFromRef(facts.resolvedBaseRef)
+    : null;
+  const shortstatRemoteRef =
+    currentBranch && (!normalizedResolvedBase || normalizedResolvedBase === currentBranch)
+      ? `origin/${currentBranch}`
+      : null;
+  const baseMoved = [facts.storedBaseRef, facts.resolvedBaseRef, comparisonRef, shortstatRemoteRef]
+    .filter((ref): ref is string => Boolean(ref))
+    .map(normalizeRemoteTrackingRef)
+    .some((ref) => normalizedMoves.has(ref));
+  const upstreamRef = facts.upstreamStatus?.ref ?? checkoutFactsConfiguredRemoteRef(facts);
+  const upstreamMoved = upstreamRef
+    ? normalizedMoves.has(normalizeRemoteTrackingRef(upstreamRef))
+    : false;
+  return {
+    baseMoved,
+    comparisonRef,
+    currentBranch,
+    normalizedResolvedBase,
+    upstreamMoved,
+    upstreamRef,
+  };
+}
+
+export async function getCheckoutRefDerivedState(
+  cwd: string,
+  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
+  current: Pick<CheckoutRefDerivedState, "aheadBehind" | "diffStat">,
+  movedRemoteRefs: ReadonlySet<string>,
+  context?: CheckoutContext,
+): Promise<CheckoutRefDerivedState> {
+  const {
+    baseMoved,
+    comparisonRef,
+    currentBranch,
+    normalizedResolvedBase,
+    upstreamMoved,
+    upstreamRef,
+  } = getCheckoutRefMovement(facts, movedRemoteRefs);
+
+  let aheadBehind = current.aheadBehind;
+  let diffStat = current.diffStat;
+  if (baseMoved && currentBranch && facts.resolvedBaseRef) {
+    aheadBehind = await getAheadBehind(cwd, facts.resolvedBaseRef, currentBranch, {
+      ...context,
+      facts,
+    });
+  }
+  if (baseMoved || (upstreamMoved && currentBranch === normalizedResolvedBase)) {
+    diffStat = await getCheckoutShortstatUncached(
+      cwd,
+      { ...context, facts },
+      { throwOnGitError: true },
+    );
+  }
+
+  let upstreamStatus = facts.upstreamStatus;
+  if (upstreamMoved && currentBranch && upstreamRef) {
+    const normalizedUpstream = normalizeRemoteTrackingRef(upstreamRef);
+    const normalizedComparison = comparisonRef ? normalizeRemoteTrackingRef(comparisonRef) : null;
+    const upstreamAheadBehind =
+      baseMoved && normalizedComparison === normalizedUpstream
+        ? aheadBehind
+        : await getAheadBehindForComparisonRef(cwd, upstreamRef, currentBranch, context);
+    upstreamStatus = upstreamAheadBehind
+      ? {
+          ref: facts.upstreamStatus?.ref ?? `refs/remotes/${normalizedUpstream}`,
+          aheadBehind: upstreamAheadBehind,
+        }
+      : null;
+  }
+
+  return { aheadBehind, diffStat, upstreamStatus };
+}
+
+export interface CheckoutWorktreeState {
+  isDirty: boolean;
+  diffStat: CheckoutShortstat | null;
+}
+
+export async function getCheckoutWorktreeState(
+  cwd: string,
+  context: CheckoutContext,
+): Promise<CheckoutWorktreeState> {
+  const [isDirty, diffStat] = await Promise.all([
+    isWorkingTreeDirty(cwd, context),
+    getCheckoutShortstat(cwd, context, { force: true }),
+  ]);
+  return { isDirty, diffStat };
 }
 
 export function getCachedCheckoutShortstat(cwd: string): CheckoutShortstat | null | undefined {
@@ -3000,12 +3406,13 @@ async function resolveCheckoutDiffRefs(
     return { baseRef: "HEAD", includeUntracked: true };
   }
   const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
-  const baseRef = compare.baseRef ?? resolvedBaseRef;
+  const baseRef = resolveOperationBaseRef({
+    storedBaseRef,
+    resolvedBaseRef,
+    requestedBaseRef: compare.baseRef,
+  });
   if (!baseRef) {
     return null;
-  }
-  if (storedBaseRef && compare.baseRef && compare.baseRef !== storedBaseRef) {
-    throw baseRefMismatchError({ stored: storedBaseRef, requested: compare.baseRef });
   }
   const bestBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef);
   return {
@@ -3218,18 +3625,18 @@ export async function mergeToBase(
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
   const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
-  const baseRef = options.baseRef ?? resolvedBaseRef;
+  const baseRef = resolveOperationBaseRef({
+    storedBaseRef,
+    resolvedBaseRef,
+    requestedBaseRef: options.baseRef,
+  });
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
-  }
-  if (storedBaseRef && options.baseRef && options.baseRef !== storedBaseRef) {
-    throw baseRefMismatchError({ stored: storedBaseRef, requested: options.baseRef });
   }
   if (!currentBranch) {
     throw new Error("Unable to determine current branch for merge");
   }
-  let normalizedBaseRef = baseRef;
-  normalizedBaseRef = normalizeLocalBranchRefName(normalizedBaseRef);
+  const normalizedBaseRef = resolveMergeTargetBranch(baseRef);
   const currentWorktreeRoot = (await getWorktreeRoot(cwd, context)) ?? cwd;
   if (normalizedBaseRef === currentBranch) {
     return currentWorktreeRoot;
@@ -3294,12 +3701,13 @@ export async function mergeFromBase(
   }
 
   const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
-  const baseRef = options.baseRef ?? resolvedBaseRef;
+  const baseRef = resolveOperationBaseRef({
+    storedBaseRef,
+    resolvedBaseRef,
+    requestedBaseRef: options.baseRef,
+  });
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
-  }
-  if (storedBaseRef && options.baseRef && options.baseRef !== storedBaseRef) {
-    throw baseRefMismatchError({ stored: storedBaseRef, requested: options.baseRef });
   }
 
   const requireCleanTarget = options.requireCleanTarget ?? true;
@@ -3313,8 +3721,7 @@ export async function mergeFromBase(
     }
   }
 
-  const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
-  const bestBaseRef = await resolveMostAheadBaseRef(cwd, normalizedBaseRef);
+  const bestBaseRef = await resolveMostAheadBaseRef(cwd, baseRef);
   if (bestBaseRef === currentBranch) {
     return;
   }
@@ -3636,17 +4043,18 @@ export async function createPullRequest(
 
   const head = options.head ?? (await getCurrentBranch(cwd));
   const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
-  const base = options.base ?? resolvedBaseRef;
+  const base = resolveOperationBaseRef({
+    storedBaseRef,
+    resolvedBaseRef,
+    requestedBaseRef: options.base,
+  });
   if (!head) {
     throw new Error("Unable to determine head branch for PR");
   }
   if (!base) {
     throw new Error("Unable to determine base branch for PR");
   }
-  const normalizedBase = normalizeLocalBranchRefName(base);
-  if (storedBaseRef && options.base && options.base !== storedBaseRef) {
-    throw baseRefMismatchError({ stored: storedBaseRef, requested: options.base });
-  }
+  const normalizedBase = branchNameFromRef(base);
 
   // The push deliberately happens before the adapter resolves the target
   // repository: slug resolution is adapter-internal (e.g. `gh repo view`, which
