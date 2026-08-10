@@ -120,6 +120,7 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
     status: normalizeCheckoutPrStatusPayload(snapshot.forge.pullRequest, forge),
     githubFeaturesEnabled: snapshot.forge.featuresEnabled,
     authState: snapshot.forge.authState,
+    pullRequestStatusSettling: snapshot.forge.pullRequestStatusSettling,
     ...(forge ? { forge } : {}),
     error: snapshot.forge.error
       ? {

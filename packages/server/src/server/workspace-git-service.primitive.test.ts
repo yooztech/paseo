@@ -501,8 +501,18 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     checkoutStatusDeferred.resolve(createCheckoutStatus(REPO_CWD));
 
-    await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(createSnapshot(REPO_CWD));
-    expect(service.peekSnapshot(REPO_CWD)).toEqual(createSnapshot(REPO_CWD));
+    await expect(service.getSnapshot(REPO_CWD)).resolves.toMatchObject({
+      cwd: REPO_CWD,
+      git: createSnapshot(REPO_CWD).git,
+    });
+    expect(service.peekSnapshot(REPO_CWD)).toMatchObject({
+      cwd: REPO_CWD,
+      git: createSnapshot(REPO_CWD).git,
+    });
+
+    await vi.waitFor(() => {
+      expect(listener).toHaveBeenLastCalledWith(createSnapshot(REPO_CWD));
+    });
 
     subscription.unsubscribe();
     service.dispose();
@@ -860,7 +870,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     expect(getPullRequestStatus).toHaveBeenCalledWith(
       REPO_CWD,
       expect.anything(),
-      { force: false, reason: "initial" },
+      { force: false, reason: "initial-forge" },
       expect.anything(),
     );
 

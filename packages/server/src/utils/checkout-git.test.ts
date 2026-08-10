@@ -1316,19 +1316,15 @@ const x = 1;
   it("warms shortstat cache in the background without blocking listing callers", async () => {
     expect(getCachedCheckoutShortstat(repoDir)).toBeUndefined();
 
-    warmCheckoutShortstatInBackground(repoDir);
+    let complete!: () => void;
+    const warmed = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    warmCheckoutShortstatInBackground(repoDir, undefined, complete);
 
     // A repo with no origin/main computes to null, but null should still be cached.
-    for (let attempts = 0; attempts < 20; attempts += 1) {
-      const cached = getCachedCheckoutShortstat(repoDir);
-      if (cached !== undefined) {
-        expect(cached).toBeNull();
-        return;
-      }
-      await sleep(25);
-    }
-
-    throw new Error("shortstat background warm did not populate cache in time");
+    await warmed;
+    expect(getCachedCheckoutShortstat(repoDir)).toBeNull();
   });
 
   it("commits messages with quotes safely", async () => {

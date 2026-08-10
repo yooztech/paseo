@@ -98,6 +98,7 @@ export interface WorkspaceGitRuntimeSnapshot {
   forge: {
     featuresEnabled: boolean;
     authState: ForgeAuthState;
+    pullRequestStatusSettling?: boolean;
     /**
      * Forge resolved for this workspace from its remote — including the per-host
      * probe, so self-managed GitLab hosts (no "gitlab" in the name) are labeled
@@ -184,6 +185,7 @@ export interface WorkspaceGitService {
   scheduleRefreshForCwd(cwd: string): void;
   onWorkspaceStateMayHaveChanged(cwd: string): void;
   invalidateForge(cwd: string): void;
+  setPullRequestStatusSettling(cwd: string, settling: boolean): void;
   getMetrics(): WorkspaceGitServiceMetrics;
   dispose(): void;
 }
@@ -324,6 +326,7 @@ interface WorkspaceGitTarget {
    */
   ciAttachWaitUntilMs: number | null;
   ciAttachWaitPrKey: string | null;
+  pullRequestStatusSettling: boolean;
   refreshState: WorkspaceGitRefreshState;
   latestGit: WorkspaceGitRuntimeSnapshot["git"] | null;
   latestGitLoadedAtMs: number | null;
@@ -465,7 +468,6 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.listeners.add(listener);
     if (target.listeners.size === 1) {
       this.startWorkspaceSubscriptionTimers(target);
-      this.requestFetch(cwd);
     }
     if (!target.latestSnapshot) {
       this.scheduleInitialWorkspaceRefresh(target);
@@ -804,6 +806,15 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.forgeResolver.invalidate(resolve(cwd));
   }
 
+  setPullRequestStatusSettling(cwd: string, settling: boolean): void {
+    const target = this.ensureWorkspaceTarget(resolve(cwd));
+    if (target.pullRequestStatusSettling === settling) {
+      return;
+    }
+    target.pullRequestStatusSettling = settling;
+    this.rememberSnapshot(target, this.combineSnapshot(target), { notify: true });
+  }
+
   dispose(): void {
     for (const target of this.workspaceTargets.values()) {
       this.closeWorkspaceTarget(target);
@@ -923,6 +934,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       forgePrStatusPollKey: null,
       ciAttachWaitUntilMs: null,
       ciAttachWaitPrKey: null,
+      pullRequestStatusSettling: false,
       refreshState: { status: "idle" },
       latestGit: null,
       latestGitLoadedAtMs: null,
@@ -952,11 +964,33 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       }
       void this.refreshWorkspaceTarget(target, {
         force: false,
-        includeForge: true,
+        // Pull/push availability comes from local Git state. Do not make the
+        // initial workspace status wait for a remote forge/PR lookup.
+        includeForge: false,
         reason: "initial",
         notify: true,
-      });
+      }).then(() => this.refreshInitialForgeSnapshot(target));
     });
+  }
+
+  private async refreshInitialForgeSnapshot(target: WorkspaceGitTarget): Promise<void> {
+    if (!this.isActiveObservedWorkspaceTarget(target) || !target.latestFacts) {
+      return;
+    }
+    try {
+      // PR state can arrive later through the same pushed snapshot channel.
+      await this.refreshForgeSnapshot(
+        target,
+        { force: false, includeForge: true, reason: "initial-forge", notify: true },
+        target.latestFacts,
+      );
+      this.rememberSnapshot(target, this.combineSnapshot(target), { notify: true });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, cwd: target.cwd, reason: "initial-forge" },
+        "Failed to refresh initial workspace forge snapshot",
+      );
+    }
   }
 
   private scheduleWorkspaceObservationSetup(target: WorkspaceGitTarget): void {
@@ -1914,10 +1948,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       isDirty: checkoutStatus.isDirty,
       baseRef: checkoutStatus.baseRef,
       aheadBehind: checkoutStatus.aheadBehind,
-      hasChangesFromBase: checkoutStatus.hasChangesFromBase,
+      ...(checkoutStatus.hasChangesFromBase !== undefined
+        ? { hasChangesFromBase: checkoutStatus.hasChangesFromBase }
+        : {}),
       aheadOfOrigin: checkoutStatus.aheadOfOrigin,
       behindOfOrigin: checkoutStatus.behindOfOrigin,
-      hasChangesFromOrigin: checkoutStatus.hasChangesFromOrigin,
+      ...(checkoutStatus.hasChangesFromOrigin !== undefined
+        ? { hasChangesFromOrigin: checkoutStatus.hasChangesFromOrigin }
+        : {}),
       hasRemote: checkoutStatus.hasRemote,
       diffStat,
     };
@@ -1974,14 +2012,20 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   private combineSnapshot(target: WorkspaceGitTarget): WorkspaceGitRuntimeSnapshot {
-    if (!target.latestGit) {
-      return target.latestSnapshot ?? buildNotGitSnapshot(target.cwd);
-    }
-
+    const snapshotBase = target.latestGit
+      ? {
+          cwd: target.cwd,
+          git: target.latestGit,
+          forge: target.latestForge ?? buildForgeUnavailableSnapshot(),
+        }
+      : (target.latestSnapshot ?? buildNotGitSnapshot(target.cwd));
+    const { pullRequestStatusSettling: _settling, ...forgeBase } = snapshotBase.forge;
     return {
-      cwd: target.cwd,
-      git: target.latestGit,
-      forge: target.latestForge ?? buildForgeUnavailableSnapshot(),
+      ...snapshotBase,
+      forge: {
+        ...forgeBase,
+        ...(target.pullRequestStatusSettling ? { pullRequestStatusSettling: true } : {}),
+      },
     };
   }
 
