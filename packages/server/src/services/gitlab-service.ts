@@ -109,6 +109,7 @@ export interface CreateGitLabServiceOptions {
   runner?: GlabCommandRunner;
   resolveGlabPath?: () => Promise<string | null>;
   resolveRemoteUrl?: (cwd: string) => Promise<string | null>;
+  resolveProjectId?: (cwd: string, projectPath: string) => Promise<number | null>;
   /** Tip SHA for the branch; used to find tag/web pipelines for that commit. */
   resolveBranchTipSha?: (cwd: string, branch: string) => Promise<string | null>;
 }
@@ -230,6 +231,8 @@ const GitLabMergeRequestSchema = z
   })
   .passthrough();
 
+const GitLabProjectSchema = z.object({ id: z.number() }).passthrough();
+
 const GitLabIssueSchema = z
   .object({
     iid: z.number(),
@@ -344,6 +347,10 @@ async function runGlabCommand(
 
 export function parseGitLabHostFromRemoteUrl(url: string): string | null {
   return parseGitRemoteLocation(url)?.host ?? null;
+}
+
+function parseGitLabProjectPathFromRemoteUrl(url: string): string | null {
+  return parseGitRemoteLocation(url)?.path ?? null;
 }
 
 function mapMergeRequestState(state: string): string {
@@ -898,6 +905,7 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
   const resolveGlab = createCachedCliPathResolver(options.resolveGlabPath ?? resolveGlabPath);
   const resolveRemoteUrl = options.resolveRemoteUrl ?? defaultResolveRemoteUrl;
   const resolveBranchTipSha = options.resolveBranchTipSha ?? defaultResolveBranchTipSha;
+  const projectIdPromises = new Map<string, Promise<number | null>>();
 
   async function run(args: string[], runOptions: GlabCommandRunnerOptions): Promise<string> {
     const glabPath = await resolveGlab();
@@ -929,6 +937,35 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
       schema,
       createCommandError: (params) => new GlabCommandError(params),
     });
+  }
+
+  async function resolveCurrentProjectId(cwd: string): Promise<number | null> {
+    const remoteUrl = await resolveRemoteUrl(cwd);
+    const projectPath = remoteUrl ? parseGitLabProjectPathFromRemoteUrl(remoteUrl) : null;
+    if (!projectPath) {
+      return null;
+    }
+
+    const cacheKey = `${cwd}\0${projectPath}`;
+    const existing = projectIdPromises.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = (
+      options.resolveProjectId
+        ? options.resolveProjectId(cwd, projectPath)
+        : runJson(
+            ["api", `projects/${encodeURIComponent(projectPath)}`],
+            { cwd },
+            GitLabProjectSchema,
+          ).then((project) => project.id)
+    ).catch((error: unknown) => {
+      projectIdPromises.delete(cacheKey);
+      throw error;
+    });
+    projectIdPromises.set(cacheKey, promise);
+    return promise;
   }
 
   async function viewMergeRequest(cwd: string, ref: string): Promise<GitLabMergeRequest> {
@@ -966,8 +1003,16 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
     headRef: string,
     headSha?: string,
   ): Promise<GitLabMergeRequest | null> {
-    const mergeRequests = await listMergeRequestsBySourceBranch(cwd, headRef);
-    const candidates = mergeRequests.filter((mr) => mr.source_branch === headRef);
+    const [mergeRequests, sourceProjectId] = await Promise.all([
+      listMergeRequestsBySourceBranch(cwd, headRef),
+      resolveCurrentProjectId(cwd),
+    ]);
+    if (sourceProjectId === null) {
+      return null;
+    }
+    const candidates = mergeRequests.filter(
+      (mr) => mr.source_branch === headRef && mr.source_project_id === sourceProjectId,
+    );
     const match =
       candidates.find((mr) => mapMergeRequestState(mr.state) === "open") ??
       candidates.find(
