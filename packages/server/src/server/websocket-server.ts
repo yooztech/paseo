@@ -224,7 +224,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     resolveDefaultBranch: async () => "main",
     resolveRepoRemoteUrl: async () => null,
     refresh: async () => {},
-    requestFetch: () => {},
+    requestFetch: async () => {},
     requestWorkingTreeWatch: async () => ({
       repoRoot: null,
       unsubscribe: () => {},

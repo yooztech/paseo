@@ -28,6 +28,7 @@ function makeService(responder: Responder, overrides: Partial<CreateGitLabServic
     runner,
     resolveGlabPath: async () => "/usr/bin/glab",
     resolveRemoteUrl: async () => "git@gitlab.example.com:example-group/example-project.git",
+    resolveProjectId: async () => 101,
     resolveBranchTipSha: async () => null,
     ...overrides,
   });
@@ -308,6 +309,69 @@ describe("createGitLabService", () => {
       headRef: "feature/x",
     });
     expect(status).toBeNull();
+  });
+
+  it("selects the merge request from the checkout source project", async () => {
+    const otherForkMr = {
+      ...OPEN_MR,
+      iid: 15,
+      source_project_id: 202,
+      updated_at: "2026-06-26T19:00:00.000Z",
+    };
+    const { service, calls } = makeService((args) => {
+      if (args[1] === "list") return ok(JSON.stringify([otherForkMr, OPEN_MR]));
+      if (args[1] === "view" && args[2] === "14") return ok(JSON.stringify(OPEN_MR));
+      if (args[0] === "api") return ok("{}");
+      throw new Error(`unexpected call: ${args.join(" ")}`);
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "release/v0.4.0",
+    });
+
+    expect(status?.number).toBe(14);
+    expect(calls).toContainEqual(["mr", "view", "14", "-F", "json"]);
+    expect(calls).not.toContainEqual(["mr", "view", "15", "-F", "json"]);
+  });
+
+  it("does not attach a same-name merge request from another source project", async () => {
+    const otherForkMr = { ...OPEN_MR, source_project_id: 202 };
+    const { service, calls } = makeService((args) => {
+      if (args[1] === "list") return ok(JSON.stringify([otherForkMr]));
+      throw new Error(`unexpected call: ${args.join(" ")}`);
+    });
+
+    await expect(
+      service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "release/v0.4.0" }),
+    ).resolves.toBeNull();
+    expect(calls).toEqual([currentMrListArgs("release/v0.4.0")]);
+  });
+
+  it("resolves the checkout source project id from a nested GitLab remote", async () => {
+    const { service, calls } = makeService(
+      (args) => {
+        if (args[0] === "api" && args[1] === "projects/group%2Fsubgroup%2Fproject") {
+          return ok(JSON.stringify({ id: 101 }));
+        }
+        if (args[0] === "api" && args[1].endsWith("/approvals")) return ok("{}");
+        if (args[1] === "list") return ok(JSON.stringify([OPEN_MR]));
+        if (args[1] === "view") return ok(JSON.stringify(OPEN_MR));
+        throw new Error(`unexpected call: ${args.join(" ")}`);
+      },
+      {
+        resolveRemoteUrl: async () => "git@gitlab.example.com:group/subgroup/project.git",
+        resolveProjectId: undefined,
+      },
+    );
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "release/v0.4.0",
+    });
+
+    expect(status?.number).toBe(14);
+    expect(calls).toContainEqual(["api", "projects/group%2Fsubgroup%2Fproject"]);
   });
 
   it("selects a terminal merge request only when its head SHA matches the checkout", async () => {
