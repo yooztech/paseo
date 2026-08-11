@@ -3713,6 +3713,7 @@ export class DaemonClient {
         addAll: input.addAll,
       },
       responseType: "checkout_commit_response",
+      timeout: 120_000,
     });
   }
 

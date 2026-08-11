@@ -3727,6 +3727,37 @@ test("requests checkout pull via RPC", async () => {
   });
 });
 
+test("allows commit metadata generation to run for two minutes", async () => {
+  useHeartbeatClock();
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const responsePromise = client.checkoutCommit("/tmp/project", { addAll: true }, "req-commit");
+  let settled = false;
+  void responsePromise.catch(() => {
+    settled = true;
+  });
+
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(settled).toBe(false);
+
+  await vi.advanceTimersByTimeAsync(60_000);
+  await expect(responsePromise).rejects.toThrow("Timeout waiting for message (120000ms)");
+});
+
 test("renames a branch via RPC", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
