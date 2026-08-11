@@ -53,13 +53,13 @@ import {
   getRepositoryGraphHistory,
   getCommitFileDiff,
 } from "../../../utils/checkout-git.js";
-import { execCommand } from "../../../utils/spawn.js";
+import { runGitCommand } from "../../../utils/run-git-command.js";
 import { expandTilde } from "../../../utils/path.js";
 import { pullRequestHasAttachedCi } from "../../../services/ci-attach-wait.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
-const PR_CREATE_STATUS_POLL_INTERVAL_MS = 5_000;
-const PR_CREATE_STATUS_SETTLE_TIMEOUT_MS = 10_000;
+const PR_CREATE_STATUS_POLL_INTERVAL_MS = 1_000;
+const PR_CREATE_STATUS_SETTLE_TIMEOUT_MS = 2_000;
 
 function waitForPrCreateStatusPoll(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, PR_CREATE_STATUS_POLL_INTERVAL_MS));
@@ -664,7 +664,6 @@ export class CheckoutSession {
       // Branch is a git fact derived per-descriptor from each workspace's own
       // live git snapshot (id → cwd); the reconciliation pass re-persists the
       // `branch` field per workspace from its own cwd. No cwd → ids fan-out here.
-      // TODO(K10): PR-binding on branch rename is deferred — see plan K10.
 
       // Push a workspace_update immediately so the sidebar/header reflect
       // the new branch name without waiting for the background git watcher.
@@ -703,8 +702,9 @@ export class CheckoutSession {
       const message = branchLabel
         ? `${CheckoutSession.PASEO_STASH_PREFIX} ${branchLabel}`
         : `${CheckoutSession.PASEO_STASH_PREFIX} unnamed`;
-      await execCommand("git", ["stash", "push", "--include-untracked", "-m", message], {
+      await runGitCommand(["stash", "push", "--include-untracked", "-m", message], {
         cwd,
+        timeout: 120_000,
       });
       await this.gitMutation.notifyGitMutation(cwd, "stash-push");
       this.scheduleDiffRefresh(cwd);
@@ -725,8 +725,9 @@ export class CheckoutSession {
   ): Promise<void> {
     const { cwd, stashIndex, requestId } = msg;
     try {
-      await execCommand("git", ["stash", "pop", `stash@{${stashIndex}}`], {
+      await runGitCommand(["stash", "pop", `stash@{${stashIndex}}`], {
         cwd,
+        timeout: 120_000,
       });
       await this.gitMutation.notifyGitMutation(cwd, "stash-pop");
       this.scheduleDiffRefresh(cwd);

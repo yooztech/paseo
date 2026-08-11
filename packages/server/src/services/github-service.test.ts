@@ -777,6 +777,7 @@ describe("ForgeService", () => {
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
       now: () => now,
+      resolveOriginRepo: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 
@@ -807,6 +808,7 @@ describe("ForgeService", () => {
       ttlMs: 0,
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
+      resolveOriginRepo: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 
@@ -825,6 +827,7 @@ describe("ForgeService", () => {
         reason: "self-heal-github",
       }),
     ]);
+    await vi.advanceTimersByTimeAsync(0);
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
 
     subscription?.unsubscribe();
@@ -846,6 +849,7 @@ describe("ForgeService", () => {
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
       now: () => now,
+      resolveOriginRepo: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 
@@ -861,6 +865,7 @@ describe("ForgeService", () => {
 
     now = EXPECTED_GITHUB_SLOW_POLL_MS;
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS - EXPECTED_GITHUB_FAST_POLL_MS);
+    await vi.advanceTimersByTimeAsync(0);
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(2);
     expect(reads.map((read) => read.reason)).toEqual([undefined, "self-heal-github"]);
 
@@ -891,6 +896,7 @@ describe("ForgeService", () => {
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
       now: () => now,
+      resolveOriginRepo: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import Ajv, { type ErrorObject, type Options as AjvOptions } from "ajv";
+import { withTimeout } from "../../utils/promise-timeout.js";
 import type { AgentProvider, AgentSessionConfig } from "./agent-sdk-types.js";
 import type { AgentManager } from "./agent-manager.js";
 
@@ -78,6 +79,7 @@ export interface StructuredAgentGenerationOptions<T> {
   schema: z.ZodType<T> | JsonSchema;
   maxRetries?: number;
   schemaName?: string;
+  timeoutMs?: number;
 }
 
 export interface StructuredAgentGenerationWithFallbackOptions<T> {
@@ -93,6 +95,7 @@ export interface StructuredAgentGenerationWithFallbackOptions<T> {
   persistSession?: boolean;
   maxRetries?: number;
   schemaName?: string;
+  timeoutMs?: number;
   logger?: StructuredGenerationLogger;
   runner?: <TResult>(options: StructuredAgentGenerationOptions<TResult>) => Promise<TResult>;
 }
@@ -354,15 +357,30 @@ export async function getStructuredAgentResponse<T>(
 export async function generateStructuredAgentResponse<T>(
   options: StructuredAgentGenerationOptions<T>,
 ): Promise<T> {
-  const { manager, agentConfig, agentId, persistSession, prompt, schema, maxRetries, schemaName } =
-    options;
+  const {
+    manager,
+    agentConfig,
+    agentId,
+    persistSession,
+    prompt,
+    schema,
+    maxRetries,
+    schemaName,
+    timeoutMs,
+  } = options;
+  const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
   const agent = await manager.createAgent(agentConfig, agentId, {
     persistSession,
     workspaceId: undefined,
   });
   try {
     const caller: AgentCaller = async (nextPrompt) => {
-      const result = await manager.runAgent(agent.id, nextPrompt);
+      const remainingMs = deadline === undefined ? undefined : Math.max(0, deadline - Date.now());
+      const run = manager.runAgent(agent.id, nextPrompt);
+      const result =
+        remainingMs === undefined
+          ? await run
+          : await withTimeout(run, remainingMs, `Structured generation timed out (${timeoutMs}ms)`);
       if (typeof result.finalText === "string" && result.finalText.length > 0) {
         return result.finalText;
       }
@@ -395,6 +413,18 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+function waitBeforeDeadline<T>(
+  promise: Promise<T>,
+  deadline: number | undefined,
+  timeoutMs: number | undefined,
+): Promise<T> {
+  if (deadline === undefined) {
+    return promise;
+  }
+  const remainingMs = Math.max(0, deadline - Date.now());
+  return withTimeout(promise, remainingMs, `Structured generation timed out (${timeoutMs}ms)`);
+}
+
 export async function generateStructuredAgentResponseWithFallback<T>(
   options: StructuredAgentGenerationWithFallbackOptions<T>,
 ): Promise<T> {
@@ -408,6 +438,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
     persistSession,
     maxRetries,
     schemaName,
+    timeoutMs,
     logger,
     runner,
   } = options;
@@ -420,9 +451,25 @@ export async function generateStructuredAgentResponseWithFallback<T>(
     runner ??
     ((input: StructuredAgentGenerationOptions<T>) => generateStructuredAgentResponse<T>(input));
   const attempts: StructuredGenerationAttempt[] = [];
+  const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
 
   for (const candidate of providers) {
-    const availabilityEntry = await manager.getProviderAvailability(candidate.provider);
+    let availabilityEntry;
+    try {
+      availabilityEntry = await waitBeforeDeadline(
+        manager.getProviderAvailability(candidate.provider),
+        deadline,
+        timeoutMs,
+      );
+    } catch (error) {
+      attempts.push({
+        provider: candidate.provider,
+        model: candidate.model ?? null,
+        available: false,
+        error: errorMessage(error),
+      });
+      break;
+    }
     if (!availabilityEntry.available) {
       const reason = availabilityEntry.error ?? "unavailable";
       attempts.push({
@@ -445,6 +492,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
         schema,
         maxRetries,
         schemaName,
+        ...(deadline === undefined ? {} : { timeoutMs: Math.max(0, deadline - Date.now()) }),
         persistSession,
         agentConfig: {
           ...agentConfigOverrides,

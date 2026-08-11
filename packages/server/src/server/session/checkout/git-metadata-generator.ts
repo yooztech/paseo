@@ -76,6 +76,7 @@ const PULL_REQUEST_FALLBACK: PullRequestText = {
 
 const MAX_COMMIT_PATCH_CHARS = 120_000;
 const MAX_PULL_REQUEST_PATCH_CHARS = 200_000;
+const METADATA_GENERATION_TIMEOUT_MS = 30_000;
 
 interface PromptForDiffInput {
   cwd: string;
@@ -196,6 +197,7 @@ export function createAgentStructuredTextGeneration(deps: {
         schema,
         schemaName,
         maxRetries: 2,
+        timeoutMs: METADATA_GENERATION_TIMEOUT_MS,
         providers,
         persistSession: false,
         agentConfigOverrides: {

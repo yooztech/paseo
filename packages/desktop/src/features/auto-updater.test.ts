@@ -5,23 +5,37 @@ import { UUID } from "builder-util-runtime";
 import { autoUpdater } from "electron-updater";
 import { describe, expect, it, vi } from "vitest";
 
+const { autoUpdaterMock } = vi.hoisted(() => {
+  const handlers = new Map<string, (value: unknown) => void>();
+  return {
+    autoUpdaterMock: {
+      handlers,
+      logger: {
+        debug: vi.fn(),
+        error: vi.fn((message: unknown) => console.error(message)),
+        info: vi.fn(),
+        warn: vi.fn(),
+      },
+      checkForUpdates: vi.fn(),
+      downloadUpdate: vi.fn(),
+      on: vi.fn((event: string, handler: (value: unknown) => void) => {
+        handlers.set(event, handler);
+      }),
+      quitAndInstall: vi.fn(),
+    },
+  };
+});
+
 vi.mock("electron", () => ({
   app: {
     getPath: vi.fn(),
+    getVersion: vi.fn(() => "1.2.3"),
+    isPackaged: true,
   },
 }));
 
 vi.mock("electron-updater", () => ({
-  autoUpdater: {
-    checkForUpdates: vi.fn(),
-  },
-}));
-
-vi.mock("electron-log/main", () => ({
-  default: {
-    error: vi.fn(),
-    info: vi.fn(),
-  },
+  autoUpdater: autoUpdaterMock,
 }));
 
 import {
@@ -29,6 +43,7 @@ import {
   ElectronAppUpdateRuntime,
   isMissingUpdateManifestError,
   resolveElectronUpdateChannel,
+  checkForAppUpdate,
   resolveStagingUserId,
   rolloutManifestSchema,
   shouldAdmitToRollout,
@@ -75,6 +90,58 @@ describe("resolveElectronUpdateChannel", () => {
   it("maps upstream builds to the selected release channel", () => {
     expect(resolveElectronUpdateChannel("0.2.5", "stable")).toBe("latest");
     expect(resolveElectronUpdateChannel("0.2.6-beta.1", "beta")).toBe("beta");
+  });
+});
+
+describe("checkForAppUpdate", () => {
+  it("treats an unpublished channel manifest as an unavailable update", async () => {
+    const error = Object.assign(new Error("Cannot find latest-mac.yml"), {
+      code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND",
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    autoUpdaterMock.checkForUpdates.mockImplementationOnce(async () => {
+      autoUpdaterMock.logger.error(error);
+      autoUpdaterMock.handlers.get("error")?.(error);
+      throw error;
+    });
+
+    const result = await checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+
+    expect(result).toEqual({
+      hasUpdate: false,
+      readyToInstall: false,
+      currentVersion: "1.2.3",
+      latestVersion: "1.2.3",
+      body: null,
+      date: null,
+      errorMessage: null,
+    });
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("keeps genuine updater failures visible", async () => {
+    const error = new Error("network down");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    autoUpdaterMock.checkForUpdates.mockImplementationOnce(async () => {
+      autoUpdaterMock.logger.error(error);
+      autoUpdaterMock.handlers.get("error")?.(error);
+      throw error;
+    });
+
+    const result = await checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+
+    expect(result.errorMessage).toBe("network down");
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });
 
