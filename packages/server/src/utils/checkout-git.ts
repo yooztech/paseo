@@ -1620,7 +1620,7 @@ async function getAheadBehind(
   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
     return null;
   }
-  const comparisonBaseRef = await resolveMostAheadBaseRef(cwd, normalizedBaseRef);
+  const comparisonBaseRef = await resolveMostAheadBaseRef(cwd, baseRef);
   if (!comparisonBaseRef) {
     return null;
   }
@@ -1650,21 +1650,30 @@ async function getAheadBehindForComparisonRef(
   comparisonRef: string,
   currentBranch: string,
   context?: CheckoutContext,
-): Promise<AheadBehind | null> {
+): Promise<RefComparison | null> {
   if (!comparisonRef || !currentBranch || comparisonRef === currentBranch) {
     return null;
   }
-  const { stdout } = await runGitCommand(
-    ["rev-list", "--left-right", "--count", `${comparisonRef}...${currentBranch}`],
-    { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
-  );
+  const [{ stdout }, diffResult] = await Promise.all([
+    runGitCommand(["rev-list", "--left-right", "--count", `${comparisonRef}...${currentBranch}`], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      logger: context?.logger,
+    }),
+    runGitCommand(["diff", "--quiet", comparisonRef, currentBranch], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      acceptExitCodes: [0, 1],
+      logger: context?.logger,
+    }),
+  ]);
   const [behindRaw, aheadRaw] = stdout.trim().split(/\s+/);
   const behind = Number.parseInt(behindRaw ?? "0", 10);
   const ahead = Number.parseInt(aheadRaw ?? "0", 10);
   if (Number.isNaN(behind) || Number.isNaN(ahead)) {
     return null;
   }
-  return { ahead, behind };
+  return { ahead, behind, hasChanges: diffResult.exitCode === 1 };
 }
 
 async function getUpstreamStatus(
@@ -3046,11 +3055,22 @@ export async function getCheckoutRefDerivedState(
 
   let aheadBehind = current.aheadBehind;
   let diffStat = current.diffStat;
+  const normalizedComparison = comparisonRef ? normalizeRemoteTrackingRef(comparisonRef) : null;
+  const normalizedUpstream = upstreamRef ? normalizeRemoteTrackingRef(upstreamRef) : null;
+  const sharedComparisonRef = getSharedMovedComparisonRef({
+    baseMoved,
+    upstreamMoved,
+    comparisonRef,
+    normalizedComparison,
+    normalizedUpstream,
+  });
   if (baseMoved && currentBranch && facts.resolvedBaseRef) {
-    aheadBehind = await getAheadBehind(cwd, facts.resolvedBaseRef, currentBranch, {
-      ...context,
-      facts,
-    });
+    aheadBehind = sharedComparisonRef
+      ? await getAheadBehindForComparisonRef(cwd, sharedComparisonRef, currentBranch, context)
+      : await getAheadBehind(cwd, facts.resolvedBaseRef, currentBranch, {
+          ...context,
+          facts,
+        });
   }
   if (baseMoved || (upstreamMoved && currentBranch === normalizedResolvedBase)) {
     diffStat = await getCheckoutShortstatUncached(
@@ -3062,21 +3082,41 @@ export async function getCheckoutRefDerivedState(
 
   let upstreamStatus = facts.upstreamStatus;
   if (upstreamMoved && currentBranch && upstreamRef) {
-    const normalizedUpstream = normalizeRemoteTrackingRef(upstreamRef);
-    const normalizedComparison = comparisonRef ? normalizeRemoteTrackingRef(comparisonRef) : null;
-    const upstreamAheadBehind =
-      baseMoved && normalizedComparison === normalizedUpstream
-        ? aheadBehind
-        : await getAheadBehindForComparisonRef(cwd, upstreamRef, currentBranch, context);
+    const upstreamComparison = sharedComparisonRef
+      ? aheadBehind
+      : await getAheadBehindForComparisonRef(cwd, upstreamRef, currentBranch, context);
+    const upstreamAheadBehind = upstreamComparison
+      ? { ahead: upstreamComparison.ahead, behind: upstreamComparison.behind }
+      : null;
     upstreamStatus = upstreamAheadBehind
       ? {
-          ref: facts.upstreamStatus?.ref ?? `refs/remotes/${normalizedUpstream}`,
+          ref:
+            facts.upstreamStatus?.ref ?? `refs/remotes/${normalizeRemoteTrackingRef(upstreamRef)}`,
           aheadBehind: upstreamAheadBehind,
         }
       : null;
   }
 
   return { aheadBehind, diffStat, upstreamStatus };
+}
+
+function getSharedMovedComparisonRef(input: {
+  baseMoved: boolean;
+  upstreamMoved: boolean;
+  comparisonRef: string | null;
+  normalizedComparison: string | null;
+  normalizedUpstream: string | null;
+}): string | null {
+  if (
+    input.baseMoved &&
+    input.upstreamMoved &&
+    input.comparisonRef !== null &&
+    input.normalizedComparison !== null &&
+    input.normalizedComparison === input.normalizedUpstream
+  ) {
+    return input.comparisonRef;
+  }
+  return null;
 }
 
 export interface CheckoutWorktreeState {

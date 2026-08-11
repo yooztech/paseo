@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 import {
+  generateStructuredAgentResponse,
   getStructuredAgentResponse,
   generateStructuredAgentResponseWithFallback,
   StructuredAgentFallbackError,
@@ -277,5 +278,28 @@ describe("generateStructuredAgentResponseWithFallback", () => {
         },
       }),
     ).rejects.toBeInstanceOf(StructuredAgentFallbackError);
+  });
+
+  it("times out a provider run and closes its temporary agent", async () => {
+    const closeAgent = vi.fn(async () => undefined);
+    const deleteAgentState = vi.fn(async () => undefined);
+    const manager = {
+      createAgent: async () => ({ id: "temporary-agent" }),
+      runAgent: async () => await new Promise(() => undefined),
+      closeAgent,
+      deleteAgentState,
+    } as unknown as AgentManager;
+
+    await expect(
+      generateStructuredAgentResponse({
+        manager,
+        agentConfig: { provider: "claude", cwd: "/tmp/project" },
+        prompt: "Return JSON",
+        schema,
+        timeoutMs: 1,
+      }),
+    ).rejects.toThrow("Structured generation timed out (1ms)");
+    expect(closeAgent).toHaveBeenCalledWith("temporary-agent");
+    expect(deleteAgentState).toHaveBeenCalledWith("temporary-agent");
   });
 });

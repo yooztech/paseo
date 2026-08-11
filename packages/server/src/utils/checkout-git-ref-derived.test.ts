@@ -125,13 +125,14 @@ test("one comparison refresh updates a shared base and upstream ref", async () =
   await waitForGitCommandMetricsIdle({ quietMs: 50, timeoutMs: 5_000 });
   const metrics = stopGitCommandMetrics();
 
-  expect(result.aheadBehind).toEqual({ ahead: 1, behind: 0 });
+  expect(result.aheadBehind).toEqual({ ahead: 1, behind: 0, hasChanges: true });
   expect(result.upstreamStatus).toEqual({
     ref: "refs/remotes/origin/main",
     aheadBehind: { ahead: 1, behind: 0 },
   });
   expect(result.diffStat).toEqual({ additions: 1, deletions: 0 });
   expect(metrics.submissions.map((command) => command.args[0]).sort()).toEqual([
+    "diff",
     "diff",
     "ls-files",
     "merge-base",

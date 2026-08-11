@@ -250,11 +250,14 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
   ]);
 });
 
-test("non-required Docker and Nix workflows avoid runners with workflow path filters", () => {
+test("non-required Docker and Nix workflows avoid runners with path filters or manual dispatch", () => {
   for (const workflowPath of [dockerWorkflowPath, nixWorkflowPath]) {
     const source = readFileSync(workflowPath, "utf8");
     const trigger = source.split("jobs:", 1)[0];
-    assert.match(trigger, /^\s+paths:\s*$/m);
+    const hasPathFilter = /^\s+paths:\s*$/m.test(trigger);
+    const isManualOnly =
+      /^\s+workflow_dispatch:\s*$/m.test(trigger) && !/^\s+pull_request:\s*$/m.test(trigger);
+    assert.ok(hasPathFilter || isManualOnly, "workflow must use path filters or be manual-only");
     assert.doesNotMatch(source, /dorny\/paths-filter/);
   }
 });

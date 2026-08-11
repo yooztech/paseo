@@ -612,6 +612,7 @@ interface GitHubServiceDependencies {
   runner: GitHubCommandRunner;
   resolveGhPath: () => Promise<string | null>;
   now: () => number;
+  resolveOriginRepo: (cwd: string) => Promise<string | null>;
   /**
    * GitHub Enterprise host for a workspace, or null for github.com (where `gh`
    * already defaults correctly). Used to set GH_HOST so every `gh api`/`graphql`
@@ -695,6 +696,7 @@ interface CreateGitHubServiceOptions {
   runner?: GitHubCommandRunner;
   resolveGhPath?: () => Promise<string | null>;
   now?: () => number;
+  resolveOriginRepo?: (cwd: string) => Promise<string | null>;
   resolveRepoHost?: (cwd: string) => Promise<string | null>;
 }
 
@@ -742,6 +744,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     runner: options.runner ?? runGhCommand,
     resolveGhPath: options.resolveGhPath ?? resolveGhPath,
     now: options.now ?? Date.now,
+    resolveOriginRepo: options.resolveOriginRepo ?? resolveGitHubSlugFromOrigin,
     resolveRepoHost: options.resolveRepoHost ?? resolveGitHubEnterpriseHost,
   };
   // A resolved enterprise host is cached permanently; a null resolution (no
@@ -1145,6 +1148,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
             headSha: input.headSha,
             headRepositoryOwner: input.headRepositoryOwner,
             run,
+            resolveOriginRepo: deps.resolveOriginRepo,
           });
           return addCurrentPullRequestGithubFacts({ cwd: input.cwd, status, run });
         },
@@ -1963,8 +1967,9 @@ async function resolveCurrentPullRequestView(options: {
   headSha?: string;
   headRepositoryOwner?: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+  resolveOriginRepo: (cwd: string) => Promise<string | null>;
 }): Promise<CurrentPullRequestStatus | null> {
-  const originRepo = await resolveGitHubSlugFromOrigin(options.cwd);
+  const originRepo = await options.resolveOriginRepo(options.cwd);
   const viewCandidate = await tryCurrentPullRequestView({
     ...options,
     repo: originRepo ?? undefined,

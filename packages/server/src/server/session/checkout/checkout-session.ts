@@ -58,8 +58,8 @@ import { expandTilde } from "../../../utils/path.js";
 import { pullRequestHasAttachedCi } from "../../../services/ci-attach-wait.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
-const PR_CREATE_STATUS_POLL_INTERVAL_MS = 5_000;
-const PR_CREATE_STATUS_SETTLE_TIMEOUT_MS = 10_000;
+const PR_CREATE_STATUS_POLL_INTERVAL_MS = 1_000;
+const PR_CREATE_STATUS_SETTLE_TIMEOUT_MS = 2_000;
 
 function waitForPrCreateStatusPoll(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, PR_CREATE_STATUS_POLL_INTERVAL_MS));
