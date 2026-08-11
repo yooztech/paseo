@@ -184,10 +184,11 @@ Run this only from a clean local `main` whose `HEAD` matches `origin/main`:
 node scripts/release-fork-daemon.mjs
 ```
 
-The command fetches `origin/main` and tags the current package version as the
-next `vX.Y.Z-fork.N`, builds the server, pushes only that tag, then restarts the
-user `paseo.service`. It does not change versions, publish npm packages, or push
-a branch. The fork tag starts desktop publication and the iOS TestFlight workflow.
+The command fetches `origin/main`, installs the exact dependency tree from
+`package-lock.json`, and tags the current package version as the next
+`vX.Y.Z-fork.N`. It then builds the server, pushes only that tag, and restarts the
+user `paseo.service`. The command does not change versions, publish npm packages,
+or push a branch. The fork tag starts desktop publication and the iOS TestFlight workflow.
 
 ## Desktop release publication
 

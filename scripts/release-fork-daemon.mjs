@@ -30,6 +30,9 @@ if (head !== originMain) {
   throw new Error("HEAD must match origin/main before creating a fork release.");
 }
 
+console.log("Installing locked release dependencies...");
+run("npm", ["ci"]);
+
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const prefix = `v${version}-fork.`;
 const numbers = capture("git", ["tag", "--list", `${prefix}*`])
