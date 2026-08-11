@@ -31,7 +31,7 @@ if (head !== originMain) {
 }
 
 console.log("Installing locked release dependencies...");
-run("npm", ["ci"]);
+run("npm", ["ci", "--loglevel=error", "--no-audit", "--no-fund"]);
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const prefix = `v${version}-fork.`;

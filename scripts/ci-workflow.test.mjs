@@ -295,6 +295,7 @@ test("fork daemon and app releases use separate commands and tags", () => {
   assert.match(daemonScript, /const tag = `\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}`/);
   assert.match(daemonScript, /build:server/);
   assert.match(daemonScript, /restart/);
+  assert.match(daemonScript, /"ci", "--loglevel=error", "--no-audit", "--no-fund"/);
 
   const appScript = readFileSync(appReleaseScriptPath, "utf8");
   assert.match(appScript, /const tag = `\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}-app`/);
