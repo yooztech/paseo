@@ -7,6 +7,7 @@ const repoRoot = new URL("../", import.meta.url);
 const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
 const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
 const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
+const websiteWorkflowPath = new URL(".github/workflows/deploy-website.yml", repoRoot);
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
@@ -250,8 +251,8 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
   ]);
 });
 
-test("non-required Docker and Nix workflows avoid runners with path filters or manual dispatch", () => {
-  for (const workflowPath of [dockerWorkflowPath, nixWorkflowPath]) {
+test("non-required publish workflows avoid runners with path filters or manual dispatch", () => {
+  for (const workflowPath of [dockerWorkflowPath, nixWorkflowPath, websiteWorkflowPath]) {
     const source = readFileSync(workflowPath, "utf8");
     const trigger = source.split("jobs:", 1)[0];
     const hasPathFilter = /^\s+paths:\s*$/m.test(trigger);

@@ -1,18 +1,7 @@
 name: Deploy Website
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "CHANGELOG.md"
-      - "public-docs/**"
-      - "packages/website/**"
-      - "package.json"
-      - "package-lock.json"
-      - "patches/**"
-      - ".github/workflows/deploy-website.yml"
-  release:
-    types: [published]
+  # YOOZ DOWNSTREAM(sync): marketing website deployment is not part of fork CI or releases.
   workflow_dispatch:
 
 jobs:
