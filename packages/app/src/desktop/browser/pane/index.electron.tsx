@@ -884,7 +884,10 @@ export function BrowserPane({
         applyAnnotationMarkers(webview, markers);
       }
     };
-    const handleWebviewFocus = () => {
+    const handleWebviewMouseDown = () => {
+      if (!isPresentedRef.current) {
+        return;
+      }
       onFocusPane?.();
       webview.focus?.();
       const focusBrowser = getDesktopHost()?.browser?.focus;
@@ -904,8 +907,7 @@ export function BrowserPane({
     webview.addEventListener("page-favicon-updated", handleFaviconUpdated);
     webview.addEventListener("did-fail-load", handleLoadFailed);
     webview.addEventListener("dom-ready", handleDomReady);
-    webview.addEventListener("focus", handleWebviewFocus);
-    webview.addEventListener("mousedown", handleWebviewFocus);
+    webview.addEventListener("mousedown", handleWebviewMouseDown);
 
     if (isPresentedRef.current) {
       rememberResolvedBrowserWebviewSize(browserId, webview);
@@ -930,8 +932,7 @@ export function BrowserPane({
       webview.removeEventListener("page-favicon-updated", handleFaviconUpdated);
       webview.removeEventListener("did-fail-load", handleLoadFailed);
       webview.removeEventListener("dom-ready", handleDomReady);
-      webview.removeEventListener("focus", handleWebviewFocus);
-      webview.removeEventListener("mousedown", handleWebviewFocus);
+      webview.removeEventListener("mousedown", handleWebviewMouseDown);
       const browserStillExists = Boolean(
         useBrowserStore.getState().browsersById[browserIdRef.current],
       );

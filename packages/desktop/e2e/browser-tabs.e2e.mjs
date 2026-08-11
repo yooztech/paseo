@@ -517,6 +517,18 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId 
 
   await originalDeck.getByTestId(`workspace-tab-agent_${callerAgentId}`).click();
   await page.waitForTimeout(500);
+  const composer = page.locator("textarea[data-composer-input]").filter({ visible: true }).first();
+  await composer.focus();
+  const backgroundSnapshot = await callBrowserTool(client, "browser_snapshot", { browserId });
+  const backgroundInputRef = backgroundSnapshot.snapshot.match(
+    /textbox "Typing target" \[ref=(@e\d+)\]/,
+  )?.[1];
+  assert(backgroundInputRef, `browser_snapshot did not expose the typing target input`);
+  await callBrowserTool(client, "browser_click", { browserId, ref: backgroundInputRef });
+  assert(
+    await composer.evaluate((element) => document.activeElement === element),
+    "Background browser automation moved focus away from the composer",
+  );
   try {
     await callBrowserTool(client, "browser_screenshot", { browserId });
   } catch (error) {
@@ -694,6 +706,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId 
     viewport: "passed",
     guestFocus: "passed",
     overlayPlane: "passed",
+    backgroundFocus: "passed",
     inactiveCapture: "passed",
     list: "passed",
     snapshot: "passed",
@@ -799,7 +812,7 @@ async function main() {
     });
     writeJson(path.join(artifactDir, "result.json"), report);
     console.log(
-      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, inactive capture, focus continuity, list, snapshot, click passed.`,
+      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, background focus, inactive capture, focus continuity, list, snapshot, click passed.`,
     );
   } catch (error) {
     console.error(`Browser desktop browser E2E failed. Artifacts: ${artifactDir}`);
