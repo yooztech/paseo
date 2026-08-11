@@ -30,6 +30,9 @@
     },
     "release-fork-daemon": {
       "command": "node ./scripts/release-fork-daemon.mjs"
+    },
+    "release-fork-app": {
+      "command": "node ./scripts/release-fork-app.mjs"
     }
   }
 }

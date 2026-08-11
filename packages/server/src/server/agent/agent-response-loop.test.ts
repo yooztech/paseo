@@ -255,6 +255,39 @@ describe("generateStructuredAgentResponseWithFallback", () => {
     expect(manager.checkedProviders).toEqual(["claude", "codex"]);
   });
 
+  it("gives each fallback provider its own timeout budget", async () => {
+    const timeoutBudgets: Array<number | undefined> = [];
+    const manager = createManager([
+      { provider: "claude", available: true, error: null },
+      { provider: "codex", available: true, error: null },
+    ]);
+
+    const result = await generateStructuredAgentResponseWithFallback({
+      manager,
+      cwd: "/tmp/project",
+      prompt: "Return JSON",
+      schema,
+      timeoutMs: 50,
+      providers: [
+        { provider: "claude", model: "haiku" },
+        { provider: "codex", model: "gpt-5.4-mini" },
+      ],
+      runner: async (options) => {
+        timeoutBudgets.push(options.timeoutMs);
+        if (options.agentConfig.provider === "claude") {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          throw new Error("Structured generation timed out (50ms)");
+        }
+        return { summary: "ok" };
+      },
+    });
+
+    expect(result).toEqual({ summary: "ok" });
+    expect(timeoutBudgets).toHaveLength(2);
+    expect(timeoutBudgets[1]).toBeGreaterThan(0);
+    expect(manager.checkedProviders).toEqual(["claude", "codex"]);
+  });
+
   it("throws a fallback error when all providers are unavailable or fail", async () => {
     const manager = createManager([
       { provider: "claude", available: false, error: "missing auth" },

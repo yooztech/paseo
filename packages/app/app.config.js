@@ -73,7 +73,7 @@ function getNativeBuildVersionCode(version) {
 
 function getReleaseBuildVersionCode(version, releaseTag) {
   const baseVersionCode = getNativeBuildVersionCode(version);
-  const forkMatch = releaseTag?.match(/^v\d+\.\d+\.\d+-fork\.(\d+)$/);
+  const forkMatch = releaseTag?.match(/^v\d+\.\d+\.\d+-fork\.(\d+)(?:-app)?$/);
   if (!forkMatch) {
     return baseVersionCode;
   }

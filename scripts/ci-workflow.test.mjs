@@ -8,6 +8,13 @@ const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
 const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
 const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
 const websiteWorkflowPath = new URL(".github/workflows/deploy-website.yml", repoRoot);
+const desktopReleaseWorkflowPath = new URL(".github/workflows/desktop-release.yml", repoRoot);
+const releaseNotesWorkflowPath = new URL(".github/workflows/release-notes-sync.yml", repoRoot);
+const easReleaseWorkflowPath = new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot);
+const appConfigPath = new URL("packages/app/app.config.js", repoRoot);
+const packagePath = new URL("package.json", repoRoot);
+const daemonReleaseScriptPath = new URL("scripts/release-fork-daemon.mjs", repoRoot);
+const appReleaseScriptPath = new URL("scripts/release-fork-app.mjs", repoRoot);
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
@@ -261,4 +268,35 @@ test("non-required publish workflows avoid runners with path filters or manual d
     assert.ok(hasPathFilter || isManualOnly, "workflow must use path filters or be manual-only");
     assert.doesNotMatch(source, /dorny\/paths-filter/);
   }
+});
+
+test("EAS iOS releases require a dedicated app tag", () => {
+  const workflow = readFileSync(easReleaseWorkflowPath, "utf8");
+  const trigger = workflow.split("jobs:", 1)[0];
+  assert.match(trigger, /^\s+- "v\*-fork\.\*-app"$/m);
+  assert.doesNotMatch(trigger, /^\s+- "v\*-fork\.\*"$/m);
+
+  const appConfig = readFileSync(appConfigPath, "utf8");
+  assert.ok(appConfig.includes("-fork\\.(\\d+)(?:-app)?$"));
+
+  for (const workflowPath of [desktopReleaseWorkflowPath, releaseNotesWorkflowPath]) {
+    const source = readFileSync(workflowPath, "utf8");
+    const workflowTrigger = source.split("jobs:", 1)[0];
+    assert.match(workflowTrigger, /^\s+- "!v\*-fork\.\*-app"$/m);
+  }
+});
+
+test("fork daemon and app releases use separate commands and tags", () => {
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  assert.equal(packageJson.scripts["release:fork:daemon"], "node scripts/release-fork-daemon.mjs");
+  assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
+
+  const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
+  assert.match(daemonScript, /const tag = `\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}`/);
+  assert.match(daemonScript, /build:server/);
+  assert.match(daemonScript, /restart/);
+
+  const appScript = readFileSync(appReleaseScriptPath, "utf8");
+  assert.match(appScript, /const tag = `\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}-app`/);
+  assert.doesNotMatch(appScript, /build:server|systemctl|restart/);
 });

@@ -76,7 +76,7 @@ const PULL_REQUEST_FALLBACK: PullRequestText = {
 
 const MAX_COMMIT_PATCH_CHARS = 120_000;
 const MAX_PULL_REQUEST_PATCH_CHARS = 200_000;
-const METADATA_GENERATION_TIMEOUT_MS = 30_000;
+const METADATA_GENERATION_TIMEOUT_MS = 120_000;
 
 interface PromptForDiffInput {
   cwd: string;

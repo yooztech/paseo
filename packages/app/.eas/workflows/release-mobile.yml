@@ -3,13 +3,13 @@ name: Release Mobile
 on:
   push:
     tags:
-      - "v*-fork.*"
+      - "v*-fork.*-app"
   workflow_dispatch:
     inputs:
       release_tag:
         type: string
         required: true
-        description: "Fork release tag"
+        description: "App release tag (vX.Y.Z-fork.N-app)"
 
 jobs:
   build_ios:

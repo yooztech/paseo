@@ -21,7 +21,7 @@ EAS profiles: `development`, `production`, and `production-apk` in `packages/app
 major * 1_000_000 + minor * 1_000 + patch
 ```
 
-Without a fork release tag, prerelease metadata is ignored, so `0.1.102-beta.1` and `0.1.102` both produce `1102`. When passed a fork release tag, EAS and the manual GitHub APK workflow derive `base version code * 1000 + fork number` for both Android and iOS; `v0.2.5-fork.1` therefore uses `versionCode` and `buildNumber` `2005001`.
+Without a fork release tag, prerelease metadata is ignored, so `0.1.102-beta.1` and `0.1.102` both produce `1102`. When passed a fork release tag, EAS and the manual GitHub APK workflow derive `base version code * 1000 + fork number` for both Android and iOS; `v0.2.5-fork.1-app` therefore uses `versionCode` and `buildNumber` `2005001`.
 
 The formula reserves three digits each for minor and patch. If either reaches `1000`, change the formula before cutting that release.
 
@@ -157,9 +157,11 @@ adb exec-out screencap -p > screenshot.png
 
 ## Cloud build + submit (EAS)
 
-Fork tag pushes like `v0.2.5-fork.3` trigger:
+Only app tag pushes like `v0.2.5-fork.3-app` trigger:
 
 - The EAS GitHub app on Expo servers, using `packages/app/.eas/workflows/release-mobile.yml`, for an iOS production build and TestFlight upload.
+
+Ordinary `vX.Y.Z-fork.N` daemon release tags do not consume an EAS build. Run `npm run release:fork:app` only when the commit needs an iOS build; it allocates the next fork number and appends `-app`.
 
 iOS stops at TestFlight. Submit it for App Store review separately after testing.
 

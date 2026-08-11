@@ -451,9 +451,9 @@ export async function generateStructuredAgentResponseWithFallback<T>(
     runner ??
     ((input: StructuredAgentGenerationOptions<T>) => generateStructuredAgentResponse<T>(input));
   const attempts: StructuredGenerationAttempt[] = [];
-  const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
 
   for (const candidate of providers) {
+    const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
     let availabilityEntry;
     try {
       availabilityEntry = await waitBeforeDeadline(
@@ -468,7 +468,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
         available: false,
         error: errorMessage(error),
       });
-      break;
+      continue;
     }
     if (!availabilityEntry.available) {
       const reason = availabilityEntry.error ?? "unavailable";
