@@ -71,18 +71,22 @@ export async function invalidateCheckoutGitQueriesForClient(
       queryKey: checkoutCommitsQueryKey(identity.serverId, identity.cwd),
     }),
     queryClient.invalidateQueries({
-      queryKey: repositoryGraphQueryKey(identity.serverId, identity.cwd),
-    }),
-    queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate(prPaneTimelineQueryKind, identity),
     }),
     queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate(prPanePipelineQueryKind, identity),
     }),
+  ]);
+
+  // Fork-only views should refresh after a mutation without extending the upstream action wait.
+  void Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: repositoryGraphQueryKey(identity.serverId, identity.cwd),
+    }),
     queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate(branchCiPipelineQueryKind, identity),
     }),
-  ]);
+  ]).catch(() => undefined);
 }
 
 // checkoutDiff is excluded: diff queries are subscription-fed (queryFn: skipToken) and
