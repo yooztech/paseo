@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+      - "!v*-fork.*"
+      - "desktop-v*-fork.*"
       - "!v*-fork.*-app"
       - "desktop-v*"
       - "desktop-macos-v*"

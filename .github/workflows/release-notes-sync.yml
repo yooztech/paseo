@@ -5,6 +5,7 @@ on:
     tags:
       - "v*"
       - "!v*-fork.*-app"
+      - "desktop-v*-fork.*"
     branches:
       - main
     paths:

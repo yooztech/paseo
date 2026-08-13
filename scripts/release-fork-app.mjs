@@ -32,10 +32,16 @@ if (head !== originMain) {
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const prefix = `v${version}-fork.`;
-const numbers = capture("git", ["tag", "--list", `${prefix}*`])
+const numbers = capture("git", ["tag", "--list", `*${prefix}*`])
   .split("\n")
   .filter(Boolean)
-  .map((tag) => tag.match(new RegExp(`^${prefix.replaceAll(".", "\\.")}(\\d+)(?:-app)?$`)))
+  .map((tag) =>
+    tag.match(
+      new RegExp(
+        `^(?:desktop(?:-(?:windows|linux|macos))?-)?${prefix.replaceAll(".", "\\.")}(\\d+)(?:-app)?$`,
+      ),
+    ),
+  )
   .filter(Boolean)
   .map((match) => Number(match[1]));
 const tag = `${prefix}${Math.max(0, ...numbers) + 1}-app`;

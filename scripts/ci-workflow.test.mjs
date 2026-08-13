@@ -14,6 +14,7 @@ const easReleaseWorkflowPath = new URL("packages/app/.eas/workflows/release-mobi
 const appConfigPath = new URL("packages/app/app.config.js", repoRoot);
 const packagePath = new URL("package.json", repoRoot);
 const daemonReleaseScriptPath = new URL("scripts/release-fork-daemon.mjs", repoRoot);
+const desktopReleaseScriptPath = new URL("scripts/release-fork-desktop.mjs", repoRoot);
 const appReleaseScriptPath = new URL("scripts/release-fork-app.mjs", repoRoot);
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
@@ -284,11 +285,22 @@ test("EAS iOS releases require a dedicated app tag", () => {
     const workflowTrigger = source.split("jobs:", 1)[0];
     assert.match(workflowTrigger, /^\s+- "!v\*-fork\.\*-app"$/m);
   }
+
+  const desktopTrigger = readFileSync(desktopReleaseWorkflowPath, "utf8").split("jobs:", 1)[0];
+  assert.match(desktopTrigger, /^\s+- "!v\*-fork\.\*"$/m);
+  assert.match(desktopTrigger, /^\s+- "desktop-v\*-fork\.\*"$/m);
+
+  const releaseNotesTrigger = readFileSync(releaseNotesWorkflowPath, "utf8").split("jobs:", 1)[0];
+  assert.match(releaseNotesTrigger, /^\s+- "desktop-v\*-fork\.\*"$/m);
 });
 
-test("fork daemon and app releases use separate commands and tags", () => {
+test("fork daemon, desktop, and app releases use separate commands and tags", () => {
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
   assert.equal(packageJson.scripts["release:fork:daemon"], "node scripts/release-fork-daemon.mjs");
+  assert.equal(
+    packageJson.scripts["release:fork:desktop"],
+    "node scripts/release-fork-desktop.mjs",
+  );
   assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
 
   const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
@@ -296,6 +308,13 @@ test("fork daemon and app releases use separate commands and tags", () => {
   assert.match(daemonScript, /build:server/);
   assert.match(daemonScript, /restart/);
   assert.match(daemonScript, /"ci", "--loglevel=error", "--no-audit", "--no-fund"/);
+
+  const desktopScript = readFileSync(desktopReleaseScriptPath, "utf8");
+  assert.match(
+    desktopScript,
+    /const tag = `desktop-\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}`/,
+  );
+  assert.doesNotMatch(desktopScript, /build:server|systemctl|restart/);
 
   const appScript = readFileSync(appReleaseScriptPath, "utf8");
   assert.match(appScript, /const tag = `\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}-app`/);

@@ -67,10 +67,10 @@ Upstream maintains two npm release paths:
 1. **Direct stable release**: you are ready to ship the current `main` commit to everyone immediately.
 2. **Beta flow**: release candidates on the `beta` channel. Each beta carries its own changelog entry, publishes npm only on the explicit `beta` dist-tag, and stays behind the Stable/Beta switch on `/download`.
 
-The fork has a separate daemon release channel. It does not publish npm packages
-or submit Android or iOS store releases: it pushes an incrementing
-`vX.Y.Z-fork.N` tag for the current package version. An iOS build is opt-in via
-a separate `vX.Y.Z-fork.N-app` tag with its own fork number.
+The fork has separate daemon, desktop, and iOS release channels. They do not
+publish npm packages: daemon releases use `vX.Y.Z-fork.N`, desktop releases use
+`desktop-vX.Y.Z-fork.N`, and iOS releases use `vX.Y.Z-fork.N-app`. All three
+share one incrementing fork-number sequence.
 
 Paseo has one linear release track even though npm dist-tags are independent
 pointers. The npm invariant is:
@@ -117,7 +117,7 @@ npm run release:patch
 npm run release:minor
 ```
 
-This upstream npm path bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. It is not the fork release channel. Fork releases use `vX.Y.Z-fork.N` and trigger `Desktop Release` and `Release Notes Sync`. The optional `vX.Y.Z-fork.N-app` tag triggers the iOS EAS workflow described below. Docker publishing and Android APK publishing remain manual-only in this fork.
+This upstream npm path bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. It is not the fork release channel. Fork daemon releases use `vX.Y.Z-fork.N`; desktop releases use `desktop-vX.Y.Z-fork.N` and trigger `Desktop Release` and `Release Notes Sync`; and the optional `vX.Y.Z-fork.N-app` tag triggers the iOS EAS workflow described below. Docker publishing and Android APK publishing remain manual-only in this fork.
 
 After the stable release succeeds, move npm's `beta` pointer to the new stable
 version for every published package. This changes dist-tags only; do not
@@ -189,7 +189,17 @@ The command fetches `origin/main`, installs the exact dependency tree from
 `package-lock.json`, and tags the current package version as the next
 `vX.Y.Z-fork.N`. It then builds the server, pushes only that tag, and restarts the
 user `paseo.service`. The command does not change versions, publish npm packages,
-or push a branch. The fork tag starts desktop publication.
+push a branch, build desktop clients, or trigger an iOS build.
+
+Run the desktop release separately when the current commit needs macOS or Windows
+installers:
+
+```bash
+npm run release:fork:desktop
+```
+
+This pushes the next `desktop-vX.Y.Z-fork.N` tag and triggers `Desktop Release`.
+It does not build the server, restart the daemon, or trigger an iOS build.
 
 Run the app release separately when the current commit needs an iOS build:
 
@@ -198,7 +208,7 @@ npm run release:fork:app
 ```
 
 This pushes the next `vX.Y.Z-fork.N-app` tag. It does not build the server,
-restart the daemon, or trigger Desktop Release. The daemon and app commands share
+restart the daemon, or trigger Desktop Release. All fork release commands share
 the fork number sequence so every release tag has a unique `N`.
 
 ## Desktop release publication
@@ -273,11 +283,12 @@ that resumes the release in the current conversation. Create it automatically
 with `create_heartbeat`. The heartbeat owns the release until it either reaches
 the completion checklist or finds a failure that needs new user authority.
 
-Each fork-release heartbeat checks the tag commit, the GitHub Actions runs for
-the tag, the GitHub Release body and desktop assets, and desktop updater manifests.
-Check the EAS workflow only when an `-app` tag was pushed. Check an Android APK only when its separate
-manual workflow was explicitly requested. Do not wait for Docker, npm, Android
-store, or App Store review work: none belongs to the fork release channel.
+Each fork-release heartbeat checks the tag commit and GitHub Actions runs. Check
+the GitHub Release body, desktop assets, and updater manifests only for a desktop
+tag. Check the EAS workflow only when an `-app` tag was pushed. Check an Android
+APK only when its separate manual workflow was explicitly requested. Do not wait
+for Docker, npm, Android store, or App Store review work: none belongs to the fork
+release channel.
 
 For an `-app` release, confirm `build_ios` and `submit_ios` for the release commit,
 including the TestFlight upload. Delete the heartbeat only after every applicable checklist
@@ -293,7 +304,7 @@ Pattern:
   "timezone": "UTC",
   "maxRuns": 24,
   "expiresIn": "24h",
-  "prompt": "Resume the vX.Y.Z-fork.N release babysit for commit <sha>. Check GitHub Actions for the tag, the GitHub Release body, desktop assets and updater manifests. If this is an -app tag, check EAS Release Mobile instead; build_ios and submit_ios must succeed and the build must appear in TestFlight. Check Android APK only if its manual workflow was explicitly requested. Do not wait for Docker, npm, Android store, or App Store review work. If work is pending, wait for the next heartbeat. If a failure can be retried safely for the same tag, follow the failed-release procedure; otherwise report the blocker. When every applicable completion-checklist item passes, delete THIS heartbeat, report shipped, and stop.",
+  "prompt": "Resume the fork release babysit for tag <tag> and commit <sha>. Check GitHub Actions for the tag. For a desktop-v tag, also check the GitHub Release body, desktop assets, and updater manifests. For an -app tag, check EAS Release Mobile instead; build_ios and submit_ios must succeed and the build must appear in TestFlight. Check Android APK only if its manual workflow was explicitly requested. Do not wait for Docker, npm, Android store, or App Store review work. If work is pending, wait for the next heartbeat. If a failure can be retried safely for the same tag, follow the failed-release procedure; otherwise report the blocker. When every applicable completion-checklist item passes, delete THIS heartbeat, report shipped, and stop.",
 }
 ```
 
@@ -514,9 +525,9 @@ Each beta entry records what its testers receive. Promotion produces the single 
 - [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes — not refactors). Promotion replaces every `## X.Y.Z-beta.N` entry in the series with one `## X.Y.Z - YYYY-MM-DD` entry covering the full release
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
 - [ ] The fork release command completes successfully
-- [ ] GitHub `Desktop Release` workflow for the `v*-fork.N` tag is green
-- [ ] GitHub `Release Notes Sync` mirrors the matching changelog entry into the release body
-- [ ] The GitHub Release contains the expected macOS, Linux, and Windows assets plus `latest-mac.yml`, `latest-linux.yml`, and `latest.yml`
+- [ ] If a `desktop-v*-fork.N` tag was pushed, GitHub `Desktop Release` is green
+- [ ] If a desktop tag was pushed, `Release Notes Sync` mirrors the matching changelog entry into the release body
+- [ ] If a desktop tag was pushed, the GitHub Release contains the expected macOS, Linux, and Windows assets plus `latest-mac.yml`, `latest-linux.yml`, and `latest.yml`
 - [ ] If an `-app` tag was pushed, EAS `Release Mobile` for that tag is green
 - [ ] If an `-app` tag was pushed, EAS iOS `build_ios` completes for that tag
 - [ ] If an `-app` tag was pushed, EAS iOS `submit_ios` uploads the build to App Store Connect/TestFlight
