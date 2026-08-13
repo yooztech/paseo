@@ -32,6 +32,7 @@ import type {
   ForgeAuthState,
   ForgeService,
   ForgeSpecificStatusFacts,
+  PullRequestCheck,
   PullRequestMergeable,
 } from "../services/forge-service.js";
 import { createForgeService } from "../services/forge-registry.js";
@@ -68,6 +69,14 @@ import { deriveProjectSlug } from "./workspace-git-metadata.js";
 import { checkoutLiteFromGitSnapshot } from "./workspace-registry-model.js";
 
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 1_000;
+
+type CreatedPullRequestCiRefreshService = ForgeService & {
+  getPullRequestCiStatus?: (input: { cwd: string; number: number }) => Promise<{
+    checks: PullRequestCheck[];
+    checksStatus: "none" | "pending" | "success" | "failure";
+    forgeSpecific?: ForgeSpecificStatusFacts;
+  }>;
+};
 const BACKGROUND_GIT_FETCH_INTERVAL_MS = 180_000;
 const FETCH_METADATA_ECHO_TTL_MS = 5_000;
 export const WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS = 60_000;
@@ -224,8 +233,19 @@ export interface WorkspaceGitService {
   onWorkspaceStateMayHaveChanged(cwd: string): void;
   invalidateForge(cwd: string): void;
   setPullRequestStatusSettling(cwd: string, settling: boolean): void;
+  refreshCreatedPullRequestCiStatus(
+    cwd: string,
+    created: CreatedPullRequestSnapshot,
+  ): Promise<void>;
   getMetrics(): WorkspaceGitServiceMetrics;
   dispose(): void;
+}
+
+export interface CreatedPullRequestSnapshot {
+  number: number;
+  url: string;
+  title: string;
+  baseRef: string;
 }
 
 export interface WorkspaceGitServiceMetrics {
@@ -1000,6 +1020,62 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
     target.pullRequestStatusSettling = settling;
     this.rememberSnapshot(target, this.combineSnapshot(target), { notify: true });
+  }
+
+  async refreshCreatedPullRequestCiStatus(
+    cwd: string,
+    created: CreatedPullRequestSnapshot,
+  ): Promise<void> {
+    this.assertNotDisposed();
+    const target = this.ensureWorkspaceTarget(resolve(cwd));
+    const forge = target.latestForge?.forge ?? "github";
+    this.rememberForgePrStatusSnapshot(
+      target,
+      buildForgeSnapshotFromStatus(
+        {
+          number: created.number,
+          url: created.url,
+          title: created.title,
+          state: "open",
+          baseRefName: created.baseRef,
+          headRefName: target.latestGit?.currentBranch ?? "",
+          isMerged: false,
+          mergeable: "UNKNOWN",
+          checks: [],
+          checksStatus: "none",
+          reviewDecision: null,
+        },
+        forge,
+      ),
+      { notify: true },
+    );
+    const resolution = await this.resolveForge(target.cwd);
+    const refreshCiStatus = (resolution?.service as CreatedPullRequestCiRefreshService | undefined)
+      ?.getPullRequestCiStatus;
+    if (!resolution || !refreshCiStatus) {
+      return;
+    }
+
+    const ciStatus = await refreshCiStatus({ cwd: target.cwd, number: created.number });
+    const latest = target.latestForge?.pullRequest;
+    if (!latest || latest.number !== created.number) {
+      return;
+    }
+    this.rememberForgePrStatusSnapshot(
+      target,
+      buildForgeSnapshotFromStatus(
+        {
+          ...latest,
+          checks: ciStatus.checks,
+          checksStatus: ciStatus.checksStatus,
+          forgeSpecific: ciStatus.forgeSpecific
+            ? { ...latest.forgeSpecific, ...ciStatus.forgeSpecific }
+            : latest.forgeSpecific,
+        },
+        resolution.forge,
+      ),
+      { notify: true },
+    );
   }
 
   dispose(): void {

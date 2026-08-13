@@ -26,6 +26,7 @@ import type {
   DisablePullRequestAutoMergeOptions,
   EnablePullRequestAutoMergeOptions,
   ForgeReadOptions,
+  ForgeSpecificStatusFacts,
   ForgeService,
   GetCheckDetailsOptions,
   GetPullRequestOptions,
@@ -900,7 +901,13 @@ function throwFirstNonGlabAuthSearchRejection(results: PromiseSettledResult<unkn
   }
 }
 
-export function createGitLabService(options: CreateGitLabServiceOptions = {}): ForgeService {
+export function createGitLabService(options: CreateGitLabServiceOptions = {}): ForgeService & {
+  getPullRequestCiStatus(input: { cwd: string; number: number }): Promise<{
+    checks: [];
+    checksStatus: PullRequestChecksStatus;
+    forgeSpecific: ForgeSpecificStatusFacts;
+  }>;
+} {
   const runner = options.runner ?? runGlabCommand;
   const resolveGlab = createCachedCliPathResolver(options.resolveGlabPath ?? resolveGlabPath);
   const resolveRemoteUrl = options.resolveRemoteUrl ?? defaultResolveRemoteUrl;
@@ -1147,6 +1154,24 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
         }
         throw error;
       }
+    },
+
+    async getPullRequestCiStatus(input: { cwd: string; number: number }) {
+      const remoteUrl = await resolveRemoteUrl(input.cwd);
+      const projectPath = remoteUrl ? parseGitLabProjectPathFromRemoteUrl(remoteUrl) : null;
+      if (!projectPath) {
+        throw new Error("Unable to determine GitLab project for CI status refresh");
+      }
+      const mr = await runJson(
+        ["api", `projects/${encodeURIComponent(projectPath)}/merge_requests/${input.number}`],
+        { cwd: input.cwd },
+        GitLabMergeRequestSchema,
+      );
+      return {
+        checks: [],
+        checksStatus: mapPipelineChecksStatus(mr.head_pipeline?.status),
+        forgeSpecific: { forge: "gitlab", ...toGitLabStatusFacts(mr) },
+      };
     },
 
     async getPullRequest(input: GetPullRequestOptions): Promise<PullRequestSummary> {

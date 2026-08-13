@@ -288,6 +288,24 @@ describe("createGitLabService", () => {
     expect(calls[1]).toEqual(["mr", "view", "14", "-F", "json"]);
   });
 
+  it("refreshes CI from one MR endpoint without listing MRs or fetching approvals", async () => {
+    const { service, calls } = makeService((args) => {
+      if (args[0] === "api") return ok(JSON.stringify(OPEN_MR));
+      throw new Error(`unexpected call: ${args.join(" ")}`);
+    });
+
+    await expect(service.getPullRequestCiStatus?.({ cwd: "/repo", number: 14 })).resolves.toEqual({
+      checks: [],
+      checksStatus: "success",
+      forgeSpecific: expect.objectContaining({
+        forge: "gitlab",
+        pipelineId: null,
+        pipelineStatus: "success",
+      }),
+    });
+    expect(calls).toEqual([["api", "projects/example-group%2Fexample-project/merge_requests/14"]]);
+  });
+
   it("reports a conflicting merge request as CONFLICTING", async () => {
     const conflicting = {
       ...OPEN_MR,
