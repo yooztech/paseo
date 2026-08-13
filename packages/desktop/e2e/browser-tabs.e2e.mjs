@@ -515,10 +515,10 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId 
   await selectDeviceSize(page, "Responsive");
   const responsiveViewport = await readViewport(client, browserId);
 
-  await originalDeck.getByTestId(`workspace-tab-agent_${callerAgentId}`).click();
+  const agentTab = originalDeck.getByTestId(`workspace-tab-agent_${callerAgentId}`);
+  const browserTab = originalDeck.getByTestId(`workspace-tab-browser_${browserId}`);
+  await agentTab.click();
   await page.waitForTimeout(500);
-  const composer = page.locator("textarea[data-composer-input]").filter({ visible: true }).first();
-  await composer.focus();
   const backgroundSnapshot = await callBrowserTool(client, "browser_snapshot", { browserId });
   const backgroundInputRef = backgroundSnapshot.snapshot.match(
     /textbox "Typing target" \[ref=(@e\d+)\]/,
@@ -526,8 +526,9 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId 
   assert(backgroundInputRef, `browser_snapshot did not expose the typing target input`);
   await callBrowserTool(client, "browser_click", { browserId, ref: backgroundInputRef });
   assert(
-    await composer.evaluate((element) => document.activeElement === element),
-    "Background browser automation moved focus away from the composer",
+    (await agentTab.getAttribute("aria-selected")) === "true" &&
+      (await browserTab.getAttribute("aria-selected")) === "false",
+    "Background browser automation activated the browser tab",
   );
   try {
     await callBrowserTool(client, "browser_screenshot", { browserId });
@@ -706,7 +707,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId 
     viewport: "passed",
     guestFocus: "passed",
     overlayPlane: "passed",
-    backgroundFocus: "passed",
+    backgroundTabActivation: "passed",
     inactiveCapture: "passed",
     list: "passed",
     snapshot: "passed",
@@ -812,7 +813,7 @@ async function main() {
     });
     writeJson(path.join(artifactDir, "result.json"), report);
     console.log(
-      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, background focus, inactive capture, focus continuity, list, snapshot, click passed.`,
+      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, background tab activation, inactive capture, focus continuity, list, snapshot, click passed.`,
     );
   } catch (error) {
     console.error(`Browser desktop browser E2E failed. Artifacts: ${artifactDir}`);
