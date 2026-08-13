@@ -1,7 +1,7 @@
 import { useFetchQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
-import { repositoryGraphQueryKey } from "@/git/query-keys";
+import { repositoryGraphQueryKey } from "./query-keys";
 
 const REPOSITORY_GRAPH_LIMIT = 200;
 

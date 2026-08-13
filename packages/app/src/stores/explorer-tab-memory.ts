@@ -1,12 +1,16 @@
-export type ExplorerTab = "changes" | "files" | "repository_graph" | "pr" | "ci";
+import {
+  isExplorerTabContributionId,
+  type ExplorerTabContributionId,
+} from "@/components/explorer-tab-contribution-registry";
+
+export type ExplorerTab = "changes" | "files" | "pr" | ExplorerTabContributionId;
 
 export function isExplorerTab(value: unknown): value is ExplorerTab {
   return (
     value === "changes" ||
     value === "files" ||
-    value === "repository_graph" ||
     value === "pr" ||
-    value === "ci"
+    (typeof value === "string" && isExplorerTabContributionId(value))
   );
 }
 

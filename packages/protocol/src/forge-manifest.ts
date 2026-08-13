@@ -5,11 +5,12 @@
  * branding). It is NEVER serialized over the wire, so adding a forge here is not
  * a protocol change.
  *
- * Keep this a pure leaf: no imports, no zod, no functions with runtime deps.
- * Behavioural concerns (CLI invocation, host probing, REST adapters) live in the
- * server adapter keyed by {@link ForgeDefinition.id}; this file is only the
- * declarative half.
+ * Keep this free of runtime dependencies: its only import is the fork-owned
+ * declarative overlay. Behavioural concerns (CLI invocation, host probing, REST
+ * adapters) live in the server adapter keyed by {@link ForgeDefinition.id}; this
+ * file is only the declarative half.
  */
+import { ICEVEIL_FORGE_MANIFEST_OVERLAY } from "./forks/iceveil/forge-manifest.js";
 
 /**
  * Declarative sign-in recipe for a forge. The client renders install/sign-in
@@ -57,7 +58,53 @@ export interface ForgeDefinition {
   webAuthorities?: Record<string, string>;
 }
 
-export const FORGE_DEFINITIONS: ForgeDefinition[] = [
+/**
+ * Fork-owned additions may extend host aliases and web authorities, but cannot
+ * replace a forge's shared presentation or authentication contract.
+ */
+export interface ForgeDefinitionOverlay {
+  id: string;
+  cloudHosts?: readonly string[];
+  webAuthorities?: Readonly<Record<string, string>>;
+}
+
+export interface ForgeManifestOverlay {
+  definitions: readonly ForgeDefinitionOverlay[];
+}
+
+function applyForgeManifestOverlays(
+  definitions: ForgeDefinition[],
+  overlays: readonly ForgeManifestOverlay[],
+): ForgeDefinition[] {
+  const overrides = new Map<string, ForgeDefinitionOverlay>();
+  for (const overlay of overlays) {
+    for (const override of overlay.definitions) {
+      const existing = overrides.get(override.id);
+      overrides.set(override.id, {
+        id: override.id,
+        cloudHosts: [...(existing?.cloudHosts ?? []), ...(override.cloudHosts ?? [])],
+        webAuthorities: { ...existing?.webAuthorities, ...override.webAuthorities },
+      });
+    }
+  }
+  return definitions.map((definition) => {
+    const override = overrides.get(definition.id);
+    if (!override) {
+      return definition;
+    }
+    return {
+      ...definition,
+      cloudHosts: override.cloudHosts?.length
+        ? [...(definition.cloudHosts ?? []), ...override.cloudHosts]
+        : definition.cloudHosts,
+      webAuthorities: Object.keys(override.webAuthorities ?? {}).length
+        ? { ...definition.webAuthorities, ...override.webAuthorities }
+        : definition.webAuthorities,
+    };
+  });
+}
+
+const DEFAULT_FORGE_DEFINITIONS: ForgeDefinition[] = [
   {
     id: "github",
     displayName: "GitHub",
@@ -78,9 +125,7 @@ export const FORGE_DEFINITIONS: ForgeDefinition[] = [
     issueNumberPrefix: "#",
     iconKind: "gitlab",
     signIn: { cli: "glab", command: "glab auth login", hostnameFlag: "--hostname" },
-    // YOOZ DOWNSTREAM(sync): keep Iceveil's self-hosted GitLab on the direct GitLab path.
-    cloudHosts: ["gitlab.com", "gitlab.iceveil.com"],
-    webAuthorities: { "gitlab.iceveil.com": "gitlab.iceveil.com:38443" },
+    cloudHosts: ["gitlab.com"],
   },
   {
     id: "gitea",
@@ -115,6 +160,10 @@ export const FORGE_DEFINITIONS: ForgeDefinition[] = [
     cloudHosts: ["codeberg.org"],
   },
 ];
+
+export const FORGE_DEFINITIONS = applyForgeManifestOverlays(DEFAULT_FORGE_DEFINITIONS, [
+  ICEVEIL_FORGE_MANIFEST_OVERLAY,
+]);
 
 /** Forge definitions only present in dev builds (none today; mirrors providers). */
 export const DEV_FORGE_DEFINITIONS: ForgeDefinition[] = [];

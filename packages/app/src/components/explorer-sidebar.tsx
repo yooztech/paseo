@@ -21,7 +21,6 @@ import {
   PullRequestTabIcon,
   usePrPaneData,
 } from "@/git/pull-request-panel";
-import { BranchCiPane, useBranchCiPipeline } from "@/git/branch-ci-panel";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
 import { usePanelStore, selectIsFileExplorerOpen, type ExplorerTab } from "@/stores/panel-store";
@@ -30,14 +29,15 @@ import { useCloseFileExplorerGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
-import { RepositoryGraphPane } from "@/git/repository-graph/pane";
 import { FileExplorerPane } from "./file-explorer-pane";
+import {
+  useExplorerTabContributions,
+  type ExplorerTabContribution,
+} from "./explorer-tab-contributions";
+import { isExplorerTabContributionId } from "./explorer-tab-contribution-registry";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useHasOwnedWindowChromeObstruction, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import { useWorkspaceFields } from "@/stores/session-store-hooks";
-import { useSessionStore } from "@/stores/session-store";
-import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -318,61 +318,19 @@ function resolveExplorerContentTab(input: {
   activeTab: ExplorerTab;
   isGit: boolean;
   showPrTab: boolean;
-  showCiTab: boolean;
+  contributions: readonly ExplorerTabContribution[];
 }): ExplorerTab {
   const requestedTab = resolveExplorerTab(input.activeTab, input.isGit);
   if (requestedTab === "pr" && !input.showPrTab) {
     return "changes";
   }
-  if (requestedTab === "ci" && !input.showCiTab) {
+  if (
+    isExplorerTabContributionId(requestedTab) &&
+    !input.contributions.some((contribution) => contribution.tab === requestedTab)
+  ) {
     return "changes";
   }
   return requestedTab;
-}
-
-function useExplorerBranchCiTab(input: {
-  serverId: string;
-  workspaceId?: string | null;
-  workspaceRoot: string;
-  isGit: boolean;
-  isOpen: boolean;
-  activeTab: ExplorerTab;
-  hasPullRequest: boolean;
-  prLoading: boolean;
-  prForge: string | null;
-}) {
-  const forgeBranchPipelineEnabled = useSessionStore(
-    (state) => state.sessions[input.serverId]?.serverInfo?.features?.forgeBranchPipeline === true,
-  );
-  const currentBranch = useWorkspaceFields(
-    input.serverId,
-    input.workspaceId ?? null,
-    (workspace) => workspace.gitRuntime?.currentBranch ?? null,
-  );
-  const canQuery = input.isGit && Boolean(input.workspaceRoot);
-  const branchCiEnabled =
-    canQuery &&
-    input.isOpen &&
-    !input.hasPullRequest &&
-    !input.prLoading &&
-    forgeBranchPipelineEnabled &&
-    input.prForge === "gitlab" &&
-    Boolean(currentBranch);
-  const branchCi = useBranchCiPipeline({
-    serverId: input.serverId,
-    cwd: input.workspaceRoot,
-    branch: currentBranch,
-    enabled: branchCiEnabled || (input.activeTab === "ci" && canQuery && input.isOpen),
-  });
-  const showPrTab = input.hasPullRequest || (input.activeTab === "pr" && input.prLoading);
-  const showCiTab =
-    !showPrTab &&
-    forgeBranchPipelineEnabled &&
-    input.prForge === "gitlab" &&
-    (branchCi.pipeline !== null ||
-      branchCi.isLoading ||
-      (input.activeTab === "ci" && branchCi.supported));
-  return { branchCi, showCiTab };
 }
 
 function ExplorerSidebarContent({
@@ -399,7 +357,7 @@ function ExplorerSidebarContent({
   });
   const hasPullRequest = prPane.prNumber !== null;
   const showPrTab = hasPullRequest || (activeTab === "pr" && prPane.isLoading);
-  const { branchCi, showCiTab } = useExplorerBranchCiTab({
+  const contributions = useExplorerTabContributions({
     serverId,
     workspaceId,
     workspaceRoot,
@@ -414,7 +372,7 @@ function ExplorerSidebarContent({
     activeTab,
     isGit,
     showPrTab,
-    showCiTab,
+    contributions,
   });
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const refreshGitActions = useCheckoutGitActionsStore((s) => s.refresh);
@@ -436,7 +394,7 @@ function ExplorerSidebarContent({
         isGit={isGit}
         resolvedTab={resolvedTab}
         showPrTab={showPrTab}
-        showCiTab={showCiTab}
+        contributions={contributions}
         prTabLabel={prTabLabel}
         prForge={prPane.forge}
         onTabPress={onTabPress}
@@ -454,7 +412,7 @@ function ExplorerSidebarContent({
           prPane={prPane}
           workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
           onPrRetry={handlePrRetry}
-          branchCi={branchCi}
+          contributions={contributions}
         />
       </View>
     </View>
@@ -467,7 +425,7 @@ function ExplorerSidebarHeader({
   isGit,
   resolvedTab,
   showPrTab,
-  showCiTab,
+  contributions,
   prTabLabel,
   prForge,
   onTabPress,
@@ -479,13 +437,27 @@ function ExplorerSidebarHeader({
   isGit: boolean;
   resolvedTab: ExplorerTab;
   showPrTab: boolean;
-  showCiTab: boolean;
+  contributions: readonly ExplorerTabContribution[];
   prTabLabel: string;
   prForge: UsePrPaneDataResult["forge"];
   onTabPress: (tab: ExplorerTab) => void;
   onClose: () => void;
   hasRightWindowControls: boolean;
 }) {
+  const beforeFiles = contributions.filter((contribution) => contribution.rank < 2);
+  const afterPullRequest = contributions.filter((contribution) => contribution.rank >= 2);
+  const renderContribution = (contribution: ExplorerTabContribution) => (
+    <ExplorerTabButton
+      key={contribution.tab}
+      tab={contribution.tab}
+      active={resolvedTab === contribution.tab}
+      label={contribution.label}
+      onTabPress={onTabPress}
+      testID={`explorer-tab-${contribution.tab.replace(/_/g, "-")}`}
+    >
+      {contribution.icon?.({ active: resolvedTab === contribution.tab, theme })}
+    </ExplorerTabButton>
+  );
   return (
     <WindowChromeSafeArea
       placement="inline"
@@ -504,15 +476,7 @@ function ExplorerSidebarHeader({
             testID="explorer-tab-changes"
           />
         ) : null}
-        {isGit ? (
-          <ExplorerTabButton
-            tab="repository_graph"
-            active={resolvedTab === "repository_graph"}
-            label={t("workspace.tabs.explorer.repositoryGraph")}
-            onTabPress={onTabPress}
-            testID="explorer-tab-repository-graph"
-          />
-        ) : null}
+        {beforeFiles.map(renderContribution)}
         <ExplorerTabButton
           tab="files"
           active={resolvedTab === "files"}
@@ -535,20 +499,7 @@ function ExplorerSidebarHeader({
             />
           </ExplorerTabButton>
         ) : null}
-        {isGit && showCiTab ? (
-          <ExplorerTabButton
-            tab="ci"
-            active={resolvedTab === "ci"}
-            label={t("workspace.tabs.explorer.ci")}
-            onTabPress={onTabPress}
-            testID="explorer-tab-ci"
-          >
-            <GitLabIcon
-              size={13}
-              color={resolvedTab === "ci" ? theme.colors.foreground : theme.colors.foregroundMuted}
-            />
-          </ExplorerTabButton>
-        ) : null}
+        {afterPullRequest.map(renderContribution)}
       </View>
       <View style={styles.headerRightSection}>
         {!hasRightWindowControls ? (
@@ -585,7 +536,7 @@ function ExplorerSidebarBody({
   prPane,
   workspaceAttachmentScopeKey,
   onPrRetry,
-  branchCi,
+  contributions,
 }: {
   resolvedTab: ExplorerTab;
   serverId: string;
@@ -596,7 +547,7 @@ function ExplorerSidebarBody({
   prPane: UsePrPaneDataResult;
   workspaceAttachmentScopeKey: string;
   onPrRetry: () => void;
-  branchCi: ReturnType<typeof useBranchCiPipeline>;
+  contributions: readonly ExplorerTabContribution[];
 }) {
   if (resolvedTab === "changes") {
     return (
@@ -619,9 +570,6 @@ function ExplorerSidebarBody({
       />
     );
   }
-  if (resolvedTab === "repository_graph") {
-    return <RepositoryGraphPane serverId={serverId} cwd={workspaceRoot} enabled={isOpen} />;
-  }
   if (resolvedTab === "pr") {
     return (
       <PrTabContent
@@ -633,18 +581,10 @@ function ExplorerSidebarBody({
       />
     );
   }
-  if (resolvedTab === "ci") {
-    return (
-      <BranchCiPane
-        serverId={serverId}
-        cwd={workspaceRoot}
-        pipeline={branchCi.pipeline}
-        branch={branchCi.branch}
-        isLoading={branchCi.isLoading}
-        error={branchCi.error}
-      />
-    );
-  }
+  const contribution = isExplorerTabContributionId(resolvedTab)
+    ? contributions.find((item) => item.tab === resolvedTab)
+    : undefined;
+  if (contribution) return contribution.content;
   return null;
 }
 
