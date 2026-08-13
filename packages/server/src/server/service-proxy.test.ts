@@ -90,6 +90,10 @@ describe("service proxy subsystem shape", () => {
         status: 404,
         body: "404 Not Found",
       });
+      await expect(httpGet(port, `services.example.com:${port}`)).resolves.toEqual({
+        status: 200,
+        body: "daemon-api",
+      });
       await expect(httpGet(port, `daemon.localhost:${port}`)).resolves.toEqual({
         status: 200,
         body: "daemon-api",
