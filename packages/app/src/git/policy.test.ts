@@ -2,8 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CheckoutPrStatusSchema } from "@getpaseo/protocol/messages";
 import { i18n } from "@/i18n/i18next";
 
-import { buildGitActions, type BuildGitActionsInput } from "./policy";
+import { forkGitActionPolicy } from "./fork-action-policy";
+import { buildGitActions as buildDefaultGitActions, type BuildGitActionsInput } from "./policy";
 import { deriveMergeCapability, type ForgeSpecificStatusFacts } from "./merge-capability";
+
+const buildGitActions = (input: BuildGitActionsInput) =>
+  buildDefaultGitActions(input, forkGitActionPolicy);
 
 type GithubMergeFactsFixture = ForgeSpecificStatusFacts & {
   forge: "github";
@@ -78,11 +82,13 @@ function createInput(
     baseRefAvailable: true,
     baseRefLabel: "main",
     aheadCount: 0,
-    hasChangesFromBase: overrides.hasChangesFromBase ?? (overrides.aheadCount ?? 0) > 0,
+    contentDiff: {
+      hasChangesFromBase:
+        overrides.contentDiff?.hasChangesFromBase ?? (overrides.aheadCount ?? 0) > 0,
+    },
     behindBaseCount: 0,
     aheadOfOrigin: 0,
     behindOfOrigin: 0,
-    hasChangesFromOrigin: overrides.hasChangesFromOrigin ?? (overrides.aheadOfOrigin ?? 0) > 0,
     shipDefault: "pr",
     runtime: {
       commit: {
@@ -170,6 +176,34 @@ describe("git-actions-policy", () => {
     await i18n.changeLanguage("en");
   });
 
+  it("keeps upstream action decisions independent from fork-only facts", () => {
+    const input = createInput({
+      hasRemote: true,
+      isOnBaseBranch: false,
+      aheadCount: 2,
+      aheadOfOrigin: 0,
+      hasPullRequest: true,
+      pullRequestUrl: "https://example.com/pr/456",
+      pullRequestState: "open",
+      pullRequestMergeable: "CONFLICTING",
+      pullRequestChecksStatus: "pending",
+      prCreationPending: true,
+      pullRequestGithub: githubStatus(),
+      contentDiff: { hasChangesFromBase: false },
+    });
+
+    expect(buildDefaultGitActions(input).primary?.id).not.toMatch(/^merge-pr-/);
+    expect(
+      buildDefaultGitActions(input).secondary.find((action) => action.id === "pr"),
+    ).toMatchObject({
+      label: "View PR",
+    });
+    expect(buildGitActions(input).primary?.id).not.toMatch(/^merge-pr-/);
+    expect(buildGitActions(input).secondary.find((action) => action.id === "pr")).toMatchObject({
+      label: "PR conflict",
+    });
+  });
+
   it("shows only remote sync actions on the base branch", () => {
     const actions = buildGitActions(createInput({ hasRemote: true }));
 
@@ -224,15 +258,14 @@ describe("git-actions-policy", () => {
     });
   });
 
-  it("keeps push enabled when branch is ahead of origin even if hasChangesFromOrigin is null", () => {
+  it("keeps push enabled when branch is ahead of origin", () => {
     const actions = buildGitActions(
       createInput({
         hasRemote: true,
         isOnBaseBranch: false,
         aheadCount: 2,
-        hasChangesFromBase: true,
         aheadOfOrigin: 2,
-        hasChangesFromOrigin: null,
+        contentDiff: { hasChangesFromBase: true },
         behindOfOrigin: 0,
       }),
     );
@@ -250,7 +283,6 @@ describe("git-actions-policy", () => {
         hasRemote: true,
         isOnBaseBranch: false,
         aheadCount: 2,
-        hasChangesFromBase: true,
         aheadOfOrigin: 2,
         hasPullRequest: true,
         pullRequestUrl: "https://example.com/pr/456",
@@ -271,9 +303,8 @@ describe("git-actions-policy", () => {
         isPaseoOwnedWorktree: true,
         isOnBaseBranch: false,
         aheadCount: 1,
-        hasChangesFromBase: false,
         aheadOfOrigin: 1,
-        hasChangesFromOrigin: false,
+        contentDiff: { hasChangesFromBase: false },
         shipDefault: "pr",
       }),
     );
@@ -294,7 +325,7 @@ describe("git-actions-policy", () => {
         hasRemote: true,
         isOnBaseBranch: false,
         behindBaseCount: 3,
-        hasChangesFromBase: true,
+        contentDiff: { hasChangesFromBase: true },
       }),
     );
     const updateAction = actions.secondary.find((action) => action.id === "merge-from-base");
@@ -312,7 +343,7 @@ describe("git-actions-policy", () => {
         hasRemote: true,
         isOnBaseBranch: false,
         behindBaseCount: 1,
-        hasChangesFromBase: false,
+        contentDiff: { hasChangesFromBase: false },
       }),
     );
 

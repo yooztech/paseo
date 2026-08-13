@@ -4,11 +4,11 @@ import {
   checkoutDiffQueryKey,
   checkoutCommitsQueryKey,
   checkoutPrStatusQueryKey,
-  repositoryGraphQueryKey,
   checkoutStatusQueryKey,
   invalidateCheckoutGitQueriesForClient,
   invalidateCheckoutGitQueriesForServer,
 } from "@/git/query-keys";
+import { repositoryGraphQueryKey } from "@/git/repository-graph/query-keys";
 import {
   prPanePipelineQueryKey,
   prPaneTimelineQueryKey,
@@ -167,6 +167,15 @@ describe("checkout query keys", () => {
     queryClient.setQueryData(checkoutPrStatusQueryKey(serverId, cwd), { status: { number: 12 } });
     queryClient.setQueryData(checkoutCommitsQueryKey(serverId, cwd), { commits: [] });
     queryClient.setQueryData(checkoutCommitsQueryKey(otherServerId, cwd), { commits: [] });
+    queryClient.setQueryData(repositoryGraphQueryKey(serverId, cwd), { commits: [] });
+    queryClient.setQueryData(branchCiPipelineQueryKey({ serverId, cwd, branch: "feature" }), {
+      pipeline: null,
+    });
+    queryClient.setQueryData(repositoryGraphQueryKey(otherServerId, cwd), { commits: [] });
+    queryClient.setQueryData(
+      branchCiPipelineQueryKey({ serverId: otherServerId, cwd, branch: "feature" }),
+      { pipeline: null },
+    );
     queryClient.setQueryData(prPaneTimelineQueryKey({ serverId, cwd, prNumber: 12 }), {
       items: [],
     });
@@ -196,8 +205,23 @@ describe("checkout query keys", () => {
     expect(queryClient.getQueryState(checkoutCommitsQueryKey(serverId, cwd))?.isInvalidated).toBe(
       true,
     );
+    expect(queryClient.getQueryState(repositoryGraphQueryKey(serverId, cwd))?.isInvalidated).toBe(
+      true,
+    );
+    expect(
+      queryClient.getQueryState(branchCiPipelineQueryKey({ serverId, cwd, branch: "feature" }))
+        ?.isInvalidated,
+    ).toBe(true);
     expect(
       queryClient.getQueryState(checkoutCommitsQueryKey(otherServerId, cwd))?.isInvalidated,
+    ).toBe(false);
+    expect(
+      queryClient.getQueryState(repositoryGraphQueryKey(otherServerId, cwd))?.isInvalidated,
+    ).toBe(false);
+    expect(
+      queryClient.getQueryState(
+        branchCiPipelineQueryKey({ serverId: otherServerId, cwd, branch: "feature" }),
+      )?.isInvalidated,
     ).toBe(false);
     expect(
       queryClient.getQueryState(prPaneTimelineQueryKey({ serverId, cwd, prNumber: 12 }))

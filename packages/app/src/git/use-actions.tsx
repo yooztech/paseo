@@ -16,6 +16,7 @@ import {
   type GitAction,
   type GitActions,
 } from "@/git/policy";
+import { forkGitActionPolicy } from "@/git/fork-action-policy";
 import { deriveMergeCapability } from "@/git/merge-capability";
 import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -126,7 +127,6 @@ interface DerivedGitActionsState {
   behindBaseCount: number;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
-  hasChangesFromOrigin: boolean | null;
   hasPullRequest: boolean;
   hasRemote: boolean;
   isPaseoOwnedWorktree: boolean;
@@ -139,7 +139,6 @@ interface GitCommitCounts {
   behindBaseCount: number;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
-  hasChangesFromOrigin: boolean | null;
 }
 
 function extractGitCommitCounts(gitStatus: CheckoutStatusPayload | null): GitCommitCounts {
@@ -152,8 +151,6 @@ function extractGitCommitCounts(gitStatus: CheckoutStatusPayload | null): GitCom
     behindBaseCount: gitStatus?.aheadBehind?.behind ?? 0,
     aheadOfOrigin,
     behindOfOrigin: gitStatus?.behindOfOrigin ?? null,
-    hasChangesFromOrigin:
-      gitStatus?.hasChangesFromOrigin ?? (aheadOfOrigin === null ? null : aheadOfOrigin > 0),
   };
 }
 
@@ -638,7 +635,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     behindBaseCount,
     aheadOfOrigin,
     behindOfOrigin,
-    hasChangesFromOrigin,
     hasPullRequest,
     hasRemote,
     isPaseoOwnedWorktree,
@@ -680,11 +676,12 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       baseRefAvailable: Boolean(baseRef),
       baseRefLabel,
       aheadCount,
-      hasChangesFromBase,
       behindBaseCount,
       aheadOfOrigin,
       behindOfOrigin,
-      hasChangesFromOrigin,
+      contentDiff: {
+        hasChangesFromBase,
+      },
       shipDefault,
       runtime: {
         commit: {
@@ -803,7 +800,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     hasUncommittedChanges,
     aheadOfOrigin,
     behindOfOrigin,
-    hasChangesFromOrigin,
     shipDefault,
     baseRefLabel,
     actionsDisabled,
@@ -841,7 +837,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const gitActions: GitActions = useMemo(
     () =>
-      translateGitActions(buildGitActions(gitActionsInput), {
+      translateGitActions(buildGitActions(gitActionsInput, forkGitActionPolicy), {
         baseRefLabel,
         hasPullRequest,
         pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",

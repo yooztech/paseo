@@ -1,5 +1,5 @@
 import type { Query, QueryClient } from "@tanstack/react-query";
-import { branchCiPipelineQueryKind } from "./branch-ci-panel/query-keys";
+import { explorerTabContributionQueryKinds } from "@/components/explorer-tab-contribution-registry";
 import { prPanePipelineQueryKind, prPaneTimelineQueryKind } from "./pull-request-panel/query-keys";
 
 interface CheckoutQueryIdentity {
@@ -40,10 +40,6 @@ export function checkoutCommitsQueryKey(serverId: string, cwd: string) {
   return ["checkoutCommits", serverId, cwd] as const;
 }
 
-export function repositoryGraphQueryKey(serverId: string, cwd: string) {
-  return ["repositoryGraph", serverId, cwd] as const;
-}
-
 export function checkoutCommitFileDiffQueryKey(
   serverId: string,
   cwd: string,
@@ -79,14 +75,13 @@ export async function invalidateCheckoutGitQueriesForClient(
   ]);
 
   // Fork-only views should refresh after a mutation without extending the upstream action wait.
-  void Promise.all([
-    queryClient.invalidateQueries({
-      queryKey: repositoryGraphQueryKey(identity.serverId, identity.cwd),
-    }),
-    queryClient.invalidateQueries({
-      predicate: checkoutQueryPredicate(branchCiPipelineQueryKind, identity),
-    }),
-  ]).catch(() => undefined);
+  void Promise.all(
+    explorerTabContributionQueryKinds.map((kind) =>
+      queryClient.invalidateQueries({
+        predicate: checkoutQueryPredicate(kind, identity),
+      }),
+    ),
+  ).catch(() => undefined);
 }
 
 // checkoutDiff is excluded: diff queries are subscription-fed (queryFn: skipToken) and
@@ -100,10 +95,9 @@ export async function invalidateCheckoutGitQueriesForServer(
     "checkoutStatus",
     "checkoutPrStatus",
     "checkoutCommits",
-    "repositoryGraph",
     prPaneTimelineQueryKind,
     prPanePipelineQueryKind,
-    branchCiPipelineQueryKind,
+    ...explorerTabContributionQueryKinds,
   ];
   await Promise.all(
     kinds.map((kind) =>
