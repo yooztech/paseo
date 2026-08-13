@@ -384,6 +384,30 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
+  test("created pull request CI refresh replaces stale merge facts with an unknown state", async () => {
+    const service = createService();
+    await service.getSnapshot(REPO_CWD);
+
+    const refresh = service.refreshCreatedPullRequestCiStatus(REPO_CWD, {
+      number: 42,
+      url: "https://github.com/acme/repo/pull/42",
+      title: "New pull request",
+      baseRef: "main",
+    });
+
+    expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest).toMatchObject({
+      number: 42,
+      state: "open",
+      mergeable: "UNKNOWN",
+      checksStatus: "none",
+      reviewDecision: null,
+    });
+    expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest?.forgeSpecific).toBeUndefined();
+
+    await refresh;
+    service.dispose();
+  });
+
   test("onSnapshotUpdated emits only for observed workspace snapshots and can unsubscribe", async () => {
     const service = createService();
     const snapshotListener = vi.fn();

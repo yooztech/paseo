@@ -303,6 +303,7 @@ interface SessionForTestOptions {
     getWorkspaceGitMetadata?: ReturnType<typeof vi.fn>;
     getProjectSlug?: ReturnType<typeof vi.fn>;
     setPullRequestStatusSettling?: ReturnType<typeof vi.fn>;
+    refreshCreatedPullRequestCiStatus?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
@@ -353,6 +354,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     // adapter's cache. The resolved forge here is github, so delegate to it.
     invalidateForge: vi.fn((cwd: string) => github.invalidate({ cwd })),
     setPullRequestStatusSettling: vi.fn(),
+    refreshCreatedPullRequestCiStatus: vi.fn().mockResolvedValue(undefined),
     getProjectSlug: vi.fn(),
     ...options.workspaceGitService,
   };
@@ -2533,80 +2535,18 @@ diff --git a/file.txt b/file.txt
     });
   });
 
-  test("polls workspace git and forge status after creating a pull request", async () => {
+  test("returns creation before starting the background CI-only refresh", async () => {
     const messages: unknown[] = [];
-    const github = { invalidate: vi.fn() };
+    const ciRefresh = new Promise<void>(() => {});
     const workspaceGitService = {
-      getSnapshot: vi.fn().mockResolvedValue({ forge: { pullRequest: null } }),
       setPullRequestStatusSettling: vi.fn(),
+      refreshCreatedPullRequestCiStatus: vi.fn().mockReturnValue(ciRefresh),
     };
     checkoutGitMocks.createPullRequest.mockResolvedValue({
       url: "https://github.com/getpaseo/paseo/pull/2",
       number: 2,
     });
-    const session = createSessionForTest({ github, workspaceGitService, messages });
-
-    await completePrCreate(
-      session.handleMessage({
-        type: "checkout_pr_create_request",
-        cwd: "/tmp/request-worktree",
-        baseRef: "main",
-        title: "Update file",
-        body: "Updates file.",
-        requestId: "request-pr-create",
-      }),
-    );
-
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(3);
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
-      force: true,
-      includeForge: true,
-      reason: "create-pr",
-    });
-    expect(github.invalidate).toHaveBeenCalledTimes(3);
-    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
-    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenNthCalledWith(
-      1,
-      "/tmp/request-worktree",
-      true,
-    );
-    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenNthCalledWith(
-      2,
-      "/tmp/request-worktree",
-      false,
-    );
-    expect(messages).toContainEqual({
-      type: "checkout_pr_create_response",
-      payload: {
-        cwd: "/tmp/request-worktree",
-        url: "https://github.com/getpaseo/paseo/pull/2",
-        number: 2,
-        error: null,
-        requestId: "request-pr-create",
-      },
-    });
-  });
-
-  test("stops polling once mergeability and CI status are available", async () => {
-    const messages: unknown[] = [];
-    const github = { invalidate: vi.fn() };
-    const workspaceGitService = {
-      getSnapshot: vi.fn().mockResolvedValue({
-        forge: {
-          pullRequest: {
-            number: 2,
-            url: "https://github.com/getpaseo/paseo/pull/2",
-            mergeable: "MERGEABLE",
-            checksStatus: "pending",
-          },
-        },
-      }),
-    };
-    checkoutGitMocks.createPullRequest.mockResolvedValue({
-      url: "https://github.com/getpaseo/paseo/pull/2",
-      number: 2,
-    });
-    const session = createSessionForTest({ github, workspaceGitService, messages });
+    const session = createSessionForTest({ workspaceGitService, messages });
 
     await session.handleMessage({
       type: "checkout_pr_create_request",
@@ -2614,10 +2554,22 @@ diff --git a/file.txt b/file.txt
       baseRef: "main",
       title: "Update file",
       body: "Updates file.",
-      requestId: "request-pr-create-ready",
+      requestId: "request-pr-create",
     });
 
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(workspaceGitService.refreshCreatedPullRequestCiStatus).toHaveBeenCalledWith(
+      "/tmp/request-worktree",
+      {
+        number: 2,
+        url: "https://github.com/getpaseo/paseo/pull/2",
+        title: "Update file",
+        baseRef: "main",
+      },
+    );
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenCalledWith(
+      "/tmp/request-worktree",
+      true,
+    );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
       payload: {
@@ -2625,23 +2577,22 @@ diff --git a/file.txt b/file.txt
         url: "https://github.com/getpaseo/paseo/pull/2",
         number: 2,
         error: null,
-        requestId: "request-pr-create-ready",
+        requestId: "request-pr-create",
       },
     });
   });
 
-  test("reports successful creation when status confirmation fails", async () => {
+  test("clears settling after a background CI refresh failure without changing creation success", async () => {
     const messages: unknown[] = [];
-    const github = { invalidate: vi.fn() };
     const workspaceGitService = {
-      getSnapshot: vi.fn().mockRejectedValue(new Error("forge status unavailable")),
       setPullRequestStatusSettling: vi.fn(),
+      refreshCreatedPullRequestCiStatus: vi.fn().mockRejectedValue(new Error("CI unavailable")),
     };
     checkoutGitMocks.createPullRequest.mockResolvedValue({
       url: "https://github.com/getpaseo/paseo/pull/3",
       number: 3,
     });
-    const session = createSessionForTest({ github, workspaceGitService, messages });
+    const session = createSessionForTest({ workspaceGitService, messages });
 
     await completePrCreate(
       session.handleMessage({
@@ -2654,7 +2605,6 @@ diff --git a/file.txt b/file.txt
       }),
     );
 
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(3);
     expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenLastCalledWith(
       "/tmp/request-worktree",
       false,

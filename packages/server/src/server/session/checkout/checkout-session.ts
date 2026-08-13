@@ -55,15 +55,7 @@ import {
 } from "../../../utils/checkout-git.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
 import { expandTilde } from "../../../utils/path.js";
-import { pullRequestHasAttachedCi } from "../../../services/ci-attach-wait.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
-
-const PR_CREATE_STATUS_POLL_INTERVAL_MS = 1_000;
-const PR_CREATE_STATUS_SETTLE_TIMEOUT_MS = 2_000;
-
-function waitForPrCreateStatusPoll(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, PR_CREATE_STATUS_POLL_INTERVAL_MS));
-}
 
 /**
  * The collaborators a checkout command reaches that are NOT part of the checkout
@@ -183,64 +175,6 @@ export class CheckoutSession {
       return null;
     }
     return { forge: resolution.forge, service: resolution.service };
-  }
-
-  private async refreshCreatedPullRequestStatus(
-    cwd: string,
-  ): Promise<WorkspaceGitRuntimeSnapshot | null> {
-    try {
-      this.workspaceGitService.invalidateForge(cwd);
-      return await this.workspaceGitService.getSnapshot(cwd, {
-        force: true,
-        includeForge: true,
-        reason: "create-pr",
-      });
-    } catch (error) {
-      this.logger.warn(
-        { err: error, cwd, reason: "create-pr" },
-        "Failed to confirm pull request status after creation",
-      );
-      return null;
-    }
-  }
-
-  private createdPullRequestStatusIsReady(
-    snapshot: WorkspaceGitRuntimeSnapshot | null,
-    created: { url: string; number: number },
-  ): boolean {
-    const status = snapshot?.forge.pullRequest;
-    if (!status) {
-      return false;
-    }
-    const matchesCreatedPullRequest =
-      status.number === created.number || (status.number == null && status.url === created.url);
-    return (
-      matchesCreatedPullRequest &&
-      status.mergeable != null &&
-      status.mergeable !== "UNKNOWN" &&
-      pullRequestHasAttachedCi(status)
-    );
-  }
-
-  private async settleCreatedPullRequestStatus(
-    cwd: string,
-    created: { url: string; number: number },
-  ): Promise<void> {
-    const initialSnapshot = await this.refreshCreatedPullRequestStatus(cwd);
-    if (this.createdPullRequestStatusIsReady(initialSnapshot, created)) {
-      return;
-    }
-    for (
-      let elapsedMs = PR_CREATE_STATUS_POLL_INTERVAL_MS;
-      elapsedMs <= PR_CREATE_STATUS_SETTLE_TIMEOUT_MS;
-      elapsedMs += PR_CREATE_STATUS_POLL_INTERVAL_MS
-    ) {
-      await waitForPrCreateStatusPoll();
-      const snapshot = await this.refreshCreatedPullRequestStatus(cwd);
-      if (this.createdPullRequestStatusIsReady(snapshot, created)) {
-        return;
-      }
-    }
   }
 
   private async requireForgeService(
@@ -976,7 +910,7 @@ export class CheckoutSession {
   ): Promise<void> {
     const { cwd, requestId } = msg;
 
-    let result: { url: string; number: number };
+    let result: { url: string; number: number; title: string; baseRef: string };
     try {
       let title = msg.title?.trim() ?? "";
       let body = msg.body?.trim() ?? "";
@@ -988,7 +922,7 @@ export class CheckoutSession {
       }
 
       const { service } = await this.requireForgeService(cwd);
-      result = await createPullRequest(
+      const created = await createPullRequest(
         cwd,
         {
           title,
@@ -997,6 +931,7 @@ export class CheckoutSession {
         },
         service,
       );
+      result = { ...created, title, baseRef: msg.baseRef ?? "" };
     } catch (error) {
       this.host.emit({
         type: "checkout_pr_create_response",
@@ -1011,14 +946,14 @@ export class CheckoutSession {
       return;
     }
 
-    // The PR exists remotely at this point. Status confirmation is best-effort
-    // and must never turn a successful remote creation into a failed response.
+    // Return remote creation before the optional CI-only refresh.
     this.workspaceGitService.setPullRequestStatusSettling(cwd, true);
-    try {
-      await this.settleCreatedPullRequestStatus(cwd, result);
-    } finally {
-      this.workspaceGitService.setPullRequestStatusSettling(cwd, false);
-    }
+    const ciRefresh = this.workspaceGitService.refreshCreatedPullRequestCiStatus(cwd, {
+      number: result.number,
+      url: result.url,
+      title: result.title,
+      baseRef: result.baseRef,
+    });
     this.host.emit({
       type: "checkout_pr_create_response",
       payload: {
@@ -1029,6 +964,16 @@ export class CheckoutSession {
         requestId,
       },
     });
+    void ciRefresh
+      .catch((error) => {
+        this.logger.warn(
+          { err: error, cwd, number: result.number, reason: "create-pr-ci-status" },
+          "Failed to refresh pull request CI status after creation",
+        );
+      })
+      .finally(() => {
+        this.workspaceGitService.setPullRequestStatusSettling(cwd, false);
+      });
   }
 
   async handleCheckoutPrMergeRequest(
