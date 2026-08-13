@@ -635,7 +635,9 @@ export class ServiceProxyRouteRegistry {
       return { type: "known-service-miss" };
     }
     for (const baseHostname of this.publicBaseHostnames) {
-      if (hostname === baseHostname || hostname.endsWith(`.${baseHostname}`)) {
+      // The public base hostname serves daemon APIs. Only its subdomains are
+      // generated service aliases and should be intercepted here.
+      if (hostname.endsWith(`.${baseHostname}`)) {
         return { type: "known-service-miss" };
       }
     }
