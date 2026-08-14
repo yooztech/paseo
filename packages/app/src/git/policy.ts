@@ -151,15 +151,15 @@ interface PullRequestAutoMergeEnableActionModel {
 
 const PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS = [
   {
-    id: "merge-pr-squash",
-    role: "direct",
-    method: "squash",
-    startsGroup: true,
-  },
-  {
     id: "merge-pr-merge",
     role: "direct",
     method: "merge",
+    startsGroup: true,
+  },
+  {
+    id: "merge-pr-squash",
+    role: "direct",
+    method: "squash",
     startsGroup: false,
   },
   {

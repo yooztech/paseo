@@ -396,8 +396,8 @@ describe("git-actions-policy", () => {
       "merge-from-base",
       "merge-branch",
       "pr",
-      "merge-pr-squash",
       "merge-pr-merge",
+      "merge-pr-squash",
       "merge-pr-rebase",
     ]);
     expect(
@@ -800,8 +800,8 @@ describe("git-actions-policy", () => {
       "merge-from-base",
       "merge-branch",
       "pr",
-      "merge-pr-squash",
       "merge-pr-merge",
+      "merge-pr-squash",
       "merge-pr-rebase",
     ]);
   });
@@ -844,8 +844,8 @@ describe("git-actions-policy", () => {
         startsGroup: false,
       },
       {
-        id: "merge-pr-squash",
-        label: "Merge PR (squash)",
+        id: "merge-pr-merge",
+        label: "Merge PR (merge)",
         pendingLabel: "Merging PR...",
         successLabel: "PR merged",
         disabled: false,
@@ -853,8 +853,8 @@ describe("git-actions-policy", () => {
         startsGroup: true,
       },
       {
-        id: "merge-pr-merge",
-        label: "Merge PR (merge)",
+        id: "merge-pr-squash",
+        label: "Merge PR (squash)",
         pendingLabel: "Merging PR...",
         successLabel: "PR merged",
         disabled: false,
@@ -974,8 +974,8 @@ describe("git-actions-policy", () => {
 
     expect(oldDaemonStatus.forgeSpecific).toBeUndefined();
     expect(actions.primary).toMatchObject({
-      id: "merge-pr-squash",
-      label: "Merge PR (squash)",
+      id: "merge-pr-merge",
+      label: "Merge PR (merge)",
     });
     expect(actions.secondary.map((action) => action.id)).toEqual([
       "pull",
@@ -984,8 +984,8 @@ describe("git-actions-policy", () => {
       "merge-from-base",
       "merge-branch",
       "pr",
-      "merge-pr-squash",
       "merge-pr-merge",
+      "merge-pr-squash",
       "merge-pr-rebase",
     ]);
   });
@@ -1222,14 +1222,14 @@ describe("git-actions-policy", () => {
       .filter((action) => !action.startsGroup)
       .map((action) => action.id);
 
-    expect(groupStarters).toEqual(["merge-from-base", "merge-pr-squash"]);
+    expect(groupStarters).toEqual(["merge-from-base", "merge-pr-merge"]);
     expect(nonGroupStarters).toEqual([
       "pull",
       "push",
       "pull-and-push",
       "merge-branch",
       "pr",
-      "merge-pr-merge",
+      "merge-pr-squash",
       "merge-pr-rebase",
     ]);
   });
