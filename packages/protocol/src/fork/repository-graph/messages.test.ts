@@ -4,6 +4,8 @@ import {
   CheckoutRepositoryGraphGetHistoryResponseSchema,
   CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
   CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
+  CheckoutRepositoryGraphMutateRefRequestSchema,
+  CheckoutRepositoryGraphMutateRefResponseSchema,
   ServerInfoStatusPayloadSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
@@ -63,6 +65,36 @@ describe("checkout.repository_graph.get_history schemas", () => {
       }).features,
     ).toEqual({});
   });
+});
+
+test("accepts repository graph ref mutation messages", () => {
+  const request = {
+    type: "checkout.repository_graph.mutate_ref.request" as const,
+    cwd: "/repo",
+    action: "delete" as const,
+    refKind: "head" as const,
+    name: "feature/demo",
+    force: true,
+    deleteOnRemote: true,
+    requestId: "request-3",
+  };
+  const response = {
+    type: "checkout.repository_graph.mutate_ref.response" as const,
+    payload: {
+      cwd: "/repo",
+      action: "delete" as const,
+      refKind: "head" as const,
+      name: "feature/demo",
+      success: true,
+      error: null,
+      requestId: "request-3",
+    },
+  };
+
+  expect(CheckoutRepositoryGraphMutateRefRequestSchema.parse(request)).toEqual(request);
+  expect(SessionInboundMessageSchema.parse(request)).toEqual(request);
+  expect(CheckoutRepositoryGraphMutateRefResponseSchema.parse(response)).toEqual(response);
+  expect(SessionOutboundMessageSchema.parse(response)).toEqual(response);
 });
 
 test("accepts repository graph commit details messages", () => {

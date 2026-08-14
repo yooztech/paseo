@@ -12,7 +12,7 @@ export function useRepositoryGraphHistory(input: {
 }) {
   const client = useHostRuntimeClient(input.serverId);
   const isConnected = useHostRuntimeIsConnected(input.serverId);
-  // COMPAT(repositoryGraph): added in v0.2.5, remove after 2027-02-03.
+  // FORK(repository-graph): gate history when the connected host predates this fork feature.
   const supported = useSessionStore(
     (state) => state.sessions[input.serverId]?.serverInfo?.features?.repositoryGraph === true,
   );

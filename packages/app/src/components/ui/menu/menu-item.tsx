@@ -389,7 +389,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   itemTextDestructive: {
-    color: theme.colors.destructive,
+    color: theme.colors.palette.red[500],
   },
   itemTextSuccess: {
     color: theme.colors.palette.green[500],

@@ -1,6 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, View, type ListRenderItemInfo } from "react-native";
-import { ChevronRight, File, GitBranch, RotateCw, Tag } from "lucide-react-native";
+import {
+  ChevronRight,
+  Copy,
+  File,
+  GitBranch,
+  Pencil,
+  RotateCw,
+  Tag,
+  Trash2,
+} from "lucide-react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -9,6 +18,17 @@ import type {
   RepositoryGraphCommitDetails,
 } from "@getpaseo/protocol/messages";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { AdaptiveRenameModal } from "@/components/rename-modal";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { useToast } from "@/contexts/toast-context";
+import { copyToClipboard } from "@/utils/copy-to-clipboard";
+import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
 import { formatTimeAgo } from "@/utils/time";
 import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
@@ -16,6 +36,8 @@ import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { layoutRepositoryGraph, type RepositoryGraphRowLayout } from "./layout";
 import { useRepositoryGraphCommitDetails } from "./use-commit-details";
 import { useRepositoryGraphHistory } from "./use-history";
+import { useRepositoryGraphRefMutation } from "./use-ref-mutation";
+import { RefDeleteModal } from "./ref-delete-modal";
 
 const ROW_HEIGHT = 52;
 const LANE_WIDTH = 14;
@@ -38,8 +60,12 @@ const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedFile = withUnistyles(File);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const ThemedPencil = withUnistyles(Pencil);
+const ThemedTrash = withUnistyles(Trash2);
+const ThemedCopy = withUnistyles(Copy);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
 const interactiveRowStyle = ({ pressed }: { pressed: boolean }) => [
   styles.row,
   pressed && styles.rowHovered,
@@ -99,14 +125,38 @@ function RefBadge({
   refInfo,
   remote,
   color,
+  actionsEnabled,
+  onRename,
+  onDelete,
+  onCopy,
 }: {
   refInfo: GraphRef;
   remote?: string;
   color: string;
+  actionsEnabled: boolean;
+  onRename: (refInfo: GraphRef) => void;
+  onDelete: (refInfo: GraphRef) => void;
+  onCopy: (refInfo: GraphRef) => void;
 }) {
+  const { t } = useTranslation();
   const RefIcon = refInfo.kind === "tag" ? Tag : GitBranch;
   const foregroundColor = getContrastingTextColor(color);
-  return (
+  const handleRename = useCallback(() => onRename(refInfo), [onRename, refInfo]);
+  const handleDelete = useCallback(() => onDelete(refInfo), [onDelete, refInfo]);
+  const handleCopy = useCallback(() => onCopy(refInfo), [onCopy, refInfo]);
+  const renameLeading = useMemo(
+    () => <ThemedPencil size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
+  const deleteLeading = useMemo(
+    () => <ThemedTrash size={15} uniProps={destructiveColorMapping} />,
+    [],
+  );
+  const copyLeading = useMemo(
+    () => <ThemedCopy size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
+  const badge = (
     <View style={styles.refBadge}>
       <View style={[styles.localRef, { backgroundColor: color }]}>
         <RefIcon size={12} strokeWidth={2.5} color={foregroundColor} />
@@ -119,9 +169,59 @@ function RefBadge({
       ) : null}
     </View>
   );
+  const isTag = refInfo.kind === "tag";
+  const isRemote = refInfo.kind === "remote";
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger testID={`repository-graph-ref-${refInfo.kind}-${refInfo.name}`}>
+        {badge}
+      </ContextMenuTrigger>
+      <ContextMenuContent align="start" width={230} sheetTitle={refInfo.name}>
+        {!isRemote && actionsEnabled ? (
+          <ContextMenuItem leading={renameLeading} onSelect={handleRename}>
+            {isTag
+              ? t("workspace.repositoryGraph.actions.renameTag")
+              : t("workspace.repositoryGraph.actions.renameBranch")}
+          </ContextMenuItem>
+        ) : null}
+        {actionsEnabled ? (
+          <ContextMenuItem
+            leading={deleteLeading}
+            destructive
+            disabled={refInfo.current}
+            onSelect={handleDelete}
+          >
+            {isTag
+              ? t("workspace.repositoryGraph.actions.deleteTag")
+              : t("workspace.repositoryGraph.actions.deleteBranch")}
+          </ContextMenuItem>
+        ) : null}
+        {actionsEnabled ? <ContextMenuSeparator /> : null}
+        <ContextMenuItem leading={copyLeading} onSelect={handleCopy}>
+          {isTag
+            ? t("workspace.repositoryGraph.actions.copyTagName")
+            : t("workspace.repositoryGraph.actions.copyBranchName")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 }
 
-function RefBadges({ refs, color }: { refs: GraphRef[]; color: string }) {
+function RefBadges({
+  refs,
+  color,
+  actionsEnabled,
+  onRename,
+  onDelete,
+  onCopy,
+}: {
+  refs: GraphRef[];
+  color: string;
+  actionsEnabled: boolean;
+  onRename: (refInfo: GraphRef) => void;
+  onDelete: (refInfo: GraphRef) => void;
+  onCopy: (refInfo: GraphRef) => void;
+}) {
   const consumedRemotes = new Set<string>();
   const badges: Array<{ refInfo: GraphRef; remote?: string }> = refs.flatMap((refInfo) => {
     if (refInfo.kind === "remote" && consumedRemotes.has(refInfo.name)) {
@@ -133,7 +233,8 @@ function RefBadges({ refs, color }: { refs: GraphRef[]; color: string }) {
     const remote = refs.find(
       (candidate) =>
         candidate.kind === "remote" &&
-        candidate.name.split("/").slice(1).join("/") === refInfo.name,
+        (candidate.name === refInfo.upstream ||
+          (!refInfo.upstream && candidate.name.split("/").slice(1).join("/") === refInfo.name)),
     );
     if (!remote) {
       return [{ refInfo }];
@@ -148,6 +249,10 @@ function RefBadges({ refs, color }: { refs: GraphRef[]; color: string }) {
       refInfo={refInfo}
       remote={remote}
       color={color}
+      actionsEnabled={actionsEnabled}
+      onRename={onRename}
+      onDelete={onDelete}
+      onCopy={onCopy}
     />
   ));
 }
@@ -157,11 +262,19 @@ function CommitRow({
   laneCount,
   selected,
   onPress,
+  actionsEnabled,
+  onRenameRef,
+  onDeleteRef,
+  onCopyRef,
 }: {
   row: RepositoryGraphRowLayout;
   laneCount: number;
   selected: boolean;
   onPress: () => void;
+  actionsEnabled: boolean;
+  onRenameRef: (refInfo: GraphRef) => void;
+  onDeleteRef: (refInfo: GraphRef) => void;
+  onCopyRef: (refInfo: GraphRef) => void;
 }) {
   return (
     <View style={selected && styles.rowSelected}>
@@ -176,6 +289,10 @@ function CommitRow({
             <RefBadges
               refs={row.commit.refs}
               color={GRAPH_COLORS[row.color % GRAPH_COLORS.length] ?? GRAPH_COLORS[0]}
+              actionsEnabled={actionsEnabled}
+              onRename={onRenameRef}
+              onDelete={onDeleteRef}
+              onCopy={onCopyRef}
             />
             <Text style={styles.subject} numberOfLines={1}>
               {row.commit.subject}
@@ -335,6 +452,10 @@ function CommitGraphItem({
   persistenceKey,
   openWorkspaceTabFocused,
   retargetWorkspaceTab,
+  actionsEnabled,
+  onRenameRef,
+  onDeleteRef,
+  onCopyRef,
 }: {
   item: RepositoryGraphRowLayout;
   laneCount: number;
@@ -345,6 +466,10 @@ function CommitGraphItem({
   persistenceKey: string | null;
   openWorkspaceTabFocused: ReturnType<typeof useWorkspaceLayoutStore.getState>["openTabFocused"];
   retargetWorkspaceTab: ReturnType<typeof useWorkspaceLayoutStore.getState>["retargetTab"];
+  actionsEnabled: boolean;
+  onRenameRef: (refInfo: GraphRef) => void;
+  onDeleteRef: (refInfo: GraphRef) => void;
+  onCopyRef: (refInfo: GraphRef) => void;
 }) {
   const selected = item.commit.sha === selectedSha;
   const handlePress = useCallback(
@@ -380,7 +505,16 @@ function CommitGraphItem({
   );
   return (
     <View>
-      <CommitRow row={item} laneCount={laneCount} selected={selected} onPress={handlePress} />
+      <CommitRow
+        row={item}
+        laneCount={laneCount}
+        selected={selected}
+        onPress={handlePress}
+        actionsEnabled={actionsEnabled}
+        onRenameRef={onRenameRef}
+        onDeleteRef={onDeleteRef}
+        onCopyRef={onCopyRef}
+      />
       {selected ? (
         <CommitDetails
           serverId={serverId}
@@ -414,7 +548,14 @@ export function RepositoryGraphPane({
   enabled: boolean;
 }) {
   const { t } = useTranslation();
+  const toast = useToast();
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<GraphRef | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<GraphRef | null>(null);
+  const refActionsSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.repositoryGraphRefActions === true,
+  );
+  const refMutation = useRepositoryGraphRefMutation(serverId, cwd);
   const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
   const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
   const persistenceKey = useMemo(
@@ -430,6 +571,51 @@ export function RepositoryGraphPane({
     () => rows.reduce((maximum, row) => Math.max(maximum, row.laneCount), 1),
     [rows],
   );
+  const handleOpenRename = useCallback((refInfo: GraphRef) => setRenameTarget(refInfo), []);
+  const handleOpenDelete = useCallback((refInfo: GraphRef) => setDeleteTarget(refInfo), []);
+  const handleCopyRef = useCallback(
+    (refInfo: GraphRef) => {
+      void copyToClipboard(refInfo.name)
+        .then(() =>
+          toast.show(
+            refInfo.kind === "tag"
+              ? t("workspace.repositoryGraph.actions.tagNameCopied")
+              : t("workspace.repositoryGraph.actions.branchNameCopied"),
+            { variant: "success" },
+          ),
+        )
+        .catch(() => toast.error(t("workspace.tabs.toasts.copyFailed")));
+    },
+    [t, toast],
+  );
+  const closeRename = useCallback(() => setRenameTarget(null), []);
+  const closeDelete = useCallback(() => setDeleteTarget(null), []);
+  const submitRename = useCallback(
+    async (newName: string) => {
+      if (!renameTarget) return;
+      await refMutation.mutateAsync({
+        action: "rename",
+        refKind: renameTarget.kind,
+        name: renameTarget.name,
+        newName,
+      });
+      toast.show(t("workspace.repositoryGraph.actions.renamed"), { variant: "success" });
+    },
+    [refMutation, renameTarget, t, toast],
+  );
+  const submitDelete = useCallback(
+    async (options: { force: boolean; deleteOnRemote: boolean }) => {
+      if (!deleteTarget) return;
+      await refMutation.mutateAsync({
+        action: "delete",
+        refKind: deleteTarget.kind,
+        name: deleteTarget.name,
+        ...options,
+      });
+      toast.show(t("workspace.repositoryGraph.actions.deleted"), { variant: "success" });
+    },
+    [deleteTarget, refMutation, t, toast],
+  );
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<RepositoryGraphRowLayout>) => (
       <CommitGraphItem
@@ -442,6 +628,10 @@ export function RepositoryGraphPane({
         persistenceKey={persistenceKey}
         openWorkspaceTabFocused={openWorkspaceTabFocused}
         retargetWorkspaceTab={retargetWorkspaceTab}
+        actionsEnabled={refActionsSupported}
+        onRenameRef={handleOpenRename}
+        onDeleteRef={handleOpenDelete}
+        onCopyRef={handleCopyRef}
       />
     ),
     [
@@ -450,6 +640,10 @@ export function RepositoryGraphPane({
       openWorkspaceTabFocused,
       persistenceKey,
       retargetWorkspaceTab,
+      refActionsSupported,
+      handleOpenRename,
+      handleOpenDelete,
+      handleCopyRef,
       selectedSha,
       serverId,
     ],
@@ -499,6 +693,26 @@ export function RepositoryGraphPane({
           </Text>
         </View>
       ) : null}
+      <AdaptiveRenameModal
+        visible={renameTarget !== null}
+        title={
+          renameTarget?.kind === "tag"
+            ? t("workspace.repositoryGraph.actions.renameTag")
+            : t("workspace.repositoryGraph.actions.renameBranch")
+        }
+        initialValue={renameTarget?.name ?? ""}
+        onClose={closeRename}
+        onSubmit={submitRename}
+        testID="repository-graph-ref-rename"
+      />
+      <RefDeleteModal
+        visible={deleteTarget !== null}
+        name={deleteTarget?.name ?? ""}
+        kind={deleteTarget?.kind ?? "head"}
+        hasUpstream={Boolean(deleteTarget?.upstream)}
+        onClose={closeDelete}
+        onSubmit={submitDelete}
+      />
     </View>
   );
 }

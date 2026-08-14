@@ -12,21 +12,29 @@ const FIELD_SEPARATOR = "\x00";
 const RECORD_SEPARATOR = "\x1e";
 const LOG_FORMAT = "%x1e%H%x00%h%x00%P%x00%an%x00%aI%x00%s";
 const DEFAULT_LIMIT = 200;
+const ZERO_SHA = "0000000000000000000000000000000000000000";
 
 interface RepositoryGraphRef {
   name: string;
   kind: "head" | "remote" | "tag";
   current: boolean;
+  upstream?: string | null;
 }
 
 function parseRefs(stdout: string): Map<string, RepositoryGraphRef[]> {
   const refsBySha = new Map<string, RepositoryGraphRef[]>();
   for (const line of stdout.split("\n")) {
-    const [objectSha = "", peeledSha = "", fullName = "", head = ""] = line.split("\x00");
+    const [objectSha = "", peeledSha = "", fullName = "", head = "", upstream = ""] =
+      line.split("\x00");
     const sha = peeledSha || objectSha;
     let ref: RepositoryGraphRef | null = null;
     if (fullName.startsWith("refs/heads/")) {
-      ref = { name: fullName.slice("refs/heads/".length), kind: "head", current: head === "*" };
+      ref = {
+        name: fullName.slice("refs/heads/".length),
+        kind: "head",
+        current: head === "*",
+        ...(upstream ? { upstream } : {}),
+      };
     } else if (fullName.startsWith("refs/remotes/") && !fullName.endsWith("/HEAD")) {
       ref = { name: fullName.slice("refs/remotes/".length), kind: "remote", current: false };
     } else if (fullName.startsWith("refs/tags/")) {
@@ -93,7 +101,7 @@ export async function getRepositoryGraphHistory({
     runGitCommand(
       [
         "for-each-ref",
-        "--format=%(objectname)%00%(*objectname)%00%(refname)%00%(HEAD)",
+        "--format=%(objectname)%00%(*objectname)%00%(refname)%00%(HEAD)%00%(upstream:short)",
         "refs/heads",
         "refs/remotes",
         "refs/tags",
@@ -106,6 +114,83 @@ export async function getRepositoryGraphHistory({
   }
   const commits = parseCommits(logResult.stdout, parseRefs(refsResult.stdout));
   return { commits: commits.slice(0, boundedLimit), hasMore: commits.length > boundedLimit };
+}
+
+function parseRemoteBranch(name: string): { remote: string; branch: string } {
+  const separator = name.indexOf("/");
+  if (separator <= 0 || separator === name.length - 1) {
+    throw new Error(`Invalid remote branch: ${name}`);
+  }
+  return { remote: name.slice(0, separator), branch: name.slice(separator + 1) };
+}
+
+async function getBranchUpstream(cwd: string, name: string): Promise<string | null> {
+  const { stdout } = await runGitCommand(
+    ["for-each-ref", "--format=%(upstream:short)", `refs/heads/${name}`],
+    { cwd, envOverlay: READ_ONLY_GIT_ENV },
+  );
+  return stdout.trim() || null;
+}
+
+async function deleteRemoteBranch(cwd: string, name: string): Promise<void> {
+  const { remote, branch } = parseRemoteBranch(name);
+  await runGitCommand(["push", remote, "--delete", "--", branch], { cwd });
+}
+
+export interface RepositoryGraphRefMutation {
+  cwd: string;
+  action: "rename" | "delete";
+  refKind: "head" | "remote" | "tag";
+  name: string;
+  newName?: string;
+  force?: boolean;
+  deleteOnRemote?: boolean;
+}
+
+export async function mutateRepositoryGraphRef(input: RepositoryGraphRefMutation): Promise<void> {
+  if (input.action === "rename") {
+    if (!input.newName) {
+      throw new Error("A new reference name is required");
+    }
+    if (input.refKind === "head") {
+      await runGitCommand(["branch", "-m", "--", input.name, input.newName], { cwd: input.cwd });
+      return;
+    }
+    if (input.refKind === "tag") {
+      await runGitCommand(
+        ["update-ref", `refs/tags/${input.newName}`, `refs/tags/${input.name}`, ZERO_SHA],
+        { cwd: input.cwd },
+      );
+      try {
+        await runGitCommand(["tag", "-d", "--", input.name], { cwd: input.cwd });
+      } catch (error) {
+        await runGitCommand(["update-ref", "-d", `refs/tags/${input.newName}`], { cwd: input.cwd });
+        throw error;
+      }
+      return;
+    }
+    throw new Error("Remote branches cannot be renamed");
+  }
+
+  if (input.refKind === "remote") {
+    await deleteRemoteBranch(input.cwd, input.name);
+    return;
+  }
+  if (input.refKind === "tag") {
+    await runGitCommand(["tag", "-d", "--", input.name], { cwd: input.cwd });
+    return;
+  }
+
+  const upstream = input.deleteOnRemote ? await getBranchUpstream(input.cwd, input.name) : null;
+  if (input.deleteOnRemote && !upstream) {
+    throw new Error(`Branch ${input.name} does not have an upstream branch`);
+  }
+  await runGitCommand(["branch", input.force ? "-D" : "-d", "--", input.name], {
+    cwd: input.cwd,
+  });
+  if (upstream) {
+    await deleteRemoteBranch(input.cwd, upstream);
+  }
 }
 
 const DETAILS_FORMAT = ["%H", "%P", "%an", "%ae", "%aI", "%cn", "%ce", "%cI", "%s", "%b"].join(

@@ -835,6 +835,16 @@ export interface RenameBranchInput {
   branch: string;
   requestId?: string;
 }
+export interface RepositoryGraphRefMutationInput {
+  cwd: string;
+  action: "rename" | "delete";
+  refKind: "head" | "remote" | "tag";
+  name: string;
+  newName?: string;
+  force?: boolean;
+  deleteOnRemote?: boolean;
+  requestId?: string;
+}
 export interface RenameTerminalInput {
   terminalId: string;
   title: string;
@@ -3853,6 +3863,29 @@ export class DaemonClient {
       throw new Error(`Commit details missing for ${sha}`);
     }
     return payload.details;
+  }
+
+  async mutateRepositoryGraphRef(input: RepositoryGraphRefMutationInput): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.mutate_ref.response">(
+        {
+          requestId: input.requestId,
+          message: {
+            type: "checkout.repository_graph.mutate_ref.request",
+            cwd: input.cwd,
+            action: input.action,
+            refKind: input.refKind,
+            name: input.name,
+            newName: input.newName,
+            force: input.force,
+            deleteOnRemote: input.deleteOnRemote,
+          },
+          timeout: 60000,
+        },
+      );
+    if (payload.error) {
+      throw new Error(payload.error.message);
+    }
   }
 
   async getCommitFileDiff(

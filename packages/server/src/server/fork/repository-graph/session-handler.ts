@@ -3,6 +3,7 @@ import type {
   CheckoutCommitFileDiffRequest,
   CheckoutRepositoryGraphGetCommitDetailsRequest,
   CheckoutRepositoryGraphGetHistoryRequest,
+  CheckoutRepositoryGraphMutateRefRequest,
   SessionOutboundMessage,
 } from "@getpaseo/protocol/messages";
 import { toCheckoutError } from "../../checkout-git-utils.js";
@@ -12,10 +13,14 @@ import {
   getRepositoryGraphCommitDetails,
   getRepositoryGraphFileDiff,
   getRepositoryGraphHistory,
+  mutateRepositoryGraphRef,
 } from "./git.js";
 
 export class RepositoryGraphForkSessionHandler {
-  constructor(private readonly emit: (message: SessionOutboundMessage) => void) {}
+  constructor(
+    private readonly emit: (message: SessionOutboundMessage) => void,
+    private readonly onMutation: (cwd: string) => Promise<void>,
+  ) {}
 
   async handleHistory(msg: CheckoutRepositoryGraphGetHistoryRequest): Promise<void> {
     const { cwd, limit, requestId } = msg;
@@ -68,5 +73,53 @@ export class RepositoryGraphForkSessionHandler {
         payload: { cwd, sha, path, file: null, error: toCheckoutError(error), requestId },
       });
     }
+  }
+
+  async handleMutateRef(msg: CheckoutRepositoryGraphMutateRefRequest): Promise<void> {
+    const { cwd, action, refKind, name, newName, force, deleteOnRemote, requestId } = msg;
+    let mutationError: unknown = null;
+    try {
+      assertSafeGitRef(name, refKind === "tag" ? "tag" : "branch");
+      if (newName) {
+        assertSafeGitRef(newName, refKind === "tag" ? "tag" : "branch");
+      }
+      await mutateRepositoryGraphRef({
+        cwd: expandTilde(cwd),
+        action,
+        refKind,
+        name,
+        newName,
+        force,
+        deleteOnRemote,
+      });
+    } catch (error) {
+      mutationError = error;
+    }
+
+    try {
+      await this.onMutation(cwd);
+    } catch (error) {
+      mutationError ??= error;
+    }
+
+    if (!mutationError) {
+      this.emit({
+        type: "checkout.repository_graph.mutate_ref.response",
+        payload: { cwd, action, refKind, name, success: true, error: null, requestId },
+      });
+      return;
+    }
+    this.emit({
+      type: "checkout.repository_graph.mutate_ref.response",
+      payload: {
+        cwd,
+        action,
+        refKind,
+        name,
+        success: false,
+        error: toCheckoutError(mutationError),
+        requestId,
+      },
+    });
   }
 }
