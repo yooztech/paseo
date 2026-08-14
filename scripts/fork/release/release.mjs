@@ -28,7 +28,19 @@ export function getForkNumber(tag, version) {
   return Number(match[1] ?? match[2] ?? match[3] ?? match[4]);
 }
 
-export function getNextForkNumber(tags, version) {
+export function getForkReleaseNumber(tags, currentTags, version) {
+  const currentNumbers = [
+    ...new Set(
+      currentTags.map((tag) => getForkNumber(tag, version)).filter((number) => number !== null),
+    ),
+  ];
+  if (currentNumbers.length > 1) {
+    throw new Error(
+      `Current commit has conflicting fork release numbers: ${currentNumbers.join(", ")}.`,
+    );
+  }
+  if (currentNumbers.length === 1) return currentNumbers[0];
+
   const numbers = tags
     .map((tag) => getForkNumber(tag, version))
     .filter((number) => number !== null);
@@ -76,17 +88,34 @@ function preflight(channel) {
     readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
   );
   const tags = capture("git", ["tag", "--list"]).split("\n").filter(Boolean);
-  return createForkReleaseMetadata(channel, version, getNextForkNumber(tags, version));
+  const currentTags = capture("git", ["tag", "--points-at", "HEAD"]).split("\n").filter(Boolean);
+  return createForkReleaseMetadata(
+    channel,
+    version,
+    getForkReleaseNumber(tags, currentTags, version),
+  );
 }
 
 function publish(metadata) {
   const tags = [...new Set([metadata.sourceTag, metadata.publicationTag])];
-  for (const tag of tags) run("git", ["tag", tag]);
+  const head = capture("git", ["rev-parse", "HEAD"]);
+  const createdTags = [];
+  for (const tag of tags) {
+    if (capture("git", ["tag", "--list", tag])) {
+      const existingCommit = capture("git", ["rev-parse", `${tag}^{commit}`]);
+      if (existingCommit !== head) {
+        throw new Error(`Release tag ${tag} already points to ${existingCommit}, not ${head}.`);
+      }
+      continue;
+    }
+    run("git", ["tag", tag]);
+    createdTags.push(tag);
+  }
 
   try {
     run("git", ["push", "--atomic", "origin", ...tags]);
   } catch (error) {
-    for (const tag of tags) run("git", ["tag", "--delete", tag]);
+    for (const tag of createdTags) run("git", ["tag", "--delete", tag]);
     throw error;
   }
 }

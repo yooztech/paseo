@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createForkReleaseMetadata, getForkNumber, getNextForkNumber } from "./release.mjs";
+import { createForkReleaseMetadata, getForkNumber, getForkReleaseNumber } from "./release.mjs";
 
 test("creates channel-specific fork release metadata", () => {
   assert.deepEqual(createForkReleaseMetadata("daemon", "0.2.5", 8), {
@@ -22,7 +22,7 @@ test("creates channel-specific fork release metadata", () => {
   assert.equal(createForkReleaseMetadata("app", "0.2.5", 10).sourceTag, "app-v0.2.5-fork.10");
 });
 
-test("scans all current channel tags and the historical app format", () => {
+test("allocates after all current channel tags and the historical app format", () => {
   const tags = [
     "v0.2.5-fork.2",
     "desktop-v0.2.5-fork.4",
@@ -32,7 +32,25 @@ test("scans all current channel tags and the historical app format", () => {
     "v0.2.6-fork.99",
     "unrelated",
   ];
-  assert.equal(getNextForkNumber(tags, "0.2.5"), 12);
+  assert.equal(getForkReleaseNumber(tags, [], "0.2.5"), 12);
   assert.equal(getForkNumber("v0.2.5-fork.11-app", "0.2.5"), 11);
   assert.equal(getForkNumber("unrelated", "0.2.5"), null);
+});
+
+test("reuses the current commit fork number across release channels", () => {
+  const tags = ["v0.2.5-fork.7", "desktop-v0.2.5-fork.8", "v0.2.5-fork.8"];
+
+  assert.equal(getForkReleaseNumber(tags, ["desktop-v0.2.5-fork.8", "v0.2.5-fork.8"], "0.2.5"), 8);
+});
+
+test("rejects conflicting release numbers on the current commit", () => {
+  assert.throws(
+    () =>
+      getForkReleaseNumber(
+        ["desktop-v0.2.5-fork.8", "app-v0.2.5-fork.9"],
+        ["desktop-v0.2.5-fork.8", "app-v0.2.5-fork.9"],
+        "0.2.5",
+      ),
+    /conflicting fork release numbers: 8, 9/,
+  );
 });

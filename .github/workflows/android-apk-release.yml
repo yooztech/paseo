@@ -33,6 +33,14 @@ jobs:
         shell: bash
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
+      - name: Validate Android release source
+        shell: bash
+        run: |
+          if [[ "$RELEASE_CHANNEL" == "fork" && ! "$SOURCE_TAG" =~ ^app-v[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+$ && ! "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+-app$ ]]; then
+            echo "Fork Android builds require an app release tag, got $SOURCE_TAG."
+            exit 1
+          fi
+
       - name: Ensure GitHub release exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,9 +64,8 @@ jobs:
             release_args+=(--prerelease)
           fi
 
-          if ! gh "${release_args[@]}"; then
-            echo "Release creation raced with another workflow; continuing."
-          fi
+          gh "${release_args[@]}" ||
+            gh release view "$PUBLICATION_TAG" --repo "${{ github.repository }}" >/dev/null
 
       - name: Setup Node
         uses: actions/setup-node@v4

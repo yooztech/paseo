@@ -321,9 +321,17 @@ test("fork daemon, desktop, and app releases use separate commands and tags", ()
 
 test("manual Android releases preserve the app source tag", () => {
   const workflow = readFileSync(androidReleaseWorkflowPath, "utf8");
+  const trigger = workflow.split("jobs:", 1)[0];
+  assert.match(trigger, /workflow_dispatch:/);
+  assert.doesNotMatch(trigger, /\bpush:/);
   assert.match(workflow, /PASEO_RELEASE_TAG="\$SOURCE_TAG"/);
+  assert.match(workflow, /Fork Android builds require an app release tag/);
   assert.match(workflow, /gh release upload "\$PUBLICATION_TAG"/);
   assert.match(workflow, /--verify-tag/);
+
+  const easWorkflow = readFileSync(easReleaseWorkflowPath, "utf8");
+  assert.match(easWorkflow, /platform: ios/);
+  assert.doesNotMatch(easWorkflow, /platform: android/);
 });
 
 test("desktop fork publication uses pre-created same-commit tags", () => {

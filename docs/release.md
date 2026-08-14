@@ -70,7 +70,7 @@ Upstream maintains two npm release paths:
 The fork has separate daemon, desktop, and iOS release channels. They do not
 publish npm packages: daemon releases use `vX.Y.Z-fork.N`, desktop releases use
 `desktop-vX.Y.Z-fork.N`, and iOS releases use `app-vX.Y.Z-fork.N`. All three
-share one incrementing fork-number sequence.
+use the same fork number when released from the same commit.
 
 Paseo has one linear release track even though npm dist-tags are independent
 pointers. The npm invariant is:
@@ -211,9 +211,10 @@ npm run release:fork:app
 
 This pushes the next `app-vX.Y.Z-fork.N` tag. It does not build the server,
 restart the daemon, or trigger Desktop Release. All fork release commands share
-the fork number sequence so every release tag has a unique `N`. The next number
-is the maximum number found across current daemon, desktop, and app tags plus one;
-historical `vX.Y.Z-fork.N-app` tags remain part of that scan.
+one release number for the current commit. The first command allocates the maximum
+number found across daemon, desktop, current app, and historical
+`vX.Y.Z-fork.N-app` tags plus one. Later channel commands on the same commit reuse
+that number.
 
 ## Desktop release publication
 

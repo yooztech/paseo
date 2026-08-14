@@ -21,7 +21,10 @@ EAS profiles: `development`, `production`, and `production-apk` in `packages/app
 major * 1_000_000 + minor * 1_000 + patch
 ```
 
-Without a fork release tag, prerelease metadata is ignored, so `0.1.102-beta.1` and `0.1.102` both produce `1102`. When passed a fork release tag, EAS and the manual GitHub APK workflow derive `base version code * 1000 + fork number` for both Android and iOS; `v0.2.5-fork.1-app` therefore uses `versionCode` and `buildNumber` `2005001`.
+`packages/app/native-release-version.js` reserves 2,000 build slots per package
+version. Beta builds use slots 1 through 998, stable uses 999, and app fork tags
+use `999 + fork number`. Android `versionCode` and iOS `buildNumber` both use
+`base * 2,000 + slot`.
 
 The formula reserves three digits each for minor and patch. If either reaches `1000`, change the formula before cutting that release.
 
@@ -163,12 +166,16 @@ Only app tag pushes like `app-v0.2.5-fork.3` trigger:
 
 Ordinary `vX.Y.Z-fork.N` daemon release tags do not consume an EAS build. Run `npm run release:fork:app` only when the commit needs an iOS build; it allocates the next fork number and adds the `app-` channel prefix.
 
+The app release command only pushes the tag. It does not run Expo prebuild,
+Gradle, or an Android build.
+
 iOS stops at TestFlight. Submit it for App Store review separately after testing.
 
 Android APK publishing is manual-only in this fork. Dispatch
 `.github/workflows/android-apk-release.yml` with the existing `app-v*` tag when
 an APK for a fork app release is explicitly needed; the workflow preserves that
-source tag when deriving the native build version.
+source tag when deriving the native build version. Fork daemon and desktop tags
+are rejected because they do not identify an app build slot.
 
 ### Useful commands
 

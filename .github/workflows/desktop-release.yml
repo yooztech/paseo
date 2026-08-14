@@ -81,9 +81,8 @@ jobs:
               --title "Paseo $RELEASE_TAG" \
               --notes "" \
               --verify-tag \
-              $prerelease_flag || {
-                echo "Release creation raced with another workflow; continuing."
-              }
+              $prerelease_flag ||
+              gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null
           fi
 
   publish-macos:
