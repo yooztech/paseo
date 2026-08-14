@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CheckoutPrStatusSchema } from "@getpaseo/protocol/messages";
 import { i18n } from "@/i18n/i18next";
 
-import { forkGitActionPolicy } from "./fork-action-policy";
+import { forkGitActionPolicy } from "../fork/git-action-policy";
 import { buildGitActions as buildDefaultGitActions, type BuildGitActionsInput } from "./policy";
 import { deriveMergeCapability, type ForgeSpecificStatusFacts } from "./merge-capability";
 

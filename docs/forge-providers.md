@@ -81,7 +81,7 @@ code must not grow a central list of forge fact arms.
 Register the adapter in `defaultForgeRegistry` with:
 
 - `createService`
-- `matchesHost` from manifest `cloudHosts`
+- `matchesHost` from manifest known hosts (`cloudHosts` plus `selfHostedHosts`)
 - `probeHost` when self-hosted/Enterprise detection is supported
 
 Current change-request lookup uses two identities deliberately:
@@ -98,11 +98,13 @@ Thread the checkout head SHA through adapter cache and poll identities as well
 as the lookup itself. Otherwise a commit made on the same branch can inherit the
 previous commit's cached terminal status until the cache expires.
 
-Cloud hosts in the manifest are a bounded public-host list, not a self-host
-allowlist. Self-hosted detection is a trust gate: Paseo only talks to a forge
-host that is either a known cloud host or one the CLI is already authenticated
-to. Adapter probes must not make anonymous HTTP requests to remote-derived
-hosts, and adapters must not route credentials to an unauthenticated host.
+`cloudHosts` is a bounded public-cloud list used for canonical web-host mapping.
+Put explicitly configured private deployments in `selfHostedHosts`; both fields
+form the known-host set used for direct forge matching. Dynamic self-hosted
+detection remains a trust gate: Paseo only talks to a forge host that is known or
+one the CLI is already authenticated to. Adapter probes must not make anonymous
+HTTP requests to remote-derived hosts, and adapters must not route credentials
+to an unauthenticated host.
 
 ## App
 
@@ -147,7 +149,7 @@ derivers/renderers. That keeps typed derivers away from the open wire envelope.
 To add `acme`:
 
 1. Add `acme` to `FORGE_DEFINITIONS` if the shared manifest should know its
-   label, nouns, icon kind, sign-in CLI, or cloud hosts.
+   label, nouns, icon kind, sign-in CLI, cloud hosts, or known self-hosted hosts.
 2. Add `acme-service.ts` implementing `ForgeService`.
 3. Add `acme-facts.ts` beside the adapter if it reports native facts.
 4. Add one `defaultForgeRegistry` entry.

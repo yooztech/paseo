@@ -3,6 +3,7 @@ const path = require("node:path");
 const pkg = require("./package.json");
 const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
+const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
 const isProfileBuild = process.env.PASEO_PROFILE_BUILD === "1";
@@ -46,50 +47,6 @@ const buildProfile = isFdroidBuild
         ],
       ],
     };
-
-function getNativeBuildVersionCode(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version);
-  if (!match) {
-    throw new Error(`Cannot derive Android versionCode from non-semver version: ${version}`);
-  }
-
-  const [, majorText, minorText, patchText] = match;
-  const major = Number(majorText);
-  const minor = Number(minorText);
-  const patch = Number(patchText);
-
-  if (minor > 999 || patch > 999) {
-    throw new Error(`Cannot derive collision-free Android versionCode from version: ${version}`);
-  }
-
-  const versionCode = major * 1_000_000 + minor * 1_000 + patch;
-
-  if (!Number.isSafeInteger(versionCode) || versionCode <= 0 || versionCode > 2_100_000_000) {
-    throw new Error(`Derived Android versionCode is out of range: ${versionCode}`);
-  }
-
-  return versionCode;
-}
-
-function getReleaseBuildVersionCode(version, releaseTag) {
-  const baseVersionCode = getNativeBuildVersionCode(version);
-  const forkMatch = releaseTag?.match(/^v\d+\.\d+\.\d+-fork\.(\d+)(?:-app)?$/);
-  if (!forkMatch) {
-    return baseVersionCode;
-  }
-
-  const forkNumber = Number(forkMatch[1]);
-  if (!Number.isSafeInteger(forkNumber) || forkNumber <= 0 || forkNumber > 999) {
-    throw new Error(`Fork release number must be between 1 and 999: ${releaseTag}`);
-  }
-
-  const buildNumber = baseVersionCode * 1_000 + forkNumber;
-  if (!Number.isSafeInteger(buildNumber) || buildNumber <= 0 || buildNumber > 2_100_000_000) {
-    throw new Error(`Derived native build version is out of range: ${buildNumber}`);
-  }
-
-  return buildNumber;
-}
 
 function resolveSecretFile(params) {
   const fromEnv = process.env[params.envKey];
@@ -135,10 +92,7 @@ const variants = {
 };
 
 const variant = variants[appVariant] ?? variants.production;
-const releaseBuildVersionCode = getReleaseBuildVersionCode(
-  pkg.version,
-  process.env.PASEO_RELEASE_TAG,
-);
+const nativeReleaseVersion = getNativeReleaseVersion(pkg.version, process.env.PASEO_RELEASE_TAG);
 
 export default {
   expo: {
@@ -167,7 +121,7 @@ export default {
       ...(variant.googleServiceInfoPlist
         ? { googleServicesFile: variant.googleServiceInfoPlist }
         : {}),
-      buildNumber: String(releaseBuildVersionCode),
+      buildNumber: nativeReleaseVersion.iosBuildNumber,
     },
     android: {
       adaptiveIcon: {
@@ -181,7 +135,7 @@ export default {
       usesCleartextTraffic: true,
       permissions: buildProfile.androidPermissions,
       package: variant.packageId,
-      versionCode: releaseBuildVersionCode,
+      versionCode: nativeReleaseVersion.androidVersionCode,
       ...(variant.googleServicesFile ? { googleServicesFile: variant.googleServicesFile } : {}),
     },
     web: {

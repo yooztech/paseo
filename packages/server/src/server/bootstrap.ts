@@ -168,7 +168,7 @@ import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
 import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
-import { resolveDaemonVersion } from "./daemon-version.js";
+import { resolveDaemonVersion } from "./fork/daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { FirstAgentContext, TerminalProfile } from "@getpaseo/protocol/messages";
 import type {

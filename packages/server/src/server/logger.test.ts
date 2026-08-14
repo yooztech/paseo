@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { resolveDaemonVersion } from "./daemon-version.js";
+import { resolveDaemonVersion } from "./fork/daemon-version.js";
 import { resolveLogConfig } from "./logger.js";
 import { loadConfig } from "./config.js";
 import type { PersistedConfig } from "./persisted-config.js";

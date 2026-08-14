@@ -69,7 +69,7 @@ Upstream maintains two npm release paths:
 
 The fork has separate daemon, desktop, and iOS release channels. They do not
 publish npm packages: daemon releases use `vX.Y.Z-fork.N`, desktop releases use
-`desktop-vX.Y.Z-fork.N`, and iOS releases use `vX.Y.Z-fork.N-app`. All three
+`desktop-vX.Y.Z-fork.N`, and iOS releases use `app-vX.Y.Z-fork.N`. All three
 share one incrementing fork-number sequence.
 
 Paseo has one linear release track even though npm dist-tags are independent
@@ -117,7 +117,7 @@ npm run release:patch
 npm run release:minor
 ```
 
-This upstream npm path bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. It is not the fork release channel. Fork daemon releases use `vX.Y.Z-fork.N`; desktop releases use `desktop-vX.Y.Z-fork.N` and trigger `Desktop Release` and `Release Notes Sync`; and the optional `vX.Y.Z-fork.N-app` tag triggers the iOS EAS workflow described below. Docker publishing and Android APK publishing remain manual-only in this fork.
+This upstream npm path bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. It is not the fork release channel. Fork daemon releases use `vX.Y.Z-fork.N`; desktop releases use `desktop-vX.Y.Z-fork.N` and trigger `Desktop Release` and `Release Notes Sync`; and the optional `app-vX.Y.Z-fork.N` tag triggers the iOS EAS workflow described below. Docker publishing and Android APK publishing remain manual-only in this fork.
 
 After the stable release succeeds, move npm's `beta` pointer to the new stable
 version for every published package. This changes dist-tags only; do not
@@ -198,8 +198,10 @@ installers:
 npm run release:fork:desktop
 ```
 
-This pushes the next `desktop-vX.Y.Z-fork.N` tag and triggers `Desktop Release`.
-It does not build the server, restart the daemon, or trigger an iOS build.
+This creates `desktop-vX.Y.Z-fork.N` as the source tag and `vX.Y.Z-fork.N` as
+the GitHub Release publication tag, points both at the current commit, and pushes
+them atomically. The source tag triggers `Desktop Release`. The command does not
+build the server, restart the daemon, or trigger an iOS build.
 
 Run the app release separately when the current commit needs an iOS build:
 
@@ -207,28 +209,41 @@ Run the app release separately when the current commit needs an iOS build:
 npm run release:fork:app
 ```
 
-This pushes the next `vX.Y.Z-fork.N-app` tag. It does not build the server,
+This pushes the next `app-vX.Y.Z-fork.N` tag. It does not build the server,
 restart the daemon, or trigger Desktop Release. All fork release commands share
-the fork number sequence so every release tag has a unique `N`.
+the fork number sequence so every release tag has a unique `N`. The next number
+is the maximum number found across current daemon, desktop, and app tags plus one;
+historical `vX.Y.Z-fork.N-app` tags remain part of that scan.
 
 ## Desktop release publication
 
-The Release is created when the tag is pushed. The macOS, Linux, and Windows jobs upload installers and packages as they complete, then `finalize-release` merges the platform manifests, stamps `rolloutHours: 0`, and uploads them.
+The Release is created from the pre-created publication tag when the source tag
+is pushed. The macOS and Windows jobs upload installers and packages as they
+complete, then `finalize-release` merges the platform manifests, stamps
+`rolloutHours: 0`, and uploads them. Linux publication is disabled in this fork.
 
 While a channel manifest is not yet available, the desktop updater treats its 404 as no update. Other updater failures remain visible. Once the manifest is uploaded, all users can update immediately on their next check.
 
-`Release Notes Sync` creates a missing Release on tag pushes and updates its body from the changelog.
+`Release Notes Sync` uses the source tag, reads the base `X.Y.Z` changelog entry,
+and creates or updates the publication Release. A missing base changelog entry
+fails the workflow.
 
 There is no staged rollout or rollback. `allowDowngrade = false`; ship a superseding hotfix for a bad release.
 
 ## Mobile builds (EAS)
 
-iOS store builds are not in `.github/workflows`. The EAS GitHub app runs `packages/app/.eas/workflows/release-mobile.yml` only when a `v*-fork.*-app` tag is pushed. Ordinary fork tags do not trigger it:
+iOS store builds are not in `.github/workflows`. The EAS GitHub app runs `packages/app/.eas/workflows/release-mobile.yml` only when an `app-v*-fork.*` tag is pushed. Ordinary fork tags do not trigger it:
 
 - **iOS (TestFlight)** — EAS builds with profile `production` and uploads to TestFlight. App Store review is a separate manual action.
 - **Android APK** — not part of fork releases. `.github/workflows/android-apk-release.yml` is manual-only.
 
-`packages/app/app.config.js` derives the base native version code as `major * 1_000_000 + minor * 1_000 + patch`. For fork releases, the EAS and GitHub APK workflows pass the tag and both Android `versionCode` and iOS `buildNumber` use `base version code * 1_000 + fork number`; `v0.2.5-fork.1-app` uses `2005001`. Fork numbers must be between 1 and 999. EAS uses the local version source so the value in each binary is deterministic from the tag.
+`packages/app/native-release-version.js` is the native-version source of truth.
+It derives `base = major * 1_000_000 + minor * 1_000 + patch`, then reserves 2,000
+build slots per package version. Beta builds use slots 1 through 998, stable uses
+999, and `app-vX.Y.Z-fork.N` uses `999 + N`. Android `versionCode` and iOS
+`buildNumber` both use `base * 2_000 + slot`; fork numbers must be between 1 and
+999, and the final Android value must not exceed `2_100_000_000`. EAS uses the
+local version source so rebuilding the same tag produces the same value.
 
 ### Watching mobile builds from the terminal
 
@@ -527,8 +542,9 @@ Each beta entry records what its testers receive. Promotion produces the single 
 - [ ] The fork release command completes successfully
 - [ ] If a `desktop-v*-fork.N` tag was pushed, GitHub `Desktop Release` is green
 - [ ] If a desktop tag was pushed, `Release Notes Sync` mirrors the matching changelog entry into the release body
-- [ ] If a desktop tag was pushed, the GitHub Release contains the expected macOS, Linux, and Windows assets plus `latest-mac.yml`, `latest-linux.yml`, and `latest.yml`
-- [ ] If an `-app` tag was pushed, EAS `Release Mobile` for that tag is green
-- [ ] If an `-app` tag was pushed, EAS iOS `build_ios` completes for that tag
-- [ ] If an `-app` tag was pushed, EAS iOS `submit_ios` uploads the build to App Store Connect/TestFlight
+- [ ] If a desktop tag was pushed, the GitHub Release contains the expected macOS and Windows assets plus `fork-mac.yml` and `fork.yml`
+- [ ] If an `app-v*` tag was pushed, EAS `Release Mobile` for that tag is green
+- [ ] If an `app-v*` tag was pushed, EAS iOS `build_ios` completes for that tag
+- [ ] If an `app-v*` tag was pushed, EAS `verify_tag_checkout` confirms the build commit matches the tag
+- [ ] If an `app-v*` tag was pushed, EAS iOS `submit_ios` uploads the build to App Store Connect/TestFlight
 - [ ] The release heartbeat was created after the tag push and deleted only after every item above passed

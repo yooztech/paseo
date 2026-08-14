@@ -13,7 +13,7 @@ import {
   prPanePipelineQueryKey,
   prPaneTimelineQueryKey,
 } from "@/git/pull-request-panel/query-keys";
-import { branchCiPipelineQueryKey } from "@/git/branch-ci-panel/query-keys";
+import { branchCiPipelineQueryKey } from "@/fork/branch-ci/query-keys";
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;

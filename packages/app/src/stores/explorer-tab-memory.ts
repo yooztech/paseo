@@ -1,7 +1,7 @@
 import {
   isExplorerTabContributionId,
   type ExplorerTabContributionId,
-} from "@/components/explorer-tab-contribution-registry";
+} from "@/fork/explorer-tabs/registry";
 
 export type ExplorerTab = "changes" | "files" | "pr" | ExplorerTabContributionId;
 

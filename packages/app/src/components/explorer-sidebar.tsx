@@ -33,8 +33,8 @@ import { FileExplorerPane } from "./file-explorer-pane";
 import {
   useExplorerTabContributions,
   type ExplorerTabContribution,
-} from "./explorer-tab-contributions";
-import { isExplorerTabContributionId } from "./explorer-tab-contribution-registry";
+} from "@/fork/explorer-tabs/use-contributions";
+import { isExplorerTabContributionId } from "@/fork/explorer-tabs/registry";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useHasOwnedWindowChromeObstruction, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";

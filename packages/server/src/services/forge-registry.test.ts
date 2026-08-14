@@ -74,6 +74,10 @@ describe("forge registry", () => {
     expect(defaultForgeRegistry.matchHost("notgitlab.example.org")).toBeNull();
   });
 
+  it("matches declared self-hosted hosts without probing", () => {
+    expect(defaultForgeRegistry.matchHost("gitlab.iceveil.com")).toBe("gitlab");
+  });
+
   it("treats a probe that throws as 'not this forge' rather than crashing detection", async () => {
     const registry = new ForgeRegistry([
       [
