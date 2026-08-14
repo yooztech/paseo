@@ -30,6 +30,7 @@ import {
   type Rect,
   type Size,
 } from "./menu-anchor";
+import { getContextMenuTriggerAtPoint } from "./context-menu-target";
 
 const SCROLL_CONTENT_STYLE = { flexGrow: 1 } as const;
 const CONTENT_ENTERING_DURATION_MS = 150;
@@ -316,6 +317,39 @@ export function AnchoredSurface({
     [visibleContentSize],
   );
 
+  const handleBackdropContextMenu = useCallback(
+    (event: unknown) => {
+      if (!isWeb || typeof event !== "object" || event === null) return;
+      const nativeEvent = Reflect.get(event, "nativeEvent");
+      const source = typeof nativeEvent === "object" && nativeEvent !== null ? nativeEvent : event;
+      const clientX = Reflect.get(source, "clientX");
+      const clientY = Reflect.get(source, "clientY");
+      if (typeof clientX !== "number" || typeof clientY !== "number") return;
+
+      const preventDefault = Reflect.get(event, "preventDefault");
+      const stopPropagation = Reflect.get(event, "stopPropagation");
+      if (typeof preventDefault === "function") preventDefault.call(event);
+      if (typeof stopPropagation === "function") stopPropagation.call(event);
+
+      const nextTrigger = getContextMenuTriggerAtPoint(clientX, clientY);
+      onClose();
+      if (!nextTrigger) return;
+
+      setTimeout(() => {
+        nextTrigger.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX,
+            clientY,
+            button: 2,
+          }),
+        );
+      }, 0);
+    },
+    [onClose],
+  );
+
   if (!open) return null;
 
   const measured = (
@@ -337,6 +371,8 @@ export function AnchoredSurface({
           accessibilityLabel={t("menu.backdrop")}
           style={styles.backdrop}
           onPress={onClose}
+          // @ts-ignore - onContextMenu is web-only and not in RN types.
+          onContextMenu={handleBackdropContextMenu}
           testID={testID ? `${testID}-backdrop` : undefined}
         />
       ) : null}

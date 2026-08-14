@@ -3,7 +3,11 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getRepositoryGraphCommitDetails, getRepositoryGraphHistory } from "./git.js";
+import {
+  getRepositoryGraphCommitDetails,
+  getRepositoryGraphHistory,
+  mutateRepositoryGraphRef,
+} from "./git.js";
 
 const tempDirs: string[] = [];
 
@@ -190,5 +194,93 @@ describe("getRepositoryGraphCommitDetails", () => {
         { path: "added.txt", additions: 1, deletions: 0, status: "added" },
       ]),
     );
+  });
+});
+
+describe("mutateRepositoryGraphRef", () => {
+  it("renames and force deletes local branches", async () => {
+    const repoDir = initRepo();
+    git(["branch", "feature"], repoDir);
+
+    await mutateRepositoryGraphRef({
+      cwd: repoDir,
+      action: "rename",
+      refKind: "head",
+      name: "feature",
+      newName: "renamed-feature",
+    });
+    expect(git(["branch", "--format=%(refname:short)"], repoDir).split("\n")).toContain(
+      "renamed-feature",
+    );
+
+    git(["checkout", "renamed-feature"], repoDir);
+    commitFile(repoDir, "feature.txt", "feature\n", "Feature commit");
+    git(["checkout", "main"], repoDir);
+    await expect(
+      mutateRepositoryGraphRef({
+        cwd: repoDir,
+        action: "delete",
+        refKind: "head",
+        name: "renamed-feature",
+      }),
+    ).rejects.toThrow();
+
+    await mutateRepositoryGraphRef({
+      cwd: repoDir,
+      action: "delete",
+      refKind: "head",
+      name: "renamed-feature",
+      force: true,
+    });
+    expect(git(["branch", "--format=%(refname:short)"], repoDir).split("\n")).not.toContain(
+      "renamed-feature",
+    );
+  });
+
+  it("renames tags without replacing annotated tag objects", async () => {
+    const repoDir = initRepo();
+    git(["tag", "-a", "v1", "-m", "Release v1"], repoDir);
+    const tagObject = git(["rev-parse", "refs/tags/v1"], repoDir);
+
+    await mutateRepositoryGraphRef({
+      cwd: repoDir,
+      action: "rename",
+      refKind: "tag",
+      name: "v1",
+      newName: "v1-renamed",
+    });
+
+    expect(git(["rev-parse", "refs/tags/v1-renamed"], repoDir)).toBe(tagObject);
+    expect(() => git(["rev-parse", "--verify", "refs/tags/v1"], repoDir)).toThrow();
+  });
+
+  it("deletes a local branch and its configured upstream", async () => {
+    const repoDir = initRepo();
+    const remoteDir = join(tempDirs[0] ?? "", "remote.git");
+    git(["init", "--bare", remoteDir], repoDir);
+    git(["remote", "add", "origin", remoteDir], repoDir);
+    git(["checkout", "-b", "feature/remote"], repoDir);
+    git(["push", "-u", "origin", "feature/remote"], repoDir);
+    git(["checkout", "main"], repoDir);
+    const history = await getRepositoryGraphHistory({ cwd: repoDir, limit: 20 });
+    expect(history.commits[0]?.refs).toContainEqual({
+      name: "feature/remote",
+      kind: "head",
+      current: false,
+      upstream: "origin/feature/remote",
+    });
+
+    await mutateRepositoryGraphRef({
+      cwd: repoDir,
+      action: "delete",
+      refKind: "head",
+      name: "feature/remote",
+      deleteOnRemote: true,
+    });
+
+    expect(git(["branch", "--format=%(refname:short)"], repoDir).split("\n")).not.toContain(
+      "feature/remote",
+    );
+    expect(git(["ls-remote", "--heads", "origin", "feature/remote"], repoDir)).toBe("");
   });
 });

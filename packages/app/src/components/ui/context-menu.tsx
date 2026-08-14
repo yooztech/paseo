@@ -28,6 +28,7 @@ import {
   type MenuTriggerState,
 } from "@/components/ui/menu";
 import { PressHighlight } from "@/components/ui/press-highlight";
+import { CONTEXT_MENU_TRIGGER_DATASET } from "@/components/ui/menu/context-menu-target";
 
 /**
  * A menu opened by a long press or a right click, anchored to the point of the gesture rather
@@ -189,6 +190,7 @@ export function ContextMenuTrigger({
     <PressHighlight
       {...props}
       ref={handleRef}
+      dataSet={CONTEXT_MENU_TRIGGER_DATASET}
       collapsable={false}
       disabled={disabled}
       delayLongPress={longPressDelayMs}

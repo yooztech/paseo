@@ -12,7 +12,7 @@ export function useRepositoryGraphCommitDetails(input: {
 }) {
   const client = useHostRuntimeClient(input.serverId);
   const isConnected = useHostRuntimeIsConnected(input.serverId);
-  // COMPAT(repositoryGraphCommitDetails): added in v0.2.7, remove after 2027-02-14.
+  // FORK(repository-graph): gate details when the connected host predates this fork feature.
   const supported = useSessionStore(
     (state) =>
       state.sessions[input.serverId]?.serverInfo?.features?.repositoryGraphCommitDetails === true,

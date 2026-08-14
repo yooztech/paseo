@@ -7,6 +7,7 @@ import type {
   CheckoutCommitsListRequest,
   CheckoutCommitFileDiffRequest,
   CheckoutRepositoryGraphGetHistoryRequest,
+  CheckoutRepositoryGraphMutateRefRequest,
   CheckoutRepositoryGraphGetCommitDetailsRequest,
   CheckoutRefreshRequest,
   CheckoutRenameBranchRequest,
@@ -166,8 +167,12 @@ export class CheckoutSession {
     this.paseoHome = options.paseoHome;
     this.worktreesRoot = options.worktreesRoot;
     this.logger = options.logger;
-    this.repositoryGraphFork = new RepositoryGraphForkSessionHandler((message) =>
-      this.host.emit(message),
+    this.repositoryGraphFork = new RepositoryGraphForkSessionHandler(
+      (message) => this.host.emit(message),
+      async (cwd) => {
+        await this.gitMutation.notifyGitMutation(cwd, "repository-graph-ref");
+        await this.host.emitWorkspaceUpdateForCwd(cwd);
+      },
     );
   }
 
@@ -298,6 +303,12 @@ export class CheckoutSession {
     msg: CheckoutRepositoryGraphGetCommitDetailsRequest,
   ): Promise<void> {
     return this.repositoryGraphFork.handleCommitDetails(msg);
+  }
+
+  async handleRepositoryGraphMutateRefRequest(
+    msg: CheckoutRepositoryGraphMutateRefRequest,
+  ): Promise<void> {
+    return this.repositoryGraphFork.handleMutateRef(msg);
   }
 
   async handleCommitFileDiffRequest(msg: CheckoutCommitFileDiffRequest): Promise<void> {

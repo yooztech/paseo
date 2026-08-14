@@ -58,6 +58,8 @@ export type GitMutationRefreshReason =
   | "create-pr"
   | "switch-branch"
   | "rename-branch"
+  // FORK(repository-graph): refresh after fork-only branch and tag mutations.
+  | "repository-graph-ref"
   | "create-branch"
   | "stash-push"
   | "stash-pop"

@@ -24,6 +24,7 @@ const RepositoryGraphCommitSchema = z.object({
       name: z.string(),
       kind: z.enum(["head", "remote", "tag"]),
       current: z.boolean(),
+      upstream: z.string().nullable().optional(),
     }),
   ),
 });
@@ -80,6 +81,18 @@ export const CheckoutRepositoryGraphGetCommitDetailsRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const CheckoutRepositoryGraphMutateRefRequestSchema = z.object({
+  type: z.literal("checkout.repository_graph.mutate_ref.request"),
+  cwd: z.string(),
+  action: z.enum(["rename", "delete"]),
+  refKind: z.enum(["head", "remote", "tag"]),
+  name: z.string(),
+  newName: z.string().optional(),
+  force: z.boolean().optional(),
+  deleteOnRemote: z.boolean().optional(),
+  requestId: z.string(),
+});
+
 export const CheckoutCommitFileDiffRequestSchema = z.object({
   type: z.literal("checkout.commits.file_diff.request"),
   cwd: z.string(),
@@ -105,6 +118,19 @@ export const CheckoutRepositoryGraphGetCommitDetailsResponseSchema = z.object({
     cwd: z.string(),
     sha: z.string(),
     details: RepositoryGraphCommitDetailsSchema.nullable(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutRepositoryGraphMutateRefResponseSchema = z.object({
+  type: z.literal("checkout.repository_graph.mutate_ref.response"),
+  payload: z.object({
+    cwd: z.string(),
+    action: z.enum(["rename", "delete"]),
+    refKind: z.enum(["head", "remote", "tag"]),
+    name: z.string(),
+    success: z.boolean(),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),

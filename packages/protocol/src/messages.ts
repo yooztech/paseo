@@ -66,6 +66,8 @@ import {
   CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
   CheckoutRepositoryGraphGetHistoryRequestSchema,
   CheckoutRepositoryGraphGetHistoryResponseSchema,
+  CheckoutRepositoryGraphMutateRefRequestSchema,
+  CheckoutRepositoryGraphMutateRefResponseSchema,
   type RepositoryGraphCommit,
   type RepositoryGraphCommitDetails,
 } from "./fork/repository-graph/messages.js";
@@ -77,6 +79,8 @@ export {
   CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
   CheckoutRepositoryGraphGetHistoryRequestSchema,
   CheckoutRepositoryGraphGetHistoryResponseSchema,
+  CheckoutRepositoryGraphMutateRefRequestSchema,
+  CheckoutRepositoryGraphMutateRefResponseSchema,
 };
 import {
   PaseoConfigRawSchema,
@@ -2677,6 +2681,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutCommitsListRequestSchema,
   CheckoutRepositoryGraphGetHistoryRequestSchema,
   CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
+  CheckoutRepositoryGraphMutateRefRequestSchema,
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
   CheckoutGithubGetCheckDetailsRequestSchema,
@@ -2996,10 +3001,12 @@ export const ServerInfoStatusPayloadSchema = z
         commitsList: z.boolean().optional(),
         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
         commitBaseClassification: z.boolean().optional(),
-        // COMPAT(repositoryGraph): added in v0.2.5, remove gate after 2027-02-03.
+        // FORK(repository-graph): optional until the fork's host floor includes graph history.
         repositoryGraph: z.boolean().optional(),
-        // COMPAT(repositoryGraphCommitDetails): added in v0.2.7, remove gate after 2027-02-14.
+        // FORK(repository-graph): optional until the fork's host floor includes commit details.
         repositoryGraphCommitDetails: z.boolean().optional(),
+        // FORK(repository-graph): optional across app/host versions until the fork's host floor includes ref actions.
+        repositoryGraphRefActions: z.boolean().optional(),
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: z.boolean().optional(),
         // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.
@@ -5556,6 +5563,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutCommitsListResponseSchema,
   CheckoutRepositoryGraphGetHistoryResponseSchema,
   CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
+  CheckoutRepositoryGraphMutateRefResponseSchema,
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
   CheckoutGithubGetCheckDetailsResponseSchema,
@@ -5914,6 +5922,12 @@ export type CheckoutRepositoryGraphGetCommitDetailsRequest = z.infer<
 >;
 export type CheckoutRepositoryGraphGetCommitDetailsResponse = z.infer<
   typeof CheckoutRepositoryGraphGetCommitDetailsResponseSchema
+>;
+export type CheckoutRepositoryGraphMutateRefRequest = z.infer<
+  typeof CheckoutRepositoryGraphMutateRefRequestSchema
+>;
+export type CheckoutRepositoryGraphMutateRefResponse = z.infer<
+  typeof CheckoutRepositoryGraphMutateRefResponseSchema
 >;
 export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
 export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
