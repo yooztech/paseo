@@ -10,8 +10,8 @@ const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
 const websiteWorkflowPath = new URL(".github/workflows/deploy-website.yml", repoRoot);
 const desktopReleaseWorkflowPath = new URL(".github/workflows/desktop-release.yml", repoRoot);
 const releaseNotesWorkflowPath = new URL(".github/workflows/release-notes-sync.yml", repoRoot);
+const androidReleaseWorkflowPath = new URL(".github/workflows/android-apk-release.yml", repoRoot);
 const easReleaseWorkflowPath = new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot);
-const appConfigPath = new URL("packages/app/app.config.js", repoRoot);
 const packagePath = new URL("package.json", repoRoot);
 const daemonReleaseScriptPath = new URL("scripts/release-fork-daemon.mjs", repoRoot);
 const desktopReleaseScriptPath = new URL("scripts/release-fork-desktop.mjs", repoRoot);
@@ -274,24 +274,30 @@ test("non-required publish workflows avoid runners with path filters or manual d
 test("EAS iOS releases require a dedicated app tag", () => {
   const workflow = readFileSync(easReleaseWorkflowPath, "utf8");
   const trigger = workflow.split("jobs:", 1)[0];
-  assert.match(trigger, /^\s+- "v\*-fork\.\*-app"$/m);
-  assert.doesNotMatch(trigger, /^\s+- "v\*-fork\.\*"$/m);
-
-  const appConfig = readFileSync(appConfigPath, "utf8");
-  assert.ok(appConfig.includes("-fork\\.(\\d+)(?:-app)?$"));
-
-  for (const workflowPath of [desktopReleaseWorkflowPath, releaseNotesWorkflowPath]) {
-    const source = readFileSync(workflowPath, "utf8");
-    const workflowTrigger = source.split("jobs:", 1)[0];
-    assert.match(workflowTrigger, /^\s+- "!v\*-fork\.\*-app"$/m);
-  }
+  assert.match(trigger, /^\s+- "app-v\*-fork\.\*"$/m);
+  assert.doesNotMatch(trigger, /^\s+- "v\*-fork\.\*-app"$/m);
+  assert.match(
+    workflow,
+    /PASEO_RELEASE_TAG: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.release_tag \|\| github\.ref_name \}\}/,
+  );
+  assert.doesNotMatch(workflow, /github\.ref_name \|\| inputs\.release_tag/);
+  assert.match(
+    workflow,
+    /EAS_BUILD_COMMIT: \$\{\{ needs\.build_ios\.outputs\.git_commit_hash \}\}/,
+  );
+  assert.match(workflow, /git rev-parse "\$PASEO_RELEASE_TAG\^\{commit\}"/);
+  assert.match(workflow, /needs: \[build_ios, verify_tag_checkout\]/);
 
   const desktopTrigger = readFileSync(desktopReleaseWorkflowPath, "utf8").split("jobs:", 1)[0];
+  assert.match(desktopTrigger, /^\s+- "!v\*-fork\.\*-app"$/m);
   assert.match(desktopTrigger, /^\s+- "!v\*-fork\.\*"$/m);
   assert.match(desktopTrigger, /^\s+- "desktop-v\*-fork\.\*"$/m);
 
-  const releaseNotesTrigger = readFileSync(releaseNotesWorkflowPath, "utf8").split("jobs:", 1)[0];
+  const releaseNotesWorkflow = readFileSync(releaseNotesWorkflowPath, "utf8");
+  const releaseNotesTrigger = releaseNotesWorkflow.split("jobs:", 1)[0];
+  assert.match(releaseNotesTrigger, /^\s+- "!v\*-fork\.\*"$/m);
   assert.match(releaseNotesTrigger, /^\s+- "desktop-v\*-fork\.\*"$/m);
+  assert.match(releaseNotesWorkflow, /refs\/tags\/desktop-v\*-fork\.\*/);
 });
 
 test("fork daemon, desktop, and app releases use separate commands and tags", () => {
@@ -304,19 +310,26 @@ test("fork daemon, desktop, and app releases use separate commands and tags", ()
   assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
 
   const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
-  assert.match(daemonScript, /const tag = `\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}`/);
-  assert.match(daemonScript, /build:server/);
-  assert.match(daemonScript, /restart/);
-  assert.match(daemonScript, /"ci", "--loglevel=error", "--no-audit", "--no-fund"/);
+  assert.match(daemonScript, /releaseForkDaemon/);
 
   const desktopScript = readFileSync(desktopReleaseScriptPath, "utf8");
-  assert.match(
-    desktopScript,
-    /const tag = `desktop-\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}`/,
-  );
-  assert.doesNotMatch(desktopScript, /build:server|systemctl|restart/);
+  assert.match(desktopScript, /releaseForkDesktop/);
 
   const appScript = readFileSync(appReleaseScriptPath, "utf8");
-  assert.match(appScript, /const tag = `\$\{prefix\}\$\{Math\.max\(0, \.\.\.numbers\) \+ 1\}-app`/);
-  assert.doesNotMatch(appScript, /build:server|systemctl|restart/);
+  assert.match(appScript, /releaseForkApp/);
+});
+
+test("manual Android releases preserve the app source tag", () => {
+  const workflow = readFileSync(androidReleaseWorkflowPath, "utf8");
+  assert.match(workflow, /PASEO_RELEASE_TAG="\$SOURCE_TAG"/);
+  assert.match(workflow, /gh release upload "\$PUBLICATION_TAG"/);
+  assert.match(workflow, /--verify-tag/);
+});
+
+test("desktop fork publication uses pre-created same-commit tags", () => {
+  const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
+  assert.doesNotMatch(workflow, /checkout_ref:/);
+  assert.match(workflow, /CHECKOUT_REF: .*github\.event\.inputs\.tag.*github\.ref_name/);
+  assert.match(workflow, /--verify-checkout/g);
+  assert.match(workflow, /--verify-tag/);
 });

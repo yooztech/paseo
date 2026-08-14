@@ -1,5 +1,6 @@
 import type { Query, QueryClient } from "@tanstack/react-query";
-import { explorerTabContributionQueryKinds } from "@/components/explorer-tab-contribution-registry";
+// FORK(explorer-tabs): invalidate fork-owned checkout views alongside core git views.
+import { explorerTabContributionQueryKinds } from "@/fork/explorer-tabs/registry";
 import { prPanePipelineQueryKind, prPaneTimelineQueryKind } from "./pull-request-panel/query-keys";
 
 interface CheckoutQueryIdentity {

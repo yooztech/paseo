@@ -1,4 +1,4 @@
-import type { GitActionPolicy } from "./policy";
+import type { GitActionPolicy } from "../git/policy";
 
 export const forkGitActionPolicy: GitActionPolicy = {
   hasChangesFromBase: (input) => input.contentDiff?.hasChangesFromBase ?? input.aheadCount > 0,

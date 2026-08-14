@@ -11,7 +11,11 @@
  * still maps to GitHub so old daemons (which never send a forge) render exactly
  * as before.
  */
-import { FORGE_DEFINITIONS, getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
+import {
+  FORGE_DEFINITIONS,
+  getForgeDefinitionOrNeutral,
+  getForgeKnownHosts,
+} from "@getpaseo/protocol/forge-manifest";
 import { normalizeHost, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import type { ForgeAuthState } from "@getpaseo/protocol/messages";
 import {
@@ -56,7 +60,9 @@ export function forgeFromRemoteUrl(remoteUrl: string | null | undefined): string
   }
   const normalized = normalizeHost(host);
   for (const definition of FORGE_DEFINITIONS) {
-    if (definition.cloudHosts?.some((cloudHost) => normalizeHost(cloudHost) === normalized)) {
+    if (
+      getForgeKnownHosts(definition).some((knownHost) => normalizeHost(knownHost) === normalized)
+    ) {
       return definition.id;
     }
   }

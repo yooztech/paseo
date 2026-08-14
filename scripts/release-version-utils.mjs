@@ -1,7 +1,7 @@
 const versionPattern =
   /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<prerelease>[0-9A-Za-z.-]+))?$/;
 const sourceTagPattern =
-  /^(?:(?:desktop(?:-(?:windows|linux|macos))?|android)-)?v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+  /^(?:(?:desktop(?:-(?:windows|linux|macos))?|android|app)-)?v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 
 function assertInteger(value, label) {
   if (!Number.isInteger(value) || value < 0) {
@@ -60,11 +60,14 @@ export function formatReleaseVersion({ major, minor, patch, prerelease = null })
 }
 
 export function normalizeReleaseTag(rawTag) {
-  const trimmed = rawTag.trim().replace(/^refs\/tags\//, "");
+  const trimmed = rawTag
+    .trim()
+    .replace(/^refs\/tags\//, "")
+    .replace(/^(v\d+\.\d+\.\d+-fork\.\d+)-app$/, "$1");
   const match = trimmed.match(sourceTagPattern);
   if (!match?.groups?.version) {
     throw new Error(
-      `Unsupported release tag "${rawTag}". Expected vX.Y.Z, vX.Y.Z-beta.N, desktop-v..., or android-v...`,
+      `Unsupported release tag "${rawTag}". Expected vX.Y.Z, vX.Y.Z-beta.N, desktop-v..., app-v..., or android-v...`,
     );
   }
   return `v${match.groups.version}`;
@@ -74,8 +77,14 @@ export function getReleaseInfoFromSourceTag(sourceTag) {
   const releaseTag = normalizeReleaseTag(sourceTag);
   const parsed = parseReleaseVersion(releaseTag.slice(1));
   const releaseChannel = parsed.isBeta ? "beta" : (parsed.prerelease?.split(".")[0] ?? "latest");
+  const normalizedSourceTag = sourceTag.trim().replace(/^refs\/tags\//, "");
+  const isAppTag =
+    /^app-v\d+\.\d+\.\d+-fork\.\d+$/.test(normalizedSourceTag) ||
+    /^v\d+\.\d+\.\d+-fork\.\d+-app$/.test(normalizedSourceTag);
   return {
     sourceTag,
+    publicationTag: isAppTag ? normalizedSourceTag : releaseTag,
+    changelogVersion: releaseChannel === "fork" ? parsed.baseVersion : parsed.version,
     releaseTag,
     version: parsed.version,
     baseVersion: parsed.baseVersion,

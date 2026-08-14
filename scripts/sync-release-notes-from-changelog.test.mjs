@@ -98,3 +98,40 @@ test("converts contributor profile links to mentions in synced release notes", (
     assert.doesNotMatch(syncedNotes, /\[@therainisme\]\(https:\/\/github\.com\/therainisme\)/);
   }, changelogText);
 });
+
+test("uses the base changelog section for fork desktop publication", () => {
+  const changelogText = "## 0.2.5 - 2026-04-20\n\n- Desktop notes.\n";
+  withTempChangelog(() => {
+    let syncedNotes = "";
+    const execFileSync = (_command, args) => {
+      if (args[0] === "api" && args[1] === "repos/yooztech/paseo/releases/tags/v0.2.5-fork.8") {
+        return JSON.stringify({ id: 8 });
+      }
+      if (args[0] === "api" && args[1] === "-X") {
+        const notesArg = args.find((arg) => arg.startsWith("body=@"));
+        syncedNotes = readFileSync(notesArg.slice("body=@".length), "utf8");
+        return "";
+      }
+      throw new Error(`Unexpected gh call: ${args.join(" ")}`);
+    };
+
+    syncReleaseNotes(["--repo", "yooztech/paseo", "--tag", "desktop-v0.2.5-fork.8"], {
+      execFileSync,
+    });
+    assert.match(syncedNotes, /^## 0\.2\.5 - 2026-04-20/m);
+  }, changelogText);
+});
+
+test("fails when a fork desktop changelog section is missing", () => {
+  withTempChangelog(() => {
+    assert.throws(
+      () =>
+        syncReleaseNotes(["--repo", "yooztech/paseo", "--tag", "desktop-v0.2.5-fork.8"], {
+          execFileSync: () => {
+            throw new Error("gh should not run");
+          },
+        }),
+      /expected 0\.2\.5/,
+    );
+  });
+});

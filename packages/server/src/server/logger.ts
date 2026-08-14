@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import pino from "pino";
 import pretty from "pino-pretty";
-import { resolveDaemonVersion } from "./daemon-version.js";
+import { resolveDaemonVersion } from "./fork/daemon-version.js";
 import type { PersistedConfig } from "./persisted-config.js";
 import { resolvePaseoHome } from "./paseo-home.js";
 

@@ -313,9 +313,9 @@ describe("createForgeResolver", () => {
     ["gitlab", "https://gitlab.iceveil.com:38443/group/repo.git", "gitlab.iceveil.com"],
     ["gitea", "git@gitea.com:owner/repo.git", "gitea.com"],
     ["codeberg", "git@codeberg.org:owner/repo.git", "codeberg.org"],
-  ])("resolves the %s cloud host without probing CLI auth", async (forge, remoteUrl, host) => {
+  ])("resolves the %s known host without probing CLI auth", async (forge, remoteUrl, host) => {
     const probeForge = vi.fn(async () => {
-      throw new Error("cloud host should not probe");
+      throw new Error("known host should not probe");
     });
     const resolver = createForgeResolver({
       resolveRemoteUrl: async () => remoteUrl,

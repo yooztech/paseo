@@ -157,15 +157,18 @@ adb exec-out screencap -p > screenshot.png
 
 ## Cloud build + submit (EAS)
 
-Only app tag pushes like `v0.2.5-fork.3-app` trigger:
+Only app tag pushes like `app-v0.2.5-fork.3` trigger:
 
 - The EAS GitHub app on Expo servers, using `packages/app/.eas/workflows/release-mobile.yml`, for an iOS production build and TestFlight upload.
 
-Ordinary `vX.Y.Z-fork.N` daemon release tags do not consume an EAS build. Run `npm run release:fork:app` only when the commit needs an iOS build; it allocates the next fork number and appends `-app`.
+Ordinary `vX.Y.Z-fork.N` daemon release tags do not consume an EAS build. Run `npm run release:fork:app` only when the commit needs an iOS build; it allocates the next fork number and adds the `app-` channel prefix.
 
 iOS stops at TestFlight. Submit it for App Store review separately after testing.
 
-Android APK publishing is manual-only in this fork. Dispatch `.github/workflows/android-apk-release.yml` with an existing tag when an APK is explicitly needed.
+Android APK publishing is manual-only in this fork. Dispatch
+`.github/workflows/android-apk-release.yml` with the existing `app-v*` tag when
+an APK for a fork app release is explicitly needed; the workflow preserves that
+source tag when deriving the native build version.
 
 ### Useful commands
 

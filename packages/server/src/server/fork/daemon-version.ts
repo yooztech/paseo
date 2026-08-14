@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PackageVersionResolutionError, resolvePackageVersion } from "./package-version.js";
+import { PackageVersionResolutionError, resolvePackageVersion } from "../package-version.js";
 
 const SERVER_PACKAGE_NAME = "@getpaseo/server";
 const RELEASE_TAG_PATTERN = /^v(?<version>\d+\.\d+\.\d+(?:-(?:beta|fork)\.\d+)?)$/;

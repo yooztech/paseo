@@ -16,7 +16,7 @@ import {
   type GitAction,
   type GitActions,
 } from "@/git/policy";
-import { forkGitActionPolicy } from "@/git/fork-action-policy";
+import { forkGitActionPolicy } from "@/fork/git-action-policy";
 import { deriveMergeCapability } from "@/git/merge-capability";
 import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { openExternalUrl } from "@/utils/open-external-url";

@@ -1,4 +1,4 @@
-import { getForgeDefinition } from "@getpaseo/protocol/forge-manifest";
+import { getForgeDefinition, getForgeKnownHosts } from "@getpaseo/protocol/forge-manifest";
 import { normalizeHost } from "@getpaseo/protocol/git-remote";
 import { createGitHubService, probeGitHubHost } from "./github-service.js";
 import type { ForgeService } from "./forge-service.js";
@@ -117,13 +117,17 @@ function parseForgeId(forge: string): string | null {
 }
 
 /**
- * Build a host matcher from a forge's declared cloud hosts in the manifest, so
+ * Build a host matcher from a forge's declared known hosts in the manifest, so
  * the registry never hardcodes a host list. Returns undefined for forges with
- * no cloud hosts (recognized only by runtime probe, e.g. Forgejo).
+ * no known hosts (recognized only by runtime probe, e.g. Forgejo).
  */
-function matchesCloudHost(forgeId: string): ((host: string) => boolean) | undefined {
-  const hosts = getForgeDefinition(forgeId)?.cloudHosts;
-  if (!hosts || hosts.length === 0) {
+function matchesKnownHost(forgeId: string): ((host: string) => boolean) | undefined {
+  const definition = getForgeDefinition(forgeId);
+  if (!definition) {
+    return undefined;
+  }
+  const hosts = getForgeKnownHosts(definition);
+  if (hosts.length === 0) {
     return undefined;
   }
   const normalized = new Set(hosts.map(normalizeHost));
@@ -139,7 +143,7 @@ export const defaultForgeRegistry = new ForgeRegistry([
     "github",
     {
       createService: createGitHubService,
-      matchesHost: matchesCloudHost("github"),
+      matchesHost: matchesKnownHost("github"),
       probeHost: probeGitHubHost,
     },
   ],
@@ -147,7 +151,7 @@ export const defaultForgeRegistry = new ForgeRegistry([
     "gitlab",
     {
       createService: createGitLabService,
-      matchesHost: matchesCloudHost("gitlab"),
+      matchesHost: matchesKnownHost("gitlab"),
       probeHost: probeGitLabHost,
     },
   ],
@@ -155,7 +159,7 @@ export const defaultForgeRegistry = new ForgeRegistry([
     "gitea",
     {
       createService: createGiteaService,
-      matchesHost: matchesCloudHost("gitea"),
+      matchesHost: matchesKnownHost("gitea"),
       probeHost: async (host) => (await resolveGiteaFamilyForge(host)) === "gitea",
     },
   ],
@@ -166,7 +170,7 @@ export const defaultForgeRegistry = new ForgeRegistry([
       probeHost: async (host) => (await resolveGiteaFamilyForge(host)) === "forgejo",
     },
   ],
-  ["codeberg", { createService: createGiteaService, matchesHost: matchesCloudHost("codeberg") }],
+  ["codeberg", { createService: createGiteaService, matchesHost: matchesKnownHost("codeberg") }],
 ]);
 
 export function createForgeService(forge: string): ForgeService | null {

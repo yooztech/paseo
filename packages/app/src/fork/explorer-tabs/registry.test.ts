@@ -3,7 +3,7 @@ import {
   explorerTabContributionIds,
   explorerTabContributionQueryKinds,
   isExplorerTabContributionId,
-} from "./explorer-tab-contribution-registry";
+} from "./registry";
 
 describe("Explorer tab contribution registry", () => {
   it("defines the fork-provided tabs and their query kinds", () => {

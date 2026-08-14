@@ -1,24 +1,15 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
-import { BranchCiPane, useBranchCiPipeline } from "@/git/branch-ci-panel";
-// FORK(repository-graph): register the fork-only repository graph explorer.
-import { RepositoryGraphPane } from "@/fork/repository-graph/pane";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { BranchCiPane } from "@/fork/branch-ci/pane";
+import { useBranchCiPipeline } from "@/fork/branch-ci/use-data";
+import { shouldShowBranchCiTab } from "@/fork/branch-ci/visibility";
+import { RepositoryGraphPane } from "@/fork/repository-graph/pane";
+import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
-import {
-  type ExplorerTabContributionId,
-  explorerTabContributionQueryKinds,
-  isExplorerTabContributionId,
-} from "./explorer-tab-contribution-registry";
-
-export {
-  explorerTabContributionQueryKinds,
-  isExplorerTabContributionId,
-  type ExplorerTabContributionId,
-};
+import type { ExplorerTabContributionId } from "./registry";
 
 export interface ExplorerTabContribution {
   tab: ExplorerTabContributionId;
@@ -40,25 +31,6 @@ interface ExplorerTabContributionInput {
   prForge: UsePrPaneDataResult["forge"];
 }
 
-function shouldShowBranchCiTab(input: {
-  hasPullRequest: boolean;
-  prLoading: boolean;
-  forgeBranchPipelineEnabled: boolean;
-  prForge: UsePrPaneDataResult["forge"];
-  activeTab: ExplorerTabContributionInput["activeTab"];
-  supported: boolean;
-  isLoading: boolean;
-  hasPipeline: boolean;
-}): boolean {
-  return (
-    !input.hasPullRequest &&
-    !(input.activeTab === "pr" && input.prLoading) &&
-    input.forgeBranchPipelineEnabled &&
-    (input.prForge === "gitlab" || input.activeTab === "ci") &&
-    (input.hasPipeline || input.isLoading || (input.activeTab === "ci" && input.supported))
-  );
-}
-
 export function useExplorerTabContributions(
   input: ExplorerTabContributionInput,
 ): readonly ExplorerTabContribution[] {
@@ -72,7 +44,7 @@ export function useExplorerTabContributions(
     (workspace) => workspace.gitRuntime?.currentBranch ?? null,
   );
   const canQuery = input.isGit && Boolean(input.workspaceRoot);
-  const branchCiEnabled =
+  const branchCiDiscoveryEnabled =
     canQuery &&
     input.isOpen &&
     !input.hasPullRequest &&
@@ -80,11 +52,13 @@ export function useExplorerTabContributions(
     forgeBranchPipelineEnabled &&
     input.prForge === "gitlab" &&
     Boolean(currentBranch);
+  const persistedBranchCiEnabled =
+    input.activeTab === "ci" && canQuery && input.isOpen && forgeBranchPipelineEnabled;
   const branchCi = useBranchCiPipeline({
     serverId: input.serverId,
     cwd: input.workspaceRoot,
     branch: currentBranch,
-    enabled: branchCiEnabled || (input.activeTab === "ci" && canQuery && input.isOpen),
+    enabled: branchCiDiscoveryEnabled || persistedBranchCiEnabled,
   });
   const showCiTab = shouldShowBranchCiTab({
     hasPullRequest: input.hasPullRequest,

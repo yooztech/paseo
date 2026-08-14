@@ -29,7 +29,7 @@ describe("buildForgeBranchTreeUrl", () => {
     ).toBe("https://gitlab.com/group/sub/repo/-/tree/main");
   });
 
-  it("uses the configured Iceveil GitLab web port", () => {
+  it("uses the configured self-hosted GitLab web port", () => {
     expect(
       buildForgeBranchTreeUrl("gitlab", {
         remoteUrl: "ssh://git@gitlab.iceveil.com:10022/group/repo.git",

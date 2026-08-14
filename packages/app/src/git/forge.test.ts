@@ -70,10 +70,11 @@ describe("getForgePresentation", () => {
 });
 
 describe("forgeFromRemoteUrl", () => {
-  it("detects only public forge hosts that are safe without daemon probing", () => {
+  it("detects public and declared self-hosted forge hosts", () => {
     expect(forgeFromRemoteUrl("https://codeberg.org/example/repo.git")).toBe("codeberg");
     expect(forgeFromRemoteUrl("https://gitlab.com/example/repo.git")).toBe("gitlab");
     expect(forgeFromRemoteUrl("https://gitea.com/example/repo.git")).toBe("gitea");
+    expect(forgeFromRemoteUrl("git@gitlab.iceveil.com:example/repo.git")).toBe("gitlab");
   });
 
   it("does not classify self-managed hosts by substring", () => {

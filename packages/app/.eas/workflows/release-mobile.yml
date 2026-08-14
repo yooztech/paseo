@@ -3,27 +3,44 @@ name: Release Mobile
 on:
   push:
     tags:
-      - "v*-fork.*-app"
+      - "app-v*-fork.*"
   workflow_dispatch:
     inputs:
       release_tag:
         type: string
         required: true
-        description: "App release tag (vX.Y.Z-fork.N-app)"
+        description: "App release tag (app-vX.Y.Z-fork.N)"
 
 jobs:
   build_ios:
     name: Build iOS
     type: build
     env:
-      PASEO_RELEASE_TAG: ${{ github.ref_name || inputs.release_tag }}
+      PASEO_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     params:
       platform: ios
       profile: production
 
+  verify_tag_checkout:
+    name: Verify tag checkout
+    needs: [build_ios]
+    env:
+      PASEO_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      EAS_BUILD_COMMIT: ${{ needs.build_ios.outputs.git_commit_hash }}
+    steps:
+      - uses: eas/checkout
+      - name: Compare build commit with release tag
+        run: |
+          git fetch --no-tags origin "refs/tags/$PASEO_RELEASE_TAG:refs/tags/$PASEO_RELEASE_TAG"
+          tag_commit="$(git rev-parse "$PASEO_RELEASE_TAG^{commit}")"
+          test "$EAS_BUILD_COMMIT" = "$tag_commit" || {
+            echo "Build commit $EAS_BUILD_COMMIT does not match $PASEO_RELEASE_TAG ($tag_commit)."
+            exit 1
+          }
+
   submit_ios:
     name: Upload iOS to TestFlight
-    needs: [build_ios]
+    needs: [build_ios, verify_tag_checkout]
     type: submit
     params:
       build_id: ${{ needs.build_ios.outputs.build_id }}

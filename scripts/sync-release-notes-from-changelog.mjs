@@ -2,11 +2,7 @@ import { execFileSync as nodeExecFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  getReleaseInfoFromSourceTag,
-  normalizeReleaseTag,
-  parseReleaseVersion,
-} from "./release-version-utils.mjs";
+import { getReleaseInfoFromSourceTag, parseReleaseVersion } from "./release-version-utils.mjs";
 
 const headingPattern = /^##\s+\[?([^\]\s]+)\]?\s*-\s*([0-9]{4}-[0-9]{2}-[0-9]{2})\s*$/;
 
@@ -158,13 +154,19 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
   const changelogText = readFileSync(changelogPath, "utf8");
   const entries = parseChangelog(changelogText);
 
-  const targetTag = args.tag ? normalizeReleaseTag(args.tag) : entries[0].tag;
-  const releaseInfo = getReleaseInfoFromSourceTag(targetTag);
-  const targetEntry = entries.find((entry) => entry.tag === targetTag);
+  const sourceTag = args.tag || entries[0].tag;
+  const releaseInfo = getReleaseInfoFromSourceTag(sourceTag);
+  const targetTag = releaseInfo.publicationTag;
+  const targetEntry = entries.find((entry) => entry.version === releaseInfo.changelogVersion);
 
   let notes = targetEntry?.notes ?? null;
 
   if (!notes) {
+    if (/^desktop(?:-(?:windows|linux|macos))?-v\d+\.\d+\.\d+-fork\.\d+$/.test(sourceTag)) {
+      throw new Error(
+        `No matching changelog section found for fork desktop ${sourceTag}; expected ${releaseInfo.changelogVersion}.`,
+      );
+    }
     console.log(`No matching changelog section found for ${targetTag}. Skipping.`);
     return;
   }

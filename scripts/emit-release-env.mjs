@@ -1,12 +1,16 @@
 import { getReleaseInfoFromSourceTag } from "./release-version-utils.mjs";
+import { execFileSync } from "node:child_process";
 
 function usageAndExit(code = 1) {
-  process.stderr.write(`Usage: node scripts/emit-release-env.mjs --source-tag <tag>\n`);
+  process.stderr.write(
+    `Usage: node scripts/emit-release-env.mjs --source-tag <tag> [--verify-checkout]\n`,
+  );
   process.exit(code);
 }
 
 function parseArgs(argv) {
   let sourceTag = "";
+  let verifyCheckout = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -18,6 +22,10 @@ function parseArgs(argv) {
     if (arg === "--help" || arg === "-h") {
       usageAndExit(0);
     }
+    if (arg === "--verify-checkout") {
+      verifyCheckout = true;
+      continue;
+    }
     usageAndExit();
   }
 
@@ -25,14 +33,29 @@ function parseArgs(argv) {
     usageAndExit();
   }
 
-  return sourceTag;
+  return { sourceTag, verifyCheckout };
 }
 
-const sourceTag = parseArgs(process.argv.slice(2));
+const { sourceTag, verifyCheckout } = parseArgs(process.argv.slice(2));
 const info = getReleaseInfoFromSourceTag(sourceTag);
+
+if (verifyCheckout) {
+  const resolve = (ref) =>
+    execFileSync("git", ["rev-parse", `${ref}^{commit}`], { encoding: "utf8" }).trim();
+  const sourceSha = resolve(info.sourceTag);
+  const publicationSha = resolve(info.publicationTag);
+  const checkoutSha = resolve("HEAD");
+  if (sourceSha !== publicationSha || sourceSha !== checkoutSha) {
+    throw new Error(
+      `Release refs must resolve to one commit: source=${sourceSha}, publication=${publicationSha}, checkout=${checkoutSha}`,
+    );
+  }
+}
 
 const entries = [
   ["SOURCE_TAG", info.sourceTag],
+  ["PUBLICATION_TAG", info.publicationTag],
+  ["CHANGELOG_VERSION", info.changelogVersion],
   ["RELEASE_TAG", info.releaseTag],
   ["RELEASE_VERSION", info.version],
   ["RELEASE_BASE_VERSION", info.baseVersion],
