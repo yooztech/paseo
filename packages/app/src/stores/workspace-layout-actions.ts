@@ -980,7 +980,8 @@ export function collectAllPanes(root: SplitNode): SplitPane[] {
 function isEphemeralTab(tab: WorkspaceTab): boolean {
   // Commit diff tabs are ephemeral: their SHA may be rebased away before the next
   // load, so a restored tab could point at a dead commit.
-  return tab.target.kind === "commit_diff";
+  // FORK(repository-graph): repository graph file diffs also point at rebased SHAs.
+  return tab.target.kind === "commit_diff" || tab.target.kind === "repository_graph_file_diff";
 }
 
 function stripEphemeralTabsFromNode(node: SplitNodeInternal): SplitNodeInternal {

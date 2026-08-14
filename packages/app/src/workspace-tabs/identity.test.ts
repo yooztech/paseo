@@ -118,9 +118,12 @@ describe("commit diff tab identity", () => {
     expect(
       normalizeWorkspaceTabTarget({
         kind: "commit_diff",
-        sha: "abc123",
+        sha: " abc123 ",
       }),
-    ).toEqual({ kind: "commit_diff", sha: "abc123" });
+    ).toEqual({
+      kind: "commit_diff",
+      sha: "abc123",
+    });
   });
 
   it("rejects a commit diff target with a blank sha", () => {
@@ -130,5 +133,41 @@ describe("commit diff tab identity", () => {
         sha: "   ",
       }),
     ).toBeNull();
+  });
+});
+
+describe("repository graph file diff tab identity", () => {
+  it("keys one reusable file diff tab per commit", () => {
+    expect(
+      buildDeterministicWorkspaceTabId({
+        kind: "repository_graph_file_diff",
+        sha: "abc123",
+        path: "src/file.ts",
+      }),
+    ).toBe("repository_graph_file_diff_abc123");
+  });
+
+  it("normalizes and compares file selections", () => {
+    const target = normalizeWorkspaceTabTarget({
+      kind: "repository_graph_file_diff",
+      sha: " abc123 ",
+      path: " src/file.ts ",
+      requestId: 42,
+    });
+    expect(target).toEqual({
+      kind: "repository_graph_file_diff",
+      sha: "abc123",
+      path: "src/file.ts",
+      requestId: 42,
+    });
+    expect(
+      target &&
+        workspaceTabTargetsEqual(target, {
+          kind: "repository_graph_file_diff",
+          sha: "abc123",
+          path: "src/other.ts",
+          requestId: 43,
+        }),
+    ).toBe(false);
   });
 });

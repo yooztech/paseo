@@ -58,6 +58,26 @@ import {
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
+// FORK(repository-graph): register fork-only schemas in the central wire unions.
+import {
+  CheckoutCommitFileDiffRequestSchema,
+  CheckoutCommitFileDiffResponseSchema,
+  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
+  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
+  CheckoutRepositoryGraphGetHistoryRequestSchema,
+  CheckoutRepositoryGraphGetHistoryResponseSchema,
+  type RepositoryGraphCommit,
+  type RepositoryGraphCommitDetails,
+} from "./fork/repository-graph/messages.js";
+export type { RepositoryGraphCommit, RepositoryGraphCommitDetails };
+export {
+  CheckoutCommitFileDiffRequestSchema,
+  CheckoutCommitFileDiffResponseSchema,
+  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
+  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
+  CheckoutRepositoryGraphGetHistoryRequestSchema,
+  CheckoutRepositoryGraphGetHistoryResponseSchema,
+};
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -1836,37 +1856,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
   requestId: z.string(),
 });
 
-const RepositoryGraphRefSchema = z.object({
-  name: z.string(),
-  kind: z.enum(["head", "remote", "tag"]),
-  current: z.boolean(),
-});
-
-const RepositoryGraphCommitSchema = z.object({
-  sha: z.string(),
-  shortSha: z.string(),
-  parents: z.array(z.string()),
-  subject: z.string(),
-  authorName: z.string(),
-  authorDate: z.string(),
-  refs: z.array(RepositoryGraphRefSchema),
-});
-
-export const CheckoutRepositoryGraphGetHistoryRequestSchema = z.object({
-  type: z.literal("checkout.repository_graph.get_history.request"),
-  cwd: z.string(),
-  limit: z.number().int().min(1).max(500).optional(),
-  requestId: z.string(),
-});
-
-export const CheckoutCommitFileDiffRequestSchema = z.object({
-  type: z.literal("checkout.commits.file_diff.request"),
-  cwd: z.string(),
-  sha: z.string(),
-  path: z.string(),
-  requestId: z.string(),
-});
-
 const GitHubRepoSegmentSchema = z.string().regex(/^[A-Za-z0-9._-]+$/);
 
 const CheckoutCheckDetailsRequestPayloadSchema = z.object({
@@ -2687,6 +2676,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutGithubSetAutoMergeRequestSchema,
   CheckoutCommitsListRequestSchema,
   CheckoutRepositoryGraphGetHistoryRequestSchema,
+  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
   CheckoutGithubGetCheckDetailsRequestSchema,
@@ -3008,6 +2998,8 @@ export const ServerInfoStatusPayloadSchema = z
         commitBaseClassification: z.boolean().optional(),
         // COMPAT(repositoryGraph): added in v0.2.5, remove gate after 2027-02-03.
         repositoryGraph: z.boolean().optional(),
+        // COMPAT(repositoryGraphCommitDetails): added in v0.2.7, remove gate after 2027-02-14.
+        repositoryGraphCommitDetails: z.boolean().optional(),
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: z.boolean().optional(),
         // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.
@@ -4538,31 +4530,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
   }),
 });
 
-export const CheckoutRepositoryGraphGetHistoryResponseSchema = z.object({
-  type: z.literal("checkout.repository_graph.get_history.response"),
-  payload: z.object({
-    cwd: z.string(),
-    commits: z.array(RepositoryGraphCommitSchema),
-    hasMore: z.boolean(),
-    error: CheckoutErrorSchema.nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CheckoutCommitFileDiffResponseSchema = z.object({
-  type: z.literal("checkout.commits.file_diff.response"),
-  payload: z.object({
-    cwd: z.string(),
-    sha: z.string(),
-    path: z.string(),
-    // null when the file is absent from the commit or carries no textual diff
-    // (e.g. binary-only changes).
-    file: ParsedDiffFileSchema.nullable(),
-    error: CheckoutErrorSchema.nullable(),
-    requestId: z.string(),
-  }),
-});
-
 const CheckoutGithubCheckAnnotationSchema = z.object({
   path: z.string().optional(),
   startLine: z.number().optional(),
@@ -5588,6 +5555,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutGithubSetAutoMergeResponseSchema,
   CheckoutCommitsListResponseSchema,
   CheckoutRepositoryGraphGetHistoryResponseSchema,
+  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
   CheckoutGithubGetCheckDetailsResponseSchema,
@@ -5941,7 +5909,12 @@ export type CheckoutRepositoryGraphGetHistoryRequest = z.infer<
 export type CheckoutRepositoryGraphGetHistoryResponse = z.infer<
   typeof CheckoutRepositoryGraphGetHistoryResponseSchema
 >;
-export type RepositoryGraphCommit = z.infer<typeof RepositoryGraphCommitSchema>;
+export type CheckoutRepositoryGraphGetCommitDetailsRequest = z.infer<
+  typeof CheckoutRepositoryGraphGetCommitDetailsRequestSchema
+>;
+export type CheckoutRepositoryGraphGetCommitDetailsResponse = z.infer<
+  typeof CheckoutRepositoryGraphGetCommitDetailsResponseSchema
+>;
 export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
 export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
 export type ParsedDiffFile = z.infer<typeof ParsedDiffFileSchema>;

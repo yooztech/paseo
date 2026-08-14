@@ -8,7 +8,7 @@ import {
   invalidateCheckoutGitQueriesForClient,
   invalidateCheckoutGitQueriesForServer,
 } from "@/git/query-keys";
-import { repositoryGraphQueryKey } from "@/git/repository-graph/query-keys";
+import { repositoryGraphQueryKey } from "@/fork/repository-graph/query-keys";
 import {
   prPanePipelineQueryKey,
   prPaneTimelineQueryKey,

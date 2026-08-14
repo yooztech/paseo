@@ -1160,6 +1160,35 @@ describe("workspace-layout-store actions", () => {
     ]);
   });
 
+  it("retargets an open repository graph diff tab to a selected file", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+    const tabId = store.openTabFocused(workspaceKey, {
+      kind: "repository_graph_file_diff",
+      sha: "abc123",
+      path: "src/first.ts",
+    });
+
+    const nextTabId = store.retargetTab(workspaceKey, tabId!, {
+      kind: "repository_graph_file_diff",
+      sha: "abc123",
+      path: "src/file.ts",
+      requestId: 42,
+    });
+
+    const tabs = collectAllTabs(
+      workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+    );
+    expect(nextTabId).toBe("repository_graph_file_diff_abc123");
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]?.target).toEqual({
+      kind: "repository_graph_file_diff",
+      sha: "abc123",
+      path: "src/file.ts",
+      requestId: 42,
+    });
+  });
+
   it("canonicalizes comparison-specific working diff tab ids from persisted layouts", () => {
     const legacyTabId = "working_diff_uncommitted_0_n";
     const layout = normalizeLayout({

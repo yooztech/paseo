@@ -364,6 +364,10 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "commit_diff") {
     return tab.target.sha.slice(0, 7);
   }
+  // FORK(repository-graph): fallback before the fork panel descriptor is ready.
+  if (tab.target.kind === "repository_graph_file_diff") {
+    return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
+  }
   return labels.agent;
 }
 
@@ -401,6 +405,10 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "working_diff") {
     return labels.changes;
+  }
+  // FORK(repository-graph): fallback before the fork panel descriptor is ready.
+  if (tab.target.kind === "repository_graph_file_diff") {
+    return tab.target.path;
   }
   return tab.target.path;
 }
