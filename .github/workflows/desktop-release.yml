@@ -426,6 +426,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           sparse-checkout: |
             package.json
             package-lock.json

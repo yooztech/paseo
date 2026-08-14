@@ -340,4 +340,8 @@ test("desktop fork publication uses pre-created same-commit tags", () => {
   assert.match(workflow, /CHECKOUT_REF: .*github\.event\.inputs\.tag.*github\.ref_name/);
   assert.match(workflow, /--verify-checkout/g);
   assert.match(workflow, /--verify-tag/);
+  assert.equal(
+    workflow.match(/uses: actions\/checkout@v4/g)?.length,
+    workflow.match(/fetch-depth: 0/g)?.length,
+  );
 });
