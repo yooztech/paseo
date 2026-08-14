@@ -34,6 +34,7 @@ import type {
   CheckoutStatusResponse,
   CheckoutCommit,
   RepositoryGraphCommit,
+  RepositoryGraphCommitDetails,
   ParsedDiffFile,
   CheckoutCommitResponse,
   CheckoutMergeResponse,
@@ -3804,6 +3805,7 @@ export class DaemonClient {
     return { baseRef: payload.baseRef, commits: payload.commits };
   }
 
+  // FORK(repository-graph): thin client entry points for fork-only RPCs.
   async getRepositoryGraphHistory(
     cwd: string,
     limit?: number,
@@ -3825,6 +3827,32 @@ export class DaemonClient {
       throw new Error(payload.error.message);
     }
     return { commits: payload.commits, hasMore: payload.hasMore };
+  }
+
+  async getRepositoryGraphCommitDetails(
+    cwd: string,
+    sha: string,
+    requestId?: string,
+  ): Promise<RepositoryGraphCommitDetails> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.get_commit_details.response">(
+        {
+          requestId,
+          message: {
+            type: "checkout.repository_graph.get_commit_details.request",
+            cwd,
+            sha,
+          },
+          timeout: 60000,
+        },
+      );
+    if (payload.error) {
+      throw new Error(payload.error.message);
+    }
+    if (!payload.details) {
+      throw new Error(`Commit details missing for ${sha}`);
+    }
+    return payload.details;
   }
 
   async getCommitFileDiff(

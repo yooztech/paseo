@@ -2072,8 +2072,11 @@ export class Session {
         return this.checkoutSession.handleStatusRequest(msg);
       case "checkout.commits.list.request":
         return this.checkoutSession.handleCommitsListRequest(msg);
+      // FORK(repository-graph): route fork-only RPCs to the checkout adapter.
       case "checkout.repository_graph.get_history.request":
         return this.checkoutSession.handleRepositoryGraphGetHistoryRequest(msg);
+      case "checkout.repository_graph.get_commit_details.request":
+        return this.checkoutSession.handleRepositoryGraphGetCommitDetailsRequest(msg);
       case "checkout.commits.file_diff.request":
         return this.checkoutSession.handleCommitFileDiffRequest(msg);
       case "validate_branch_request":

@@ -57,6 +57,19 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
       const sha = trimNonEmpty(value.sha);
       return sha ? { kind: "commit_diff", sha } : null;
     }
+    // FORK(repository-graph): normalize the fork-only file diff target.
+    case "repository_graph_file_diff": {
+      const sha = trimNonEmpty(value.sha);
+      const path = trimNonEmpty(value.path);
+      return sha && path
+        ? {
+            kind: "repository_graph_file_diff",
+            sha,
+            path,
+            ...(typeof value.requestId === "number" ? { requestId: value.requestId } : {}),
+          }
+        : null;
+    }
     default:
       return null;
   }
@@ -127,6 +140,10 @@ function secondaryWorkspaceTabTargetsEqual(
   if (left.kind === "commit_diff" && right.kind === "commit_diff") {
     return left.sha === right.sha;
   }
+  // FORK(repository-graph): compare the fork-only file diff target.
+  if (left.kind === "repository_graph_file_diff" && right.kind === "repository_graph_file_diff") {
+    return left.sha === right.sha && left.path === right.path && left.requestId === right.requestId;
+  }
   return false;
 }
 
@@ -184,6 +201,10 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "commit_diff") {
     return `commit_diff_${target.sha}`;
+  }
+  // FORK(repository-graph): one reusable file diff tab per commit.
+  if (target.kind === "repository_graph_file_diff") {
+    return `repository_graph_file_diff_${target.sha}`;
   }
   if (target.kind === "working_diff") {
     return "working_diff";

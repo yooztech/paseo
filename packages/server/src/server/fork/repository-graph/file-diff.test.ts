@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getCommitFileDiff } from "./checkout-git.js";
+import { getRepositoryGraphFileDiff } from "./git.js";
 
 const tempDirs: string[] = [];
 
@@ -43,14 +43,14 @@ function headSha(repoDir: string): string {
   return git(["rev-parse", "HEAD"], repoDir).trim();
 }
 
-describe("getCommitFileDiff", () => {
+describe("getRepositoryGraphFileDiff", () => {
   it("returns the parsed diff for a modified file in a commit", async () => {
     const repoDir = initRepo();
     commitFile(repoDir, "foo.txt", "a\nb\nc\n", "initial");
     commitFile(repoDir, "foo.txt", "a\nB\nc\nd\n", "edit foo");
     const sha = headSha(repoDir);
 
-    const file = await getCommitFileDiff({ cwd: repoDir, sha, path: "foo.txt" });
+    const file = await getRepositoryGraphFileDiff({ cwd: repoDir, sha, path: "foo.txt" });
 
     expect(file).not.toBeNull();
     expect(file?.path).toBe("foo.txt");
@@ -70,7 +70,7 @@ describe("getCommitFileDiff", () => {
     commitFile(repoDir, "added.txt", "x\ny\n", "add file");
     const sha = headSha(repoDir);
 
-    const file = await getCommitFileDiff({ cwd: repoDir, sha, path: "added.txt" });
+    const file = await getRepositoryGraphFileDiff({ cwd: repoDir, sha, path: "added.txt" });
 
     expect(file?.path).toBe("added.txt");
     expect(file?.isNew).toBe(true);
@@ -84,7 +84,11 @@ describe("getCommitFileDiff", () => {
     commitFile(repoDir, "foo.txt", "a\nb\n", "edit foo");
     const sha = headSha(repoDir);
 
-    const file = await getCommitFileDiff({ cwd: repoDir, sha, path: "does-not-exist.txt" });
+    const file = await getRepositoryGraphFileDiff({
+      cwd: repoDir,
+      sha,
+      path: "does-not-exist.txt",
+    });
 
     expect(file).toBeNull();
   });
@@ -99,7 +103,7 @@ describe("getCommitFileDiff", () => {
     git(["merge", "--no-ff", "feature", "-m", "merge feature"], repoDir);
     const sha = headSha(repoDir);
 
-    const file = await getCommitFileDiff({ cwd: repoDir, sha, path: "feature.txt" });
+    const file = await getRepositoryGraphFileDiff({ cwd: repoDir, sha, path: "feature.txt" });
 
     expect(file?.path).toBe("feature.txt");
     expect(file?.isNew).toBe(true);

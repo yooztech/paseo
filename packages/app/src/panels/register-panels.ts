@@ -7,6 +7,8 @@ import { registerPanel } from "@/panels/panel-registry";
 import { setupPanelRegistration } from "@/panels/setup-panel";
 import { terminalPanelRegistration } from "@/panels/terminal-panel";
 import { providerSubagentPanelRegistration } from "@/panels/provider-subagent-panel";
+// FORK(repository-graph): register the fork-only file diff panel.
+import { repositoryGraphFileDiffPanelRegistration } from "@/fork/repository-graph/file-diff-panel";
 
 let panelsRegistered = false;
 
@@ -23,5 +25,6 @@ export function ensurePanelsRegistered(): void {
   registerPanel(filePanelRegistration);
   registerPanel(commitDiffPanelRegistration);
   registerPanel(workingDiffPanelRegistration);
+  registerPanel(repositoryGraphFileDiffPanelRegistration);
   panelsRegistered = true;
 }

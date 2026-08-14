@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
 import { BranchCiPane, useBranchCiPipeline } from "@/git/branch-ci-panel";
-import { RepositoryGraphPane } from "@/git/repository-graph/pane";
+// FORK(repository-graph): register the fork-only repository graph explorer.
+import { RepositoryGraphPane } from "@/fork/repository-graph/pane";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useSessionStore } from "@/stores/session-store";
@@ -105,6 +106,7 @@ export function useExplorerTabContributions(
       content: (
         <RepositoryGraphPane
           serverId={input.serverId}
+          workspaceId={input.workspaceId}
           cwd={input.workspaceRoot}
           enabled={input.isOpen}
         />

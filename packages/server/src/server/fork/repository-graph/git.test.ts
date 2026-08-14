@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getRepositoryGraphHistory } from "./checkout-git.js";
+import { getRepositoryGraphCommitDetails, getRepositoryGraphHistory } from "./git.js";
 
 const tempDirs: string[] = [];
 
@@ -158,5 +158,37 @@ describe("getRepositoryGraphHistory", () => {
         }
       }
     }
+  });
+});
+
+describe("getRepositoryGraphCommitDetails", () => {
+  it("returns commit metadata, body, and changed files", async () => {
+    const repoDir = initRepo();
+    writeFileSync(join(repoDir, "README.md"), "base\nchanged\n");
+    writeFileSync(join(repoDir, "added.txt"), "added\n");
+    git(["add", "."], repoDir);
+    git(
+      ["-c", "commit.gpgsign=false", "commit", "-m", "Detailed subject", "-m", "Detailed body"],
+      repoDir,
+    );
+    const sha = git(["rev-parse", "HEAD"], repoDir);
+
+    const details = await getRepositoryGraphCommitDetails({ cwd: repoDir, sha });
+
+    expect(details).toMatchObject({
+      sha,
+      authorName: "Test User",
+      authorEmail: "test@test.com",
+      committerName: "Test User",
+      subject: "Detailed subject",
+      body: "Detailed body",
+    });
+    expect(details.parents).toHaveLength(1);
+    expect(details.files).toEqual(
+      expect.arrayContaining([
+        { path: "README.md", additions: 1, deletions: 0, status: "modified" },
+        { path: "added.txt", additions: 1, deletions: 0, status: "added" },
+      ]),
+    );
   });
 });

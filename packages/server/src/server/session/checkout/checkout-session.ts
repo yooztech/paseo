@@ -1,5 +1,4 @@
 import type pino from "pino";
-import { isAbsolute } from "node:path";
 import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import { getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
 import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
@@ -8,6 +7,7 @@ import type {
   CheckoutCommitsListRequest,
   CheckoutCommitFileDiffRequest,
   CheckoutRepositoryGraphGetHistoryRequest,
+  CheckoutRepositoryGraphGetCommitDetailsRequest,
   CheckoutRefreshRequest,
   CheckoutRenameBranchRequest,
   CheckoutStatusRequest,
@@ -50,12 +50,12 @@ import {
   pullCurrentBranch,
   pushCurrentBranch,
   listCheckoutCommits,
-  getRepositoryGraphHistory,
-  getCommitFileDiff,
 } from "../../../utils/checkout-git.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
+// FORK(repository-graph): delegate fork-only RPC behavior outside the checkout session.
+import { RepositoryGraphForkSessionHandler } from "../../fork/repository-graph/session-handler.js";
 
 /**
  * The collaborators a checkout command reaches that are NOT part of the checkout
@@ -154,6 +154,7 @@ export class CheckoutSession {
   private readonly worktreesRoot: string | undefined;
   private readonly logger: pino.Logger;
   private readonly diffSubscriptions = new Map<string, () => void>();
+  private readonly repositoryGraphFork: RepositoryGraphForkSessionHandler;
 
   constructor(options: CheckoutSessionOptions) {
     this.host = options.host;
@@ -165,6 +166,9 @@ export class CheckoutSession {
     this.paseoHome = options.paseoHome;
     this.worktreesRoot = options.worktreesRoot;
     this.logger = options.logger;
+    this.repositoryGraphFork = new RepositoryGraphForkSessionHandler((message) =>
+      this.host.emit(message),
+    );
   }
 
   private async resolveForgeService(
@@ -287,41 +291,17 @@ export class CheckoutSession {
   async handleRepositoryGraphGetHistoryRequest(
     msg: CheckoutRepositoryGraphGetHistoryRequest,
   ): Promise<void> {
-    const { cwd, limit, requestId } = msg;
+    return this.repositoryGraphFork.handleHistory(msg);
+  }
 
-    try {
-      const history = await getRepositoryGraphHistory({ cwd: expandTilde(cwd), limit });
-      this.host.emit({
-        type: "checkout.repository_graph.get_history.response",
-        payload: { cwd, ...history, error: null, requestId },
-      });
-    } catch (error) {
-      this.host.emit({
-        type: "checkout.repository_graph.get_history.response",
-        payload: { cwd, commits: [], hasMore: false, error: toCheckoutError(error), requestId },
-      });
-    }
+  async handleRepositoryGraphGetCommitDetailsRequest(
+    msg: CheckoutRepositoryGraphGetCommitDetailsRequest,
+  ): Promise<void> {
+    return this.repositoryGraphFork.handleCommitDetails(msg);
   }
 
   async handleCommitFileDiffRequest(msg: CheckoutCommitFileDiffRequest): Promise<void> {
-    const { cwd, sha, path, requestId } = msg;
-
-    try {
-      assertSafeGitRef(sha, "commit");
-      if (path.length === 0 || isAbsolute(path) || path.split(/[\\/]/).includes("..")) {
-        throw new Error(`Invalid path: ${path}`);
-      }
-      const file = await getCommitFileDiff({ cwd: expandTilde(cwd), sha, path });
-      this.host.emit({
-        type: "checkout.commits.file_diff.response",
-        payload: { cwd, sha, path, file, error: null, requestId },
-      });
-    } catch (error) {
-      this.host.emit({
-        type: "checkout.commits.file_diff.response",
-        payload: { cwd, sha, path, file: null, error: toCheckoutError(error), requestId },
-      });
-    }
+    return this.repositoryGraphFork.handleFileDiff(msg);
   }
 
   async handleValidateBranchRequest(msg: ValidateBranchRequest): Promise<void> {
