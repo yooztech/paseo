@@ -160,11 +160,15 @@ adb exec-out screencap -p > screenshot.png
 
 ## Cloud build + submit (EAS)
 
-Only app tag pushes like `app-v0.2.5-fork.3` trigger:
+App tag pushes do not trigger EAS. Create an app tag such as
+`app-v0.2.5-fork.3`, then run the Paseo workspace script
+`release-fork-app-eas` to trigger:
 
 - The EAS GitHub app on Expo servers, using `packages/app/.eas/workflows/release-mobile.yml`, for an iOS production build and TestFlight upload.
 
-Ordinary `vX.Y.Z-fork.N` daemon release tags do not consume an EAS build. Run `npm run release:fork:app` only when the commit needs an iOS build; it allocates the next fork number and adds the `app-` channel prefix.
+Ordinary `vX.Y.Z-fork.N` daemon release tags do not consume an EAS build. Run
+`npm run release:fork:app` to allocate and push the app tag, then trigger EAS
+separately only when the commit needs an iOS build.
 
 The app release command only pushes the tag. It does not run Expo prebuild,
 Gradle, or an Android build.

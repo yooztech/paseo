@@ -271,16 +271,12 @@ test("non-required publish workflows avoid runners with path filters or manual d
   }
 });
 
-test("EAS iOS releases require a dedicated app tag", () => {
+test("EAS iOS releases are manual and require a dedicated app tag input", () => {
   const workflow = readFileSync(easReleaseWorkflowPath, "utf8");
   const trigger = workflow.split("jobs:", 1)[0];
-  assert.match(trigger, /^\s+- "app-v\*-fork\.\*"$/m);
-  assert.doesNotMatch(trigger, /^\s+- "v\*-fork\.\*-app"$/m);
-  assert.match(
-    workflow,
-    /PASEO_RELEASE_TAG: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.release_tag \|\| github\.ref_name \}\}/,
-  );
-  assert.doesNotMatch(workflow, /github\.ref_name \|\| inputs\.release_tag/);
+  assert.match(trigger, /^\s+workflow_dispatch:\s*$/m);
+  assert.doesNotMatch(trigger, /^\s+push:\s*$/m);
+  assert.match(workflow, /PASEO_RELEASE_TAG: \$\{\{ inputs\.release_tag \}\}/);
   assert.match(
     workflow,
     /EAS_BUILD_COMMIT: \$\{\{ needs\.build_ios\.outputs\.git_commit_hash \}\}/,
@@ -302,12 +298,17 @@ test("EAS iOS releases require a dedicated app tag", () => {
 
 test("fork daemon, desktop, and app releases use separate commands and tags", () => {
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  const paseoJson = JSON.parse(readFileSync(new URL("paseo.json", repoRoot), "utf8"));
   assert.equal(packageJson.scripts["release:fork:daemon"], "node scripts/release-fork-daemon.mjs");
   assert.equal(
     packageJson.scripts["release:fork:desktop"],
     "node scripts/release-fork-desktop.mjs",
   );
   assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
+  assert.equal(
+    paseoJson.scripts["release-fork-app-eas"].command,
+    "node ./scripts/trigger-fork-app-eas.mjs",
+  );
 
   const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
   assert.match(daemonScript, /releaseForkDaemon/);

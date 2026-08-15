@@ -1,9 +1,6 @@
 name: Release Mobile
 
 on:
-  push:
-    tags:
-      - "app-v*-fork.*"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -16,7 +13,7 @@ jobs:
     name: Build iOS
     type: build
     env:
-      PASEO_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      PASEO_RELEASE_TAG: ${{ inputs.release_tag }}
     params:
       platform: ios
       profile: production
@@ -25,7 +22,7 @@ jobs:
     name: Verify tag checkout
     needs: [build_ios]
     env:
-      PASEO_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      PASEO_RELEASE_TAG: ${{ inputs.release_tag }}
       EAS_BUILD_COMMIT: ${{ needs.build_ios.outputs.git_commit_hash }}
     steps:
       - uses: eas/checkout

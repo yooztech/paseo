@@ -36,6 +36,9 @@
     },
     "release-fork-app": {
       "command": "node ./scripts/release-fork-app.mjs"
+    },
+    "release-fork-app-eas": {
+      "command": "node ./scripts/trigger-fork-app-eas.mjs"
     }
   }
 }
