@@ -17,6 +17,7 @@ import type {
   RepositoryGraphCommit,
   RepositoryGraphCommitDetails,
 } from "@getpaseo/protocol/messages";
+import { DiffStat } from "@/components/diff-stat";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import {
@@ -329,8 +330,7 @@ function ChangedFileRow({
       <Text style={styles.filePath} numberOfLines={1}>
         {file.path}
       </Text>
-      <Text style={styles.additions}>+{file.additions}</Text>
-      <Text style={styles.deletions}>-{file.deletions}</Text>
+      <DiffStat additions={file.additions} deletions={file.deletions} />
       <Text style={styles.fileStatus}>{file.status?.charAt(0).toUpperCase() ?? "M"}</Text>
       <ThemedChevronRight size={13} uniProps={foregroundMutedColorMapping} />
     </Pressable>
@@ -839,16 +839,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   fileRowHovered: { backgroundColor: theme.colors.surface2 },
   filePath: { flex: 1, color: theme.colors.foreground, fontSize: theme.fontSize.xs },
-  additions: {
-    color: theme.colors.success,
-    fontSize: theme.fontSize.xs,
-    fontFamily: theme.fontFamily.mono,
-  },
-  deletions: {
-    color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs,
-    fontFamily: theme.fontFamily.mono,
-  },
   fileStatus: {
     width: 14,
     color: theme.colors.foregroundMuted,
