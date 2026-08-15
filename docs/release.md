@@ -243,12 +243,13 @@ pushes alone never consume an EAS build.
 - **Android APK** — not part of fork releases. `.github/workflows/android-apk-release.yml` is manual-only.
 
 `packages/app/native-release-version.js` is the native-version source of truth.
-It derives `base = major * 1_000_000 + minor * 1_000 + patch`, then reserves 2,000
-build slots per package version. Beta builds use slots 1 through 998, stable uses
-999, and `app-vX.Y.Z-fork.N` uses `999 + N`. Android `versionCode` and iOS
-`buildNumber` both use `base * 2_000 + slot`; fork numbers must be between 1 and
-999, and the final Android value must not exceed `2_100_000_000`. EAS uses the
-local version source so rebuilding the same tag produces the same value.
+It derives `base = major * 1_000_000 + minor * 1_000 + patch`. Ordinary Android
+builds use `base`; ordinary iOS builds use `base * 1_000 + slot`, with beta slots
+1 through 998 and stable slot 999. `app-vX.Y.Z-fork.N` uses
+`base * 1_000 + N` for both Android `versionCode` and iOS `buildNumber`. Fork
+numbers must be between 1 and 999, and the final Android value must not exceed
+`2_100_000_000`. EAS uses the local version source so rebuilding the same tag
+produces the same value.
 
 ### Watching mobile builds from the terminal
 

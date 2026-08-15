@@ -3,27 +3,35 @@ import { describe, expect, it } from "vitest";
 const { getNativeReleaseVersion } = require("./native-release-version");
 
 describe("native release version", () => {
-  it("uses the stable build slot on both platforms", () => {
+  it("uses the base Android version and stable iOS slot", () => {
     expect(getNativeReleaseVersion("0.2.6")).toEqual({
       appVersion: "0.2.6",
-      androidVersionCode: 4012999,
-      iosBuildNumber: "4012999",
+      androidVersionCode: 2006,
+      iosBuildNumber: "2006999",
     });
   });
 
   it("gives each beta a unique build slot below stable", () => {
     expect(getNativeReleaseVersion("0.2.6-beta.2")).toEqual({
       appVersion: "0.2.6",
-      androidVersionCode: 4012002,
-      iosBuildNumber: "4012002",
+      androidVersionCode: 2006,
+      iosBuildNumber: "2006002",
     });
   });
 
-  it("gives app forks unique build slots above stable", () => {
+  it("uses the historical base-times-1000 fork build number", () => {
     expect(getNativeReleaseVersion("0.2.6", "app-v0.2.6-fork.2")).toEqual({
       appVersion: "0.2.6",
-      androidVersionCode: 4013001,
-      iosBuildNumber: "4013001",
+      androidVersionCode: 2006002,
+      iosBuildNumber: "2006002",
+    });
+  });
+
+  it("preserves the fork.8 build number for 0.3.1", () => {
+    expect(getNativeReleaseVersion("0.3.1", "app-v0.3.1-fork.8")).toEqual({
+      appVersion: "0.3.1",
+      androidVersionCode: 3001008,
+      iosBuildNumber: "3001008",
     });
   });
 
@@ -46,8 +54,8 @@ describe("native release version", () => {
   });
 
   it("checks the final Android versionCode limit", () => {
-    expect(() => getNativeReleaseVersion("1.50.0", "app-v1.50.0-fork.999")).toThrow(
-      "Derived Android versionCode is out of range: 2100001998",
+    expect(() => getNativeReleaseVersion("2.101.0", "app-v2.101.0-fork.999")).toThrow(
+      "Derived native build version is out of range: 2101000999",
     );
   });
 });

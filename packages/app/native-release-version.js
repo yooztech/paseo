@@ -2,10 +2,9 @@ const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
 const legacyAppTagPattern = /^v(\d+\.\d+\.\d+)-fork\.(\d+)-app$/;
 const appTagPattern = /^app-v(\d+\.\d+\.\d+)-fork\.(\d+)$/;
 const stableBuildSlot = 999;
-const buildSlotsPerVersion = 2_000;
 const maxAndroidVersionCode = 2_100_000_000;
 
-function getForkBuildSlot(releaseTag, appVersion, isBeta) {
+function getForkNumber(releaseTag, appVersion, isBeta) {
   const normalizedReleaseTag = releaseTag ?? "";
   const match =
     appTagPattern.exec(normalizedReleaseTag) ?? legacyAppTagPattern.exec(normalizedReleaseTag);
@@ -20,7 +19,7 @@ function getForkBuildSlot(releaseTag, appVersion, isBeta) {
   if (!Number.isSafeInteger(forkNumber) || forkNumber < 1 || forkNumber > 999) {
     throw new Error(`Fork release number must be between 1 and 999: ${releaseTag}`);
   }
-  return stableBuildSlot + forkNumber;
+  return forkNumber;
 }
 
 function getNativeReleaseVersion(version, releaseTag) {
@@ -48,18 +47,35 @@ function getNativeReleaseVersion(version, releaseTag) {
   }
 
   const appVersion = `${major}.${minor}.${patch}`;
-  const buildSlot =
-    getForkBuildSlot(releaseTag, appVersion, betaNumber !== null) ?? betaNumber ?? stableBuildSlot;
+  const forkNumber = getForkNumber(releaseTag, appVersion, betaNumber !== null);
+  if (forkNumber !== null) {
+    const forkBuildNumber = baseVersionCode * 1_000 + forkNumber;
+    if (
+      !Number.isSafeInteger(forkBuildNumber) ||
+      forkBuildNumber <= 0 ||
+      forkBuildNumber > maxAndroidVersionCode
+    ) {
+      throw new Error(`Derived native build version is out of range: ${forkBuildNumber}`);
+    }
+    return {
+      appVersion,
+      androidVersionCode: forkBuildNumber,
+      iosBuildNumber: String(forkBuildNumber),
+    };
+  }
 
-  const buildNumber = baseVersionCode * buildSlotsPerVersion + buildSlot;
-  if (!Number.isSafeInteger(buildNumber) || buildNumber > maxAndroidVersionCode) {
-    throw new Error(`Derived Android versionCode is out of range: ${buildNumber}`);
+  if (baseVersionCode > maxAndroidVersionCode) {
+    throw new Error(`Derived Android versionCode is out of range: ${baseVersionCode}`);
+  }
+  const iosBuildNumber = baseVersionCode * 1_000 + (betaNumber ?? stableBuildSlot);
+  if (!Number.isSafeInteger(iosBuildNumber)) {
+    throw new Error(`Derived iOS buildNumber is out of range: ${iosBuildNumber}`);
   }
 
   return {
     appVersion,
-    androidVersionCode: buildNumber,
-    iosBuildNumber: String(buildNumber),
+    androidVersionCode: baseVersionCode,
+    iosBuildNumber: String(iosBuildNumber),
   };
 }
 

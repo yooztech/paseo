@@ -21,10 +21,10 @@ EAS profiles: `development`, `production`, and `production-apk` in `packages/app
 major * 1_000_000 + minor * 1_000 + patch
 ```
 
-`packages/app/native-release-version.js` reserves 2,000 build slots per package
-version. Beta builds use slots 1 through 998, stable uses 999, and app fork tags
-use `999 + fork number`. Android `versionCode` and iOS `buildNumber` both use
-`base * 2,000 + slot`.
+For ordinary builds, Android uses this base directly. iOS uses
+`base * 1,000 + slot`: beta builds use slots 1 through 998 and stable uses 999.
+App fork tags use `base * 1,000 + fork number` for both Android `versionCode`
+and iOS `buildNumber`.
 
 The formula reserves three digits each for minor and patch. If either reaches `1000`, change the formula before cutting that release.
 
