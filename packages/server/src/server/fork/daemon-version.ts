@@ -10,11 +10,15 @@ export class DaemonVersionResolutionError extends PackageVersionResolutionError 
 
 function resolveCheckoutVersion(moduleUrl: string): string | null {
   try {
-    const tag = execFileSync("git", ["describe", "--tags", "--exact-match", "HEAD"], {
-      cwd: path.dirname(fileURLToPath(moduleUrl)),
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    const tag = execFileSync(
+      "git",
+      ["describe", "--tags", "--match", "v[0-9]*", "--abbrev=0", "HEAD"],
+      {
+        cwd: path.dirname(fileURLToPath(moduleUrl)),
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
     return RELEASE_TAG_PATTERN.exec(tag)?.groups?.version ?? null;
   } catch {
     return null;

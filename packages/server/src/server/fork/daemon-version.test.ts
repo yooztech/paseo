@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("resolveDaemonVersion", () => {
-  it("resolves a fork version from the source checkout release tag", () => {
+  it("resolves a fork version from the most recent daemon release tag", () => {
     const root = createTempDir();
     writeFileSync(
       path.join(root, "package.json"),
@@ -38,6 +38,13 @@ describe("resolveDaemonVersion", () => {
       { cwd: root },
     );
     execFileSync("git", ["tag", "v9.8.7-fork.4"], { cwd: root });
+    writeFileSync(path.join(root, "post-release.txt"), "next commit", "utf8");
+    execFileSync("git", ["add", "post-release.txt"], { cwd: root });
+    execFileSync(
+      "git",
+      ["-c", "user.name=Paseo Test", "-c", "user.email=test@paseo.local", "commit", "-qm", "next"],
+      { cwd: root },
+    );
 
     const moduleUrl = pathToFileURL(path.join(nestedDir, "index.js")).href;
     expect(resolveDaemonVersion(moduleUrl)).toBe("9.8.7-fork.4");
