@@ -435,6 +435,7 @@ interface WorkspaceGitTarget {
    */
   ciAttachWaitUntilMs: number | null;
   ciAttachWaitPrKey: string | null;
+  ciAttachRefreshTimer: NodeJS.Timeout | null;
   pullRequestStatusSettling: boolean;
   refreshState: WorkspaceGitRefreshState;
   latestGit: WorkspaceGitRuntimeSnapshot["git"] | null;
@@ -1255,6 +1256,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       forgePrStatusPollKey: null,
       ciAttachWaitUntilMs: null,
       ciAttachWaitPrKey: null,
+      ciAttachRefreshTimer: null,
       pullRequestStatusSettling: false,
       refreshState: { status: "idle" },
       latestGit: null,
@@ -2585,7 +2587,6 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         ...(pollTarget.headRepositoryOwner
           ? { headRepositoryOwner: pollTarget.headRepositoryOwner }
           : {}),
-        getCiAttachWaitUntilMs: () => target.ciAttachWaitUntilMs,
         onStatus: (status) => {
           if (!this.isActiveObservedWorkspaceTarget(target)) {
             return;
@@ -3302,6 +3303,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         });
     target.ciAttachWaitUntilMs = next.waitUntilMs;
     target.ciAttachWaitPrKey = next.prKey;
+    this.syncCiAttachRefreshForTarget(target);
     // Newly armed wait may need to accelerate a pending slow timer.
     if (
       previousWaitUntilMs !== next.waitUntilMs &&
@@ -3309,6 +3311,35 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     ) {
       target.forgePrStatusPollSubscription?.nudge?.();
     }
+  }
+
+  private syncCiAttachRefreshForTarget(target: WorkspaceGitTarget): void {
+    const isGitHub = target.latestForge?.forge === "github";
+    const waitActive = isCiAttachWaitActive(target.ciAttachWaitUntilMs, this.deps.now().getTime());
+    if (!isGitHub || !waitActive || !this.isActiveObservedWorkspaceTarget(target)) {
+      if (target.ciAttachRefreshTimer) {
+        clearTimeout(target.ciAttachRefreshTimer);
+        target.ciAttachRefreshTimer = null;
+      }
+      return;
+    }
+    if (target.ciAttachRefreshTimer) {
+      return;
+    }
+
+    target.ciAttachRefreshTimer = setTimeout(() => {
+      target.ciAttachRefreshTimer = null;
+      void this.refreshWorkspaceTarget(target, {
+        force: true,
+        refreshStructure: false,
+        refreshWorktree: false,
+        includeForge: true,
+        reason: "ci-attach-wait",
+        notify: true,
+        queueIfBusy: false,
+        movedRemoteRefs: new Set(),
+      }).finally(() => this.syncCiAttachRefreshForTarget(target));
+    }, CI_ATTACH_POLL_INTERVAL_MS);
   }
 
   private rememberSnapshot(
@@ -3523,6 +3554,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
   private closeWorkspaceTarget(target: WorkspaceGitTarget): void {
     target.closed = true;
+    if (target.ciAttachRefreshTimer) {
+      clearTimeout(target.ciAttachRefreshTimer);
+      target.ciAttachRefreshTimer = null;
+    }
     if (target.workingTreeWatchTarget) {
       this.removeWorkspaceWorkingTreeLink(target.workingTreeWatchTarget, target.cwd);
       target.workingTreeWatchTarget = null;

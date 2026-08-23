@@ -693,9 +693,6 @@ describe("ForgeService", () => {
     expect(computeGithubNextInterval(stableStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
     expect(computeGithubNextInterval(null, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
     expect(computeGithubNextInterval(emptyChecksStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
-    expect(computeGithubNextInterval(emptyChecksStatus, 0, { ciAttachWaitActive: true })).toBe(
-      5_000,
-    );
   });
 
   it("computes exponential error backoff up to the cap", () => {

@@ -18,7 +18,6 @@ import {
   ForgeCommandError,
   type ForgeCommandFailureParams,
 } from "./forge-cli-command.js";
-import { CI_ATTACH_POLL_INTERVAL_MS, isCiAttachWaitActive } from "./ci-attach-wait.js";
 import {
   computeChecksStatus,
   compareTimelineItems,
@@ -727,7 +726,6 @@ interface GitHubPollTarget {
   nextFireAtMs: number | null;
   latestStatus: CurrentPullRequestStatus | null;
   consecutiveErrors: number;
-  getCiAttachWaitUntilMs: (() => number | null) | null;
   callbacks: Set<(status: CurrentPullRequestStatus | null) => void>;
   errorCallbacks: Set<(error: unknown) => void>;
 }
@@ -917,12 +915,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
   function scheduleGitHubPoll(target: GitHubPollTarget): void {
     scheduleGitHubPollAfter(
       target,
-      computeGithubNextInterval(target.latestStatus, target.consecutiveErrors, {
-        ciAttachWaitActive: isCiAttachWaitActive(
-          target.getCiAttachWaitUntilMs?.() ?? null,
-          deps.now(),
-        ),
-      }),
+      computeGithubNextInterval(target.latestStatus, target.consecutiveErrors),
     );
   }
 
@@ -944,27 +937,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       target.nextFireAtMs = null;
       void runGitHubPoll(target);
     }, delayMs);
-  }
-
-  function nudgeGitHubPoll(target: GitHubPollTarget): void {
-    if (target.retainCount <= 0 || target.timer === null) {
-      return;
-    }
-    const desiredDelayMs = computeGithubNextInterval(
-      target.latestStatus,
-      target.consecutiveErrors,
-      {
-        ciAttachWaitActive: isCiAttachWaitActive(
-          target.getCiAttachWaitUntilMs?.() ?? null,
-          deps.now(),
-        ),
-      },
-    );
-    const desiredFireAtMs = deps.now() + desiredDelayMs;
-    if (target.nextFireAtMs === null || desiredFireAtMs >= target.nextFireAtMs) {
-      return;
-    }
-    scheduleGitHubPollAfter(target, desiredDelayMs);
   }
 
   async function runGitHubPoll(target: GitHubPollTarget): Promise<void> {
@@ -1586,14 +1558,11 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
           nextFireAtMs: null,
           latestStatus: null,
           consecutiveErrors: 0,
-          getCiAttachWaitUntilMs: input.getCiAttachWaitUntilMs ?? null,
           callbacks: new Set(),
           errorCallbacks: new Set(),
         };
         pollTargets.set(key, target);
       }
-      target.getCiAttachWaitUntilMs = input.getCiAttachWaitUntilMs ?? null;
-
       const isNewlyRetained = target.retainCount === 0;
       target.retainCount += 1;
       if (input.onStatus) {
@@ -1627,9 +1596,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
           }
           closeGitHubPollTarget(target);
           pollTargets.delete(key);
-        },
-        nudge: () => {
-          nudgeGitHubPoll(target);
         },
       };
     },
@@ -1768,14 +1734,10 @@ export function isPullRequestMergeMethodAllowed(
 export function computeGithubNextInterval(
   status: CurrentPullRequestStatus | null,
   consecutiveErrors: number,
-  options?: { ciAttachWaitActive?: boolean },
 ): number {
-  let baseInterval = isGitHubStatusPending(status)
+  const baseInterval = isGitHubStatusPending(status)
     ? GITHUB_POLL_FAST_INTERVAL_MS
     : GITHUB_POLL_SLOW_INTERVAL_MS;
-  if (options?.ciAttachWaitActive) {
-    baseInterval = CI_ATTACH_POLL_INTERVAL_MS;
-  }
   if (consecutiveErrors <= 1) {
     return baseInterval;
   }

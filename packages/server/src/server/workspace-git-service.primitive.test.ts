@@ -1597,6 +1597,73 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     }
   });
 
+  test("GitHub CI attach wait refreshes forge state without changing its retained poll", async () => {
+    let nowMs = 0;
+    let prCreated = false;
+    const github = createGitHubServiceStub();
+    const getPullRequestStatus = vi.fn(async () =>
+      prCreated
+        ? {
+            status: {
+              number: 42,
+              url: "https://github.com/acme/repo/pull/42",
+              title: "Fresh CI-less PR",
+              state: "open" as const,
+              baseRefName: "main",
+              headRefName: "feature",
+              isMerged: false,
+              mergeable: "MERGEABLE" as const,
+              checks: [],
+              checksStatus: "none" as const,
+              reviewDecision: null,
+            },
+            authState: "authenticated" as const,
+            featuresEnabled: true,
+            githubFeaturesEnabled: true,
+          }
+        : { status: null, authState: "authenticated", githubFeaturesEnabled: true },
+    );
+    const service = createService({
+      github,
+      now: () => new Date(nowMs),
+      getCheckoutSnapshotFacts: vi.fn(async (cwd: string) =>
+        createCheckoutFacts(cwd, {
+          currentBranch: "feature",
+          pullRequestLookupTarget: { headRef: "feature" },
+        }),
+      ),
+      getCheckoutStatus: vi.fn(async (cwd: string) =>
+        createCheckoutStatus(cwd, { currentBranch: "feature" }),
+      ),
+      getPullRequestStatus,
+    });
+
+    try {
+      await service.getSnapshot(REPO_CWD);
+      const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+      await flushPromises();
+
+      prCreated = true;
+      nowMs = 1_000;
+      await service.getSnapshot(REPO_CWD, {
+        force: true,
+        includeForge: true,
+        reason: "create-pr",
+      });
+      expect(getPullRequestStatus).toHaveBeenCalledTimes(2);
+
+      nowMs = 6_000;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await flushPromises();
+      expect(getPullRequestStatus).toHaveBeenCalledTimes(3);
+      expect(github.retainCurrentPullRequestStatusPoll).toHaveBeenCalledTimes(1);
+
+      subscription.unsubscribe();
+    } finally {
+      service.dispose();
+    }
+  });
+
   test("generic forge poll refreshes immediately when checkout HEAD changes", async () => {
     let nowMs = 0;
     let headSha = "1111111111111111111111111111111111111111";
