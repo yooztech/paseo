@@ -507,8 +507,6 @@ export interface ForgeService {
     headRef: string;
     headSha?: string;
     headRepositoryOwner?: string;
-    /** Optional deadline owned by the workspace poller for post-create CI attach. */
-    getCiAttachWaitUntilMs?: () => number | null;
     onStatus?: (status: CurrentPullRequestStatus | null) => void;
     onError?: (error: unknown) => void;
   }): { unsubscribe: () => void; nudge?: () => void };

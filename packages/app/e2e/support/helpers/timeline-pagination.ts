@@ -287,7 +287,7 @@ export async function reloadAgentTimelineFromPersistedReplica(
     .poll(() =>
       page.evaluate((agentId) => {
         const raw = localStorage.getItem("@paseo:replica-cache");
-        if (!raw) return false;
+        if (!raw) return -1;
         const cache = JSON.parse(raw) as {
           hosts?: Array<{
             timeline?: {
@@ -297,10 +297,10 @@ export async function reloadAgentTimelineFromPersistedReplica(
           }>;
         };
         const timeline = cache.hosts?.find((host) => host.timeline?.agentId === agentId)?.timeline;
-        return timeline?.items?.length === 50;
+        return timeline?.items?.length ?? 0;
       }, agent.agentId),
     )
-    .toBe(true);
+    .toBe(50);
 
   await page.reload();
   await expectTimelinePromptVisible(page, agent.newestPrompt);
