@@ -147,6 +147,17 @@ describe("panel-store migration", () => {
     expect(state.diffCollapsedFoldersByWorkspace).toEqual({ ws: ["src/app"] });
   });
 
+  it("preserves contributed explorer tabs", () => {
+    const state = migratePanelState(
+      { explorerTab: "ci", explorerTabByCheckout: { ws: "repository_graph" } },
+      12,
+      { isWeb: false },
+    );
+
+    expect(state.explorerTab).toBe("ci");
+    expect(state.explorerTabByCheckout).toEqual({ ws: "repository_graph" });
+  });
+
   it("drops persisted compact panel state so cold starts return to content", () => {
     const state = migratePanelState(
       { mobileView: "agent-list", mobilePanel: { target: "file-explorer", revision: 42 } },
