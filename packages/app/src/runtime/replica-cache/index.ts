@@ -166,8 +166,10 @@ const WorkspaceGitRuntimeSchema = z
     isPaseoOwnedWorktree: z.boolean().optional(),
     isDirty: z.boolean().nullable().optional(),
     aheadBehind: z.strictObject({ ahead: z.number(), behind: z.number() }).nullable().optional(),
+    hasChangesFromBase: z.boolean().nullable().optional(),
     aheadOfOrigin: z.number().nullable().optional(),
     behindOfOrigin: z.number().nullable().optional(),
+    hasChangesFromOrigin: z.boolean().nullable().optional(),
   })
   .nullable()
   .optional();

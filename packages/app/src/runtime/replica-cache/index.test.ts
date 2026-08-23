@@ -51,6 +51,17 @@ function workspace(
     archivingAt: null,
     diffStat: null,
     scripts: [],
+    gitRuntime: {
+      currentBranch: "main",
+      remoteUrl: "https://github.com/getpaseo/paseo.git",
+      isPaseoOwnedWorktree: false,
+      isDirty: false,
+      aheadBehind: { ahead: 1, behind: 0 },
+      hasChangesFromBase: true,
+      aheadOfOrigin: 1,
+      behindOfOrigin: 0,
+      hasChangesFromOrigin: true,
+    },
   };
 }
 
