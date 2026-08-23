@@ -106,6 +106,7 @@ export function ContextMenuTrigger({
   enabledOnMobile = true,
   enabledOnWeb = true,
   longPressDelayMs,
+  onContextMenu,
   triggerRef,
   ...props
 }: PropsWithChildren<
@@ -116,6 +117,7 @@ export function ContextMenuTrigger({
     enabledOnMobile?: boolean;
     enabledOnWeb?: boolean;
     longPressDelayMs?: number;
+    onContextMenu?: (event: unknown) => void;
     triggerRef?: Ref<View | null>;
   }
 >): ReactElement {
@@ -171,9 +173,10 @@ export function ContextMenuTrigger({
         if (isCallable(preventDefault)) preventDefault.call(event);
         if (isCallable(stopPropagation)) stopPropagation.call(event);
       }
+      onContextMenu?.(event);
       openAtEvent(event);
     },
-    [openAtEvent],
+    [onContextMenu, openAtEvent],
   );
 
   const pressableStyle = useCallback(

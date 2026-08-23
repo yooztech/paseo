@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { DaemonClient } from "@getpaseo/client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { invalidateCheckoutGitQueriesForClient } from "@/git/query-keys";
 
