@@ -251,6 +251,16 @@ numbers must be between 1 and 999, and the final Android value must not exceed
 `2_100_000_000`. EAS uses the local version source so rebuilding the same tag
 produces the same value.
 
+### Local iOS build and submit
+
+On macOS, run this from the repository root:
+
+```bash
+./app-build.sh
+```
+
+`app-build.sh` requires exactly one `app-vX.Y.Z-fork.N` tag for the package version on `HEAD`. It exports that tag as `PASEO_RELEASE_TAG`, writes the IPA to `packages/app/dist/<tag>.ipa`, and submits that exact file to TestFlight. It aborts before building when the tag is absent or ambiguous; never invoke bare `eas build --local` for a fork release because it falls back to the stable iOS slot.
+
 ### Watching mobile builds from the terminal
 
 Use the EAS CLI from `packages/app/`:
