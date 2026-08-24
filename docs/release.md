@@ -244,10 +244,10 @@ pushes alone never consume an EAS build.
 
 `packages/app/native-release-version.js` is the native-version source of truth.
 It derives `base = major * 1_000_000 + minor * 1_000 + patch`. Ordinary Android
-builds use `base`; ordinary iOS builds use `base * 1_000 + slot`, with beta slots
-1 through 998 and stable slot 999. `app-vX.Y.Z-fork.N` uses
-`base * 1_000 + N` for both Android `versionCode` and iOS `buildNumber`. Fork
-numbers must be between 1 and 999, and the final Android value must not exceed
+builds use `base`; ordinary iOS builds use `base * 1_000`, reserving slots 1
+through 998 for betas and slots 1 through 999 for fork builds. `app-vX.Y.Z-fork.N`
+uses `base * 1_000 + N` for both Android `versionCode` and iOS `buildNumber`.
+Fork numbers must be between 1 and 999, and the final Android value must not exceed
 `2_100_000_000`. EAS uses the local version source so rebuilding the same tag
 produces the same value.
 

@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 const { getNativeReleaseVersion } = require("./native-release-version");
 
 describe("native release version", () => {
-  it("uses the base Android version and stable iOS slot", () => {
+  it("uses the base Android version and leaves the fork slots available for iOS", () => {
     expect(getNativeReleaseVersion("0.2.6")).toEqual({
       appVersion: "0.2.6",
       androidVersionCode: 2006,
-      iosBuildNumber: "2006999",
+      iosBuildNumber: "2006000",
     });
   });
 

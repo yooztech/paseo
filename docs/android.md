@@ -21,9 +21,9 @@ EAS profiles: `development`, `production`, and `production-apk` in `packages/app
 major * 1_000_000 + minor * 1_000 + patch
 ```
 
-For ordinary builds, Android uses this base directly. iOS uses
-`base * 1,000 + slot`: beta builds use slots 1 through 998 and stable uses 999.
-App fork tags use `base * 1,000 + fork number` for both Android `versionCode`
+For ordinary builds, Android uses this base directly. iOS uses `base * 1,000`,
+reserving slots 1 through 998 for beta builds and slots 1 through 999 for app fork
+tags. App fork tags use `base * 1,000 + fork number` for both Android `versionCode`
 and iOS `buildNumber`.
 
 The formula reserves three digits each for minor and patch. If either reaches `1000`, change the formula before cutting that release.

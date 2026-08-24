@@ -1,7 +1,7 @@
 const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
 const legacyAppTagPattern = /^v(\d+\.\d+\.\d+)-fork\.(\d+)-app$/;
 const appTagPattern = /^app-v(\d+\.\d+\.\d+)-fork\.(\d+)$/;
-const stableBuildSlot = 999;
+const maxForkNumber = 999;
 const maxAndroidVersionCode = 2_100_000_000;
 
 function getForkNumber(releaseTag, appVersion, isBeta) {
@@ -16,8 +16,8 @@ function getForkNumber(releaseTag, appVersion, isBeta) {
   }
 
   const forkNumber = Number(forkText);
-  if (!Number.isSafeInteger(forkNumber) || forkNumber < 1 || forkNumber > 999) {
-    throw new Error(`Fork release number must be between 1 and 999: ${releaseTag}`);
+  if (!Number.isSafeInteger(forkNumber) || forkNumber < 1 || forkNumber > maxForkNumber) {
+    throw new Error(`Fork release number must be between 1 and ${maxForkNumber}: ${releaseTag}`);
   }
   return forkNumber;
 }
@@ -37,8 +37,8 @@ function getNativeReleaseVersion(version, releaseTag) {
   if (minor > 999 || patch > 999) {
     throw new Error(`Cannot derive collision-free native version from: ${version}`);
   }
-  if (betaNumber !== null && (betaNumber < 1 || betaNumber >= stableBuildSlot)) {
-    throw new Error(`Beta number must be between 1 and 998: ${version}`);
+  if (betaNumber !== null && (betaNumber < 1 || betaNumber >= maxForkNumber)) {
+    throw new Error(`Beta number must be between 1 and ${maxForkNumber - 1}: ${version}`);
   }
 
   const baseVersionCode = major * 1_000_000 + minor * 1_000 + patch;
@@ -67,7 +67,7 @@ function getNativeReleaseVersion(version, releaseTag) {
   if (baseVersionCode > maxAndroidVersionCode) {
     throw new Error(`Derived Android versionCode is out of range: ${baseVersionCode}`);
   }
-  const iosBuildNumber = baseVersionCode * 1_000 + (betaNumber ?? stableBuildSlot);
+  const iosBuildNumber = baseVersionCode * 1_000 + (betaNumber ?? 0);
   if (!Number.isSafeInteger(iosBuildNumber)) {
     throw new Error(`Derived iOS buildNumber is out of range: ${iosBuildNumber}`);
   }
