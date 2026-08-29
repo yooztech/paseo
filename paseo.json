@@ -29,16 +29,20 @@
       "command": "npm run typecheck"
     },
     "release-fork-daemon": {
-      "command": "node ./scripts/release-fork-daemon.mjs"
+      "type": "script",
+      "command": "node ./scripts/release-fork-daemon.mjs; status=$?; exit $status"
     },
     "release-fork-desktop": {
-      "command": "node ./scripts/release-fork-desktop.mjs"
+      "type": "script",
+      "command": "node ./scripts/release-fork-desktop.mjs; status=$?; exit $status"
     },
     "release-fork-app": {
-      "command": "node ./scripts/release-fork-app.mjs"
+      "type": "script",
+      "command": "node ./scripts/release-fork-app.mjs; status=$?; exit $status"
     },
     "release-fork-app-eas": {
-      "command": "node ./scripts/trigger-fork-app-eas.mjs"
+      "type": "script",
+      "command": "node ./scripts/trigger-fork-app-eas.mjs; status=$?; exit $status"
     }
   }
 }
