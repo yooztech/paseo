@@ -14,12 +14,19 @@ test("creates channel-specific fork release metadata", () => {
   assert.deepEqual(createForkReleaseMetadata("desktop", "0.2.5", 9), {
     channel: "desktop",
     sourceTag: "desktop-v0.2.5-fork.9",
-    publicationTag: "v0.2.5-fork.9",
+    publicationTag: "desktop-v0.2.5-fork.9",
     changelogVersion: "0.2.5",
     version: "0.2.5-fork.9",
     forkNumber: 9,
   });
-  assert.equal(createForkReleaseMetadata("app", "0.2.5", 10).sourceTag, "app-v0.2.5-fork.10");
+  assert.deepEqual(createForkReleaseMetadata("app", "0.2.5", 10), {
+    channel: "app",
+    sourceTag: "app-v0.2.5-fork.10",
+    publicationTag: "app-v0.2.5-fork.10",
+    changelogVersion: "0.2.5",
+    version: "0.2.5-fork.10",
+    forkNumber: 10,
+  });
 });
 
 test("allocates after all current channel tags and the historical app format", () => {

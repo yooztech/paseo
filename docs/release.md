@@ -198,10 +198,9 @@ installers:
 npm run release:fork:desktop
 ```
 
-This creates `desktop-vX.Y.Z-fork.N` as the source tag and `vX.Y.Z-fork.N` as
-the GitHub Release publication tag, points both at the current commit, and pushes
-them atomically. The source tag triggers `Desktop Release`. The command does not
-build the server, restart the daemon, or trigger an iOS build.
+This creates and pushes only `desktop-vX.Y.Z-fork.N`; the same tag owns the
+GitHub Release and triggers `Desktop Release`. The command does not create a
+daemon tag, build or restart the server, or trigger an iOS build.
 
 Create the app release tag separately when the current commit needs an iOS build:
 

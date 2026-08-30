@@ -58,7 +58,7 @@ export function createForkReleaseMetadata(channel, version, forkNumber) {
   return {
     channel,
     sourceTag,
-    publicationTag: channel === "desktop" ? versionTag : sourceTag,
+    publicationTag: sourceTag,
     changelogVersion: version,
     version: `${version}-fork.${forkNumber}`,
     forkNumber,
@@ -135,9 +135,7 @@ export function releaseForkDaemon() {
 export function releaseForkDesktop() {
   const metadata = preflight("desktop");
   publish(metadata);
-  console.log(
-    `Published ${metadata.sourceTag} and ${metadata.publicationTag}. Desktop Release is now queued.`,
-  );
+  console.log(`Published ${metadata.sourceTag}. Desktop Release is now queued.`);
 }
 
 export function releaseForkApp() {

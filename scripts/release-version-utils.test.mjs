@@ -53,7 +53,7 @@ test("emits beta release info from tags", () => {
 test("emits fork release info from desktop tags", () => {
   assert.deepEqual(getReleaseInfoFromSourceTag("desktop-macos-v0.2.5-fork.1"), {
     sourceTag: "desktop-macos-v0.2.5-fork.1",
-    publicationTag: "v0.2.5-fork.1",
+    publicationTag: "desktop-macos-v0.2.5-fork.1",
     changelogVersion: "0.2.5",
     releaseTag: "v0.2.5-fork.1",
     version: "0.2.5-fork.1",

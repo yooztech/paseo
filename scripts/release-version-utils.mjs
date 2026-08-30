@@ -78,12 +78,13 @@ export function getReleaseInfoFromSourceTag(sourceTag) {
   const parsed = parseReleaseVersion(releaseTag.slice(1));
   const releaseChannel = parsed.isBeta ? "beta" : (parsed.prerelease?.split(".")[0] ?? "latest");
   const normalizedSourceTag = sourceTag.trim().replace(/^refs\/tags\//, "");
-  const isAppTag =
-    /^app-v\d+\.\d+\.\d+-fork\.\d+$/.test(normalizedSourceTag) ||
-    /^v\d+\.\d+\.\d+-fork\.\d+-app$/.test(normalizedSourceTag);
+  const hasDedicatedPublicationTag =
+    /^(?:desktop(?:-(?:windows|linux|macos))?|app)-v\d+\.\d+\.\d+-fork\.\d+$/.test(
+      normalizedSourceTag,
+    ) || /^v\d+\.\d+\.\d+-fork\.\d+-app$/.test(normalizedSourceTag);
   return {
     sourceTag,
-    publicationTag: isAppTag ? normalizedSourceTag : releaseTag,
+    publicationTag: hasDedicatedPublicationTag ? normalizedSourceTag : releaseTag,
     changelogVersion: releaseChannel === "fork" ? parsed.baseVersion : parsed.version,
     releaseTag,
     version: parsed.version,
