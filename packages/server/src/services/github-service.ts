@@ -1055,7 +1055,10 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     },
 
     defaultCheckoutRefs({ changeRequestNumber }) {
-      return [{ remoteName: "origin", remoteRef: `refs/pull/${changeRequestNumber}/head` }];
+      return [
+        { remoteName: "origin", remoteRef: `refs/pull/${changeRequestNumber}/head` },
+        { remoteName: "upstream", remoteRef: `refs/pull/${changeRequestNumber}/head` },
+      ];
     },
 
     buildPrLocalBranchName({ headRef, checkoutTarget }) {
@@ -2409,7 +2412,10 @@ function toPullRequestCheckoutTarget(
     number: pullRequest.number,
     baseRefName: pullRequest.baseRefName,
     headRefName: pullRequest.headRefName,
-    checkoutRefs: [{ remoteName: "origin", remoteRef: `refs/pull/${pullRequest.number}/head` }],
+    checkoutRefs: [
+      { remoteName: "origin", remoteRef: `refs/pull/${pullRequest.number}/head` },
+      { remoteName: "upstream", remoteRef: `refs/pull/${pullRequest.number}/head` },
+    ],
     headOwnerLogin: pullRequest.headRepositoryOwner?.login || null,
     headRepositorySshUrl: pullRequest.headRepository?.sshUrl || null,
     headRepositoryUrl: pullRequest.headRepository?.url || null,
@@ -2923,14 +2929,14 @@ function parseGitHubPullRequestRepo(url: string): { owner: string; name: string 
   }
 }
 
-export function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
+export function parseStatusCheckRollup(value: unknown, nowMs = Date.now()): PullRequestCheck[] {
   const directContexts = PullRequestStatusCheckRollupArraySchema.safeParse(value);
   if (!directContexts.success) {
     const legacyContexts = LegacyPullRequestStatusCheckRollupSchema.safeParse(value);
     if (!legacyContexts.success) {
       return [];
     }
-    return parseStatusCheckRollup(legacyContexts.data.contexts);
+    return parseStatusCheckRollup(legacyContexts.data.contexts, nowMs);
   }
 
   const dedupedChecks = new Map<string, PullRequestCheck & { recency: number }>();
@@ -2939,7 +2945,7 @@ export function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
     if (!parsed.success) {
       continue;
     }
-    const check = buildPullRequestCheck(parsed.data);
+    const check = buildPullRequestCheck(parsed.data, nowMs);
     if (!check) {
       continue;
     }
@@ -2954,6 +2960,7 @@ export function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
 
 function buildPullRequestCheck(
   context: z.infer<typeof PullRequestStatusCheckRollupNodeSchema>,
+  nowMs: number,
 ): (PullRequestCheck & { recency: number }) | null {
   if (context.__typename === "CheckRun") {
     return {
@@ -2967,7 +2974,7 @@ function buildPullRequestCheck(
       ...(typeof context.checkSuite?.workflowRun?.databaseId === "number"
         ? { workflowRunId: context.checkSuite.workflowRun.databaseId }
         : {}),
-      ...formatCheckRunDuration(context),
+      ...formatCheckRunDuration(context, nowMs),
       recency: getCheckRunRecency(context),
     };
   }
@@ -3026,13 +3033,26 @@ function getCheckRunRecency(context: PullRequestCheckRunNode): number {
   return parseOptionalTime(context.completedAt ?? context.startedAt ?? null);
 }
 
-function formatCheckRunDuration(context: PullRequestCheckRunNode): { duration?: string } {
+/**
+ * How long the check ran for. A finished run measures to its completion; a run still
+ * going measures to now, so a client can say how long it has been waiting instead of
+ * showing nothing. Raw timestamps never reach the client, so this is where the choice
+ * between the two has to be made.
+ */
+function formatCheckRunDuration(
+  context: PullRequestCheckRunNode,
+  nowMs: number,
+): { duration?: string } {
   const startedAt = parseOptionalTime(context.startedAt ?? null);
-  const completedAt = parseOptionalTime(context.completedAt ?? null);
-  if (startedAt <= 0 || completedAt <= 0 || completedAt < startedAt) {
+  if (startedAt <= 0) {
     return {};
   }
-  const durationSeconds = Math.floor((completedAt - startedAt) / 1_000);
+  const completedAt = parseOptionalTime(context.completedAt ?? null);
+  const endedAt = completedAt > 0 ? completedAt : nowMs;
+  if (endedAt < startedAt) {
+    return {};
+  }
+  const durationSeconds = Math.floor((endedAt - startedAt) / 1_000);
   return { duration: formatDurationSeconds(durationSeconds) };
 }
 

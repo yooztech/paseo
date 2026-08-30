@@ -1,5 +1,11 @@
 import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
+const SINGLETON_WORKSPACE_TAB_KINDS: Partial<Record<WorkspaceTabTarget["kind"], true>> = {
+  files: true,
+  pull_request: true,
+  repository_graph: true,
+  branch_ci: true,
+};
 
 export function normalizeWorkspaceTabTarget(
   value: WorkspaceTabTarget | null | undefined,
@@ -14,6 +20,9 @@ export function normalizeWorkspaceTabTarget(
     }
     const setup = normalizeWorkspaceDraftTabSetup(value.setup);
     return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+  }
+  if (value.kind === "new_tab") {
+    return { kind: "new_tab" };
   }
   if (value.kind === "agent") {
     const agentId = trimNonEmpty(value.agentId);
@@ -49,6 +58,11 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
       const browserId = trimNonEmpty(value.browserId);
       return browserId ? { kind: "browser", browserId } : null;
     }
+    case "files":
+    case "pull_request":
+    case "repository_graph":
+    case "branch_ci":
+      return { kind: value.kind };
     case "setup": {
       const workspaceId = trimNonEmpty(value.workspaceId);
       return workspaceId ? { kind: "setup", workspaceId } : null;
@@ -134,6 +148,9 @@ function secondaryWorkspaceTabTargetsEqual(
   if (left.kind === "working_diff" && right.kind === "working_diff") {
     return left.focusPath === right.focusPath && left.focusRequestId === right.focusRequestId;
   }
+  if (left.kind === right.kind && SINGLETON_WORKSPACE_TAB_KINDS[left.kind] === true) {
+    return true;
+  }
   if (left.kind === "setup" && right.kind === "setup") {
     return left.workspaceId === right.workspaceId;
   }
@@ -181,6 +198,9 @@ function recordsShallowEqual(
 }
 
 export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): string {
+  if (target.kind === "new_tab") {
+    throw new Error("New tabs do not have deterministic target identities");
+  }
   if (target.kind === "draft") {
     return target.draftId;
   }
@@ -208,6 +228,14 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "working_diff") {
     return "working_diff";
+  }
+  if (
+    target.kind === "files" ||
+    target.kind === "pull_request" ||
+    target.kind === "repository_graph" ||
+    target.kind === "branch_ci"
+  ) {
+    return target.kind;
   }
   return `file_${target.path}`;
 }

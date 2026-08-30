@@ -214,6 +214,20 @@ test("createPaseoClient exposes workspace list through the daemon client", async
   await client.close();
 });
 
+test("createPaseoApi borrows daemon capabilities without exposing connection ownership", () => {
+  const daemonClient = new DaemonClient({
+    url: "ws://daemon.test",
+    clientId: "borrowed-api",
+    reconnect: { enabled: false },
+  });
+
+  const paseo = createPaseoApi(daemonClient);
+
+  expect(Object.keys(paseo).sort()).toEqual(["agents", "config", "providers", "workspaces"]);
+  expect("connect" in paseo).toBe(false);
+  expect("close" in paseo).toBe(false);
+  expect("skills" in paseo.agents).toBe(false);
+});
 test("agent actions list the daemon directory without exposing the low-level client", async () => {
   const { client, ws } = await connectClient();
   const listedAgent = createAgent({ title: "Planner" });

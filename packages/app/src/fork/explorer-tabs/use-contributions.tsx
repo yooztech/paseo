@@ -76,7 +76,7 @@ export function useExplorerTabContributions(
     contributions.push({
       tab: "repository_graph",
       rank: 1,
-      label: t("workspace.tabs.explorer.repositoryGraph"),
+      label: t("workspace.tabs.sidePanel.repositoryGraph"),
       content: (
         <RepositoryGraphPane
           serverId={input.serverId}
@@ -91,7 +91,7 @@ export function useExplorerTabContributions(
     contributions.push({
       tab: "ci",
       rank: 4,
-      label: t("workspace.tabs.explorer.ci"),
+      label: t("workspace.tabs.sidePanel.ci"),
       icon: ({ active, theme }) => (
         <GitLabIcon
           size={13}

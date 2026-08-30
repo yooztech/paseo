@@ -5,7 +5,8 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { DiffLayoutToggle, resolveDiffLayout, SharedDiffView } from "@/git/diff-pane";
+import { DiffLayoutToggle, resolveDiffLayout } from "@/git/diff-pane";
+import { DiffDocument } from "@/git/diff-document";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { useAppSettings } from "@/hooks/use-settings";
 import { usePaneContext } from "@/panels/pane-context";
@@ -56,9 +57,7 @@ function RepositoryGraphFileDiffPanel() {
   } else if (diff.files.length === 0) {
     body = <PanelState message="No textual changes." />;
   } else {
-    body = (
-      <SharedDiffView files={diff.files} displayPreferences={displayPreferences} mode={mode} />
-    );
+    body = <DiffDocument files={diff.files} displayPreferences={displayPreferences} mode={mode} />;
   }
 
   return (
@@ -103,6 +102,7 @@ export const repositoryGraphFileDiffPanelRegistration: PanelRegistration<"reposi
   {
     kind: "repository_graph_file_diff",
     component: RepositoryGraphFileDiffPanel,
+    resourceKey: (target) => target.sha,
     useDescriptor,
   };
 

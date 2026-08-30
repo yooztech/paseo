@@ -32,8 +32,12 @@ import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
 import { formatTimeAgo } from "@/utils/time";
-import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import {
+  collectAllTabs,
+  useWorkspaceLayoutStore,
+  type OpenWorkspaceTabInput,
+} from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { layoutRepositoryGraph, type RepositoryGraphRowLayout } from "./layout";
 import { useRepositoryGraphCommitDetails } from "./use-commit-details";
 import { useRepositoryGraphHistory } from "./use-history";
@@ -450,8 +454,8 @@ function CommitGraphItem({
   serverId,
   cwd,
   persistenceKey,
-  openWorkspaceTabFocused,
-  retargetWorkspaceTab,
+  openWorkspaceTab,
+  replaceWorkspaceTab,
   actionsEnabled,
   onRenameRef,
   onDeleteRef,
@@ -464,8 +468,12 @@ function CommitGraphItem({
   serverId: string;
   cwd: string;
   persistenceKey: string | null;
-  openWorkspaceTabFocused: ReturnType<typeof useWorkspaceLayoutStore.getState>["openTabFocused"];
-  retargetWorkspaceTab: ReturnType<typeof useWorkspaceLayoutStore.getState>["retargetTab"];
+  openWorkspaceTab: (input: OpenWorkspaceTabInput) => string | null;
+  replaceWorkspaceTab: (
+    workspaceKey: string,
+    tabId: string,
+    target: WorkspaceTabTarget,
+  ) => string | null;
   actionsEnabled: boolean;
   onRenameRef: (refInfo: GraphRef) => void;
   onDeleteRef: (refInfo: GraphRef) => void;
@@ -496,12 +504,17 @@ function CommitGraphItem({
           )
         : undefined;
       if (existingTab) {
-        retargetWorkspaceTab(persistenceKey, existingTab.tabId, target);
+        replaceWorkspaceTab(persistenceKey, existingTab.tabId, target);
         return;
       }
-      openWorkspaceTabFocused(persistenceKey, target);
+      openWorkspaceTab({
+        workspaceKey: persistenceKey,
+        target,
+        intent: "reveal",
+        placement: { mode: "focused" },
+      });
     },
-    [item.commit.sha, openWorkspaceTabFocused, persistenceKey, retargetWorkspaceTab],
+    [item.commit.sha, openWorkspaceTab, persistenceKey, replaceWorkspaceTab],
   );
   return (
     <View>
@@ -556,8 +569,8 @@ export function RepositoryGraphPane({
     (state) => state.sessions[serverId]?.serverInfo?.features?.repositoryGraphRefActions === true,
   );
   const refMutation = useRepositoryGraphRefMutation(serverId, cwd);
-  const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
-  const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
+  const openWorkspaceTab = useWorkspaceLayoutStore((state) => state.openTab);
+  const replaceWorkspaceTab = useWorkspaceLayoutStore((state) => state.replaceTab);
   const persistenceKey = useMemo(
     () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId: workspaceId ?? cwd }),
     [cwd, serverId, workspaceId],
@@ -626,8 +639,8 @@ export function RepositoryGraphPane({
         serverId={serverId}
         cwd={cwd}
         persistenceKey={persistenceKey}
-        openWorkspaceTabFocused={openWorkspaceTabFocused}
-        retargetWorkspaceTab={retargetWorkspaceTab}
+        openWorkspaceTab={openWorkspaceTab}
+        replaceWorkspaceTab={replaceWorkspaceTab}
         actionsEnabled={refActionsSupported}
         onRenameRef={handleOpenRename}
         onDeleteRef={handleOpenDelete}
@@ -637,9 +650,9 @@ export function RepositoryGraphPane({
     [
       cwd,
       laneCount,
-      openWorkspaceTabFocused,
+      openWorkspaceTab,
       persistenceKey,
-      retargetWorkspaceTab,
+      replaceWorkspaceTab,
       refActionsSupported,
       handleOpenRename,
       handleOpenDelete,
@@ -737,12 +750,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     marginTop: theme.spacing[1],
   },
-  author: { maxWidth: 110, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  date: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
+  author: { maxWidth: 110, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  date: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   sha: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   refBadge: {
     flexDirection: "row",
@@ -757,7 +770,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[1],
   },
   refText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingRight: theme.spacing[1],
     paddingVertical: 1,
   },
@@ -769,7 +782,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   remoteRefText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontStyle: "italic",
   },
   state: {
@@ -794,7 +807,7 @@ const styles = StyleSheet.create((theme) => ({
   retryText: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   limitText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
     padding: theme.spacing[3],
   },
@@ -814,8 +827,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   summaryContent: { padding: theme.spacing[3] },
   detailField: { flexDirection: "row", gap: theme.spacing[2], marginBottom: 2 },
-  detailLabel: { color: theme.colors.foreground, fontSize: theme.fontSize.xs, fontWeight: "600" },
-  detailValue: { flex: 1, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
+  detailLabel: { color: theme.colors.foreground, fontSize: theme.fontSize.sm, fontWeight: "600" },
+  detailValue: { flex: 1, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   detailMono: { fontFamily: theme.fontFamily.mono },
   detailSubject: {
     color: theme.colors.foreground,
@@ -838,17 +851,17 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
   },
   fileRowHovered: { backgroundColor: theme.colors.surface2 },
-  filePath: { flex: 1, color: theme.colors.foreground, fontSize: theme.fontSize.xs },
+  filePath: { flex: 1, color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   fileStatus: {
     width: 14,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
     textAlign: "center",
   },
   emptyFiles: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     padding: theme.spacing[3],
   },
 }));

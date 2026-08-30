@@ -293,7 +293,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   branchLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     flexShrink: 1,
   },
   refreshButton: {
@@ -325,7 +325,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[1],
   },
   pipelineStageName: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
     textTransform: "uppercase",
