@@ -34,5 +34,22 @@ if [[ ! -f "$ipa_path" ]]; then
   exit 1
 fi
 
-npx eas submit --platform ios --profile production --path "$ipa_path"
-printf 'Submitted %s from %s\n' "$release_tag" "$ipa_path"
+submit_attempts=3
+submit_retry_delay_seconds=15
+
+for ((submit_attempt = 1; submit_attempt <= submit_attempts; submit_attempt++)); do
+  if npx eas submit --platform ios --profile production --path "$ipa_path"; then
+    printf 'Submitted %s from %s\n' "$release_tag" "$ipa_path"
+    exit 0
+  fi
+
+  if [[ "$submit_attempt" -eq "$submit_attempts" ]]; then
+    printf 'Failed to submit %s after %d attempts\n' "$release_tag" "$submit_attempts" >&2
+    exit 1
+  fi
+
+  retry_delay=$((submit_retry_delay_seconds * (1 << (submit_attempt - 1))))
+  printf 'Submit attempt %d/%d failed; retrying in %d seconds\n' \
+    "$submit_attempt" "$submit_attempts" "$retry_delay" >&2
+  sleep "$retry_delay"
+done

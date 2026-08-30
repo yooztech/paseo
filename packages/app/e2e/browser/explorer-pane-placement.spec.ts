@@ -185,10 +185,12 @@ test.describe("explorer pane tab placement", () => {
         await chip.click({ position: { x: 12, y: 13 }, timeout: 5_000 });
         await expect(chip).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
 
-        // Clicking inside the New tab pane (focuses it) must not lock anything. Aim
-        // above the vertically centred launcher, which would open a tab instead.
+        // Focus the New tab through its tab chip. Clicking an arbitrary content
+        // coordinate can hit the responsive launcher and replace New with a draft.
         const emptyPane = newTabPaneChild(page);
-        await emptyPane.click({ position: { x: 40, y: 120 }, timeout: 5_000 });
+        await emptyPane
+          .locator('[role="button"][aria-label="New tab"][aria-selected]')
+          .click({ timeout: 5_000 });
 
         // A second drag must work: center-drop the agent tab back into the New pane.
         const target = await emptyPaneBox(page);

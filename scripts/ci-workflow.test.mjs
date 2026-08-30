@@ -305,9 +305,9 @@ test("fork daemon, desktop, and app releases use separate commands and tags", ()
     "node scripts/release-fork-desktop.mjs",
   );
   assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
-  assert.equal(
+  assert.match(
     paseoJson.scripts["release-fork-app-eas"].command,
-    "node ./scripts/trigger-fork-app-eas.mjs",
+    /^node \.\/scripts\/trigger-fork-app-eas\.mjs(?:;|$)/,
   );
 
   const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");

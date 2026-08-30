@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { createPaseoClient } from "./index.js";
+import { createPaseoApi, createPaseoClient } from "./index.js";
+import { DaemonClient } from "./daemon-client.js";
 import type { PaseoAgent, PaseoClient, PaseoWorkspace } from "./index.js";
 
 type FakeWebSocketHandler = (...args: unknown[]) => void;
