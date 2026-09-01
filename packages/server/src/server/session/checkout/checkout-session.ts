@@ -58,8 +58,6 @@ import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 // FORK(repository-graph): delegate fork-only RPC behavior outside the checkout session.
 import { RepositoryGraphForkSessionHandler } from "../../fork/repository-graph/session-handler.js";
-// FORK(pull-request-status-settling): add post-create convergence without owning upstream flow.
-import { settleCreatedPullRequestStatus } from "../../fork/pull-request-status-settling.js";
 
 /**
  * The collaborators a checkout command reaches that are NOT part of the checkout
@@ -990,14 +988,6 @@ export class CheckoutSession {
           "Failed to refresh pull request CI status after creation",
         );
       })
-      .then(() =>
-        settleCreatedPullRequestStatus({
-          cwd,
-          created: result,
-          workspaceGitService: this.workspaceGitService,
-          logger: this.logger,
-        }),
-      )
       .finally(() => {
         this.workspaceGitService.setPullRequestStatusSettling(cwd, false);
       });

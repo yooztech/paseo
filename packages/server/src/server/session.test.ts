@@ -2913,6 +2913,39 @@ diff --git a/file.txt b/file.txt
     });
   });
 
+  test("keeps the optimistic PR status instead of forcing a full forge refresh", async () => {
+    const workspaceGitService = {
+      setPullRequestStatusSettling: vi.fn(),
+      refreshCreatedPullRequestCiStatus: vi.fn().mockResolvedValue(undefined),
+      invalidateForge: vi.fn(),
+      getSnapshot: vi.fn().mockResolvedValue(null),
+    };
+    checkoutGitMocks.createPullRequest.mockResolvedValue({
+      url: "https://gitlab.com/getpaseo/paseo/-/merge_requests/2",
+      number: 2,
+    });
+    const session = createSessionForTest({ workspaceGitService });
+
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: "/tmp/request-worktree",
+        baseRef: "main",
+        title: "Update file",
+        body: "Updates file.",
+        requestId: "request-mr-create-no-full-refresh",
+      }),
+    );
+
+    expect(workspaceGitService.refreshCreatedPullRequestCiStatus).toHaveBeenCalledOnce();
+    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
+    expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenLastCalledWith(
+      "/tmp/request-worktree",
+      false,
+    );
+  });
+
   test("clears settling after a background CI refresh failure without changing creation success", async () => {
     const messages: unknown[] = [];
     const workspaceGitService = {
