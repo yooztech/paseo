@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { Text, View } from "react-native";
 import { GitGraph } from "lucide-react-native";
@@ -8,10 +9,14 @@ import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { BranchCiPane } from "@/fork/branch-ci/pane";
 import { useBranchCiPipeline } from "@/fork/branch-ci/use-data";
+import { shouldShowBranchCiTab } from "@/fork/branch-ci/visibility";
 import { RepositoryGraphPane } from "@/fork/repository-graph/pane";
 import { usePaneContext } from "@/panels/pane-context";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
+import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
+import type { ExplorerTab } from "@/stores/panel-store";
+import type { Theme } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
 
 const ThemedGitGraph = withUnistyles(GitGraph);
@@ -28,6 +33,108 @@ const branchCiPresentation = {
   tooltip: (t: TFunction) => t("workspace.tabs.explorerSidebar.ci"),
   icon: GitLabIcon,
 };
+
+export interface CompactExplorerForkTab {
+  tab: Extract<ExplorerTab, "repository_graph" | "branch_ci">;
+  rank: number;
+  label: string;
+  icon?: (input: { active: boolean; theme: Theme }) => ReactNode;
+  content: ReactNode;
+}
+
+interface CompactExplorerForkTabsInput {
+  serverId: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
+  isGit: boolean;
+  isOpen: boolean;
+  activeTab: ExplorerTab;
+  hasPullRequest: boolean;
+  prLoading: boolean;
+  prForge: UsePrPaneDataResult["forge"];
+}
+
+export function useCompactExplorerForkTabs(
+  input: CompactExplorerForkTabsInput,
+): readonly CompactExplorerForkTab[] {
+  const { t } = useTranslation();
+  const forgeBranchPipelineEnabled = useSessionStore(
+    (state) => state.sessions[input.serverId]?.serverInfo?.features?.forgeBranchPipeline === true,
+  );
+  const currentBranch = useWorkspaceFields(
+    input.serverId,
+    input.workspaceId ?? null,
+    (workspace) => workspace.gitRuntime?.currentBranch ?? null,
+  );
+  const canQuery = input.isGit && Boolean(input.workspaceRoot);
+  const branchCiDiscoveryEnabled =
+    canQuery &&
+    input.isOpen &&
+    !input.hasPullRequest &&
+    !input.prLoading &&
+    forgeBranchPipelineEnabled &&
+    input.prForge === "gitlab" &&
+    Boolean(currentBranch);
+  const persistedBranchCiEnabled =
+    input.activeTab === "branch_ci" && canQuery && input.isOpen && forgeBranchPipelineEnabled;
+  const branchCi = useBranchCiPipeline({
+    serverId: input.serverId,
+    cwd: input.workspaceRoot,
+    branch: currentBranch,
+    enabled: branchCiDiscoveryEnabled || persistedBranchCiEnabled,
+  });
+  const showCiTab = shouldShowBranchCiTab({
+    hasPullRequest: input.hasPullRequest,
+    prLoading: input.prLoading,
+    forgeBranchPipelineEnabled,
+    prForge: input.prForge,
+    activeTab: input.activeTab,
+    supported: branchCi.supported,
+    isLoading: branchCi.isLoading,
+    hasPipeline: branchCi.pipeline !== null,
+  });
+
+  const tabs: CompactExplorerForkTab[] = [];
+  if (input.isGit) {
+    tabs.push({
+      tab: "repository_graph",
+      rank: 1,
+      label: t("workspace.tabs.explorerSidebar.repositoryGraph"),
+      content: (
+        <RepositoryGraphPane
+          serverId={input.serverId}
+          workspaceId={input.workspaceId}
+          cwd={input.workspaceRoot}
+          enabled={input.isOpen}
+        />
+      ),
+    });
+  }
+  if (input.isGit && showCiTab) {
+    tabs.push({
+      tab: "branch_ci",
+      rank: 4,
+      icon: ({ active, theme }) => (
+        <GitLabIcon
+          size={13}
+          color={active ? theme.colors.foreground : theme.colors.foregroundMuted}
+        />
+      ),
+      label: t("workspace.tabs.explorerSidebar.ci"),
+      content: (
+        <BranchCiPane
+          serverId={input.serverId}
+          cwd={input.workspaceRoot}
+          pipeline={branchCi.pipeline}
+          branch={branchCi.branch}
+          isLoading={branchCi.isLoading}
+          error={branchCi.error}
+        />
+      ),
+    });
+  }
+  return tabs;
+}
 
 function RepositoryGraphPanel() {
   const { serverId, workspaceId, target } = usePaneContext();

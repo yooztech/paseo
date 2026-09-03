@@ -2,7 +2,7 @@ export const DEFAULT_IOS_KEYBOARD_INSET_MIN_HEIGHT = 120;
 
 export function shouldUseCompactExplorerKeyboardPadding(input: {
   isGit: boolean;
-  explorerTab: "changes" | "files" | "pr";
+  explorerTab: "changes" | "files" | "pr" | "repository_graph" | "branch_ci";
 }): boolean {
   return !input.isGit || input.explorerTab !== "changes";
 }

@@ -16,7 +16,9 @@ export function shouldShowBranchCiTab(input: BranchCiTabVisibilityInput): boolea
     !input.hasPullRequest &&
     !(input.activeTab === "pr" && input.prLoading) &&
     input.forgeBranchPipelineEnabled &&
-    (input.prForge === "gitlab" || input.activeTab === "ci") &&
-    (input.hasPipeline || input.isLoading || (input.activeTab === "ci" && input.supported))
+    (input.prForge === "gitlab" || input.activeTab === "ci" || input.activeTab === "branch_ci") &&
+    (input.hasPipeline ||
+      input.isLoading ||
+      ((input.activeTab === "ci" || input.activeTab === "branch_ci") && input.supported))
   );
 }
