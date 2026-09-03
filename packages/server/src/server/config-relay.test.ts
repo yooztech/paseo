@@ -177,7 +177,6 @@ describe("daemon service proxy config", () => {
     expect(config.serviceProxy).toEqual({
       publicBaseUrl: "https://env.example.com",
       standaloneListen: null,
-      daemonHostnames: [],
     });
   });
 
@@ -190,7 +189,6 @@ describe("daemon service proxy config", () => {
     expect(loadConfig(home, { env: {} }).serviceProxy).toEqual({
       publicBaseUrl: null,
       standaloneListen: null,
-      daemonHostnames: [],
     });
   });
 
@@ -209,23 +207,6 @@ describe("daemon service proxy config", () => {
     expect(loadConfig(home, { env: {} }).serviceProxy).toEqual({
       publicBaseUrl: null,
       standaloneListen: null,
-      daemonHostnames: [],
-    });
-  });
-
-  test("passes the current service proxy hostname through to daemon APIs", async () => {
-    const home = await createPaseoHome({ version: 1 });
-    const config = loadConfig(home, {
-      env: {
-        PASEO_URL: "https://daemon--demonic-shark--paseo-7e3fa7f7.paseo.iceveil.com:28443",
-        PASEO_SERVICE_PROXY_PUBLIC_BASE_URL: "https://paseo.iceveil.com:28443",
-      },
-    });
-
-    expect(config.serviceProxy).toEqual({
-      publicBaseUrl: "https://paseo.iceveil.com:28443",
-      standaloneListen: null,
-      daemonHostnames: ["daemon--demonic-shark--paseo-7e3fa7f7.paseo.iceveil.com"],
     });
   });
 

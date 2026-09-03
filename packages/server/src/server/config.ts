@@ -280,7 +280,6 @@ interface ResolvedRelay {
 interface ResolvedServiceProxy {
   publicBaseUrl: string | null;
   standaloneListen: string | null;
-  daemonHostnames: string[];
 }
 
 function resolveTlsFromEnv(
@@ -350,19 +349,6 @@ function resolveServiceProxyPublicBaseUrl(value: string | null): string | null {
   }
 }
 
-function resolveServiceProxyDaemonHostnames(env: NodeJS.ProcessEnv): string[] {
-  const paseoUrl = env.PASEO_URL?.trim();
-  if (!paseoUrl) {
-    return [];
-  }
-  try {
-    const hostname = new URL(paseoUrl).hostname.toLowerCase();
-    return hostname ? [hostname] : [];
-  } catch {
-    return [];
-  }
-}
-
 function resolveServiceProxyConfig(
   env: NodeJS.ProcessEnv,
   persisted: ReturnType<typeof loadPersistedConfig>,
@@ -384,11 +370,7 @@ function resolveServiceProxyConfig(
     ? (env.PASEO_SERVICE_PROXY_LISTEN ?? persisted.daemon?.serviceProxy?.listen ?? null)
     : null;
 
-  return {
-    publicBaseUrl,
-    standaloneListen,
-    daemonHostnames: resolveServiceProxyDaemonHostnames(env),
-  };
+  return { publicBaseUrl, standaloneListen };
 }
 
 interface ResolvedWebUi {

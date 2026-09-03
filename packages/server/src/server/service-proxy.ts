@@ -423,16 +423,12 @@ export class ServiceProxyRouteRegistry {
   private workspaceHostnames = new Map<string, Set<string>>();
   private configuredPublicBaseHostnames = new Set<string>();
   private publicBaseHostnames = new Set<string>();
-  private passthroughHostnames = new Set<string>();
 
-  constructor(publicBaseUrl?: string | null, passthroughHostnames: readonly string[] = []) {
+  constructor(publicBaseUrl?: string | null) {
     if (publicBaseUrl) {
       const hostname = new URL(publicBaseUrl).hostname.toLowerCase();
       this.configuredPublicBaseHostnames.add(hostname);
       this.publicBaseHostnames.add(hostname);
-    }
-    for (const hostname of passthroughHostnames) {
-      this.passthroughHostnames.add(normalizeHostHeader(hostname));
     }
   }
 
@@ -634,9 +630,6 @@ export class ServiceProxyRouteRegistry {
         type: "registered-service",
         route: { hostname: exactRoute.hostname, port: exactRoute.port },
       };
-    }
-    if (this.passthroughHostnames.has(hostname)) {
-      return { type: "daemon" };
     }
     if (hostname.endsWith(".localhost") && hostname.split(".")[0]?.includes("--")) {
       return { type: "known-service-miss" };
@@ -865,13 +858,11 @@ export interface ServiceProxySubsystem {
 export function createServiceProxySubsystem({
   logger,
   publicBaseUrl,
-  daemonHostnames = [],
 }: {
   logger: Logger;
   publicBaseUrl?: string | null;
-  daemonHostnames?: readonly string[];
 }): ServiceProxySubsystem {
-  return new NodeServiceProxySubsystem(logger, publicBaseUrl ?? null, daemonHostnames);
+  return new NodeServiceProxySubsystem(logger, publicBaseUrl ?? null);
 }
 
 class NodeServiceProxySubsystem implements ServiceProxySubsystem {
@@ -882,9 +873,8 @@ class NodeServiceProxySubsystem implements ServiceProxySubsystem {
   constructor(
     private readonly logger: Logger,
     publicBaseUrl: string | null,
-    daemonHostnames: readonly string[],
   ) {
-    this.routes = new ServiceProxyRouteRegistry(publicBaseUrl, daemonHostnames);
+    this.routes = new ServiceProxyRouteRegistry(publicBaseUrl);
   }
 
   registerWorkspaceService(input: RegisterWorkspaceServiceInput): ServiceProxyRouteEntry {

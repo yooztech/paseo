@@ -61,8 +61,6 @@ Add a `serviceProxy` block under `daemon` in `~/.paseo/config.json`:
 
 `enabled` is accepted for old configs but no longer enables a mode. `enabled: false` suppresses optional `listen`/`publicBaseUrl` layers only; localhost service proxying remains always enabled.
 
-A Paseo daemon launched as a workspace service receives its own proxy URL in `PASEO_URL`. That exact hostname must continue to serve daemon APIs; only other matching subdomains are treated as service routes. This distinction keeps `/api/files/download` and WebSocket connections reachable through a parent daemon without letting unknown service hostnames fall through to daemon APIs.
-
 ## DNS and reverse proxy setup
 
 For generated URLs to be reachable, you need wildcard DNS pointing to the machine running the Paseo daemon.

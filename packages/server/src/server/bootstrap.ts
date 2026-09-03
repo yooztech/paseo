@@ -425,7 +425,6 @@ export interface PaseoDaemonConfig {
   serviceProxy?: {
     publicBaseUrl: string | null;
     standaloneListen: string | null;
-    daemonHostnames?: string[];
   };
   webUi?: {
     enabled: boolean;
@@ -656,7 +655,6 @@ export async function createPaseoDaemon(
   const serviceProxy = createServiceProxySubsystem({
     logger,
     publicBaseUrl: serviceProxyPublicBaseUrl,
-    daemonHostnames: config.serviceProxy?.daemonHostnames,
   });
   const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
   const workspaceSetupRuntime = new WorkspaceSetupRuntime();
