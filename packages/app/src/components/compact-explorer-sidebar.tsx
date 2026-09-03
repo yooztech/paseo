@@ -1,5 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable } from "react-native";
+import { Gesture } from "react-native-gesture-handler";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
@@ -11,6 +14,7 @@ import {
   type ExplorerTab,
 } from "@/stores/panel-store";
 import { useCloseFileExplorerGesture } from "@/mobile-panels/gestures";
+import { useIsMobilePanelActive } from "@/mobile-panels/provider";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import {
   HEADER_INNER_HEIGHT,
@@ -29,11 +33,13 @@ import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
 import { usePullRequestPanelAvailability } from "@/panels/pull-request-availability";
 import { PullRequestContent } from "@/panels/pull-request";
 import { useAddFileToChat } from "@/panels/use-add-file-to-chat";
+import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import {
-  useExplorerTabContributions,
-  type ExplorerTabContribution,
-} from "@/fork/explorer-tabs/use-contributions";
-import { isExplorerTabContributionId } from "@/fork/explorer-tabs/registry";
+  SIDEBAR_RESIZE_ACTIVATION_OFFSET,
+  SIDEBAR_RESIZE_FAIL_OFFSET,
+} from "@/components/sidebar-resize-handle-layout";
+import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
@@ -76,20 +82,14 @@ export function CompactExplorerSidebar({
 }: ExplorerSidebarProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const isOpen = usePanelStore(selectIsCompactFileExplorerOpen);
+  const isActive = useIsMobilePanelActive("file-explorer");
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const { explorerTab, handleTabPress } = useExplorerSidebarSharedState({
     serverId,
     workspaceRoot,
     isGit,
   });
-  const usePanelKeyboardPadding = shouldUseCompactExplorerKeyboardPadding({
-    isGit,
-    explorerTab:
-      explorerTab === "changes" || explorerTab === "pr" || explorerTab === "files"
-        ? explorerTab
-        : "files",
-  });
+  const usePanelKeyboardPadding = shouldUseCompactExplorerKeyboardPadding({ isGit, explorerTab });
   const { style: mobileKeyboardInsetStyle } = useKeyboardShiftStyle({
     mode: "padding",
     enabled: usePanelKeyboardPadding,
@@ -100,11 +100,11 @@ export function CompactExplorerSidebar({
     (reason: string) => {
       logExplorerSidebar("handleClose", {
         reason,
-        isOpen,
+        isOpen: isActive,
       });
       showMobileAgent();
     },
-    [isOpen, showMobileAgent],
+    [isActive, showMobileAgent],
   );
 
   const handleHeaderClose = useCallback(() => handleClose("header-close-button"), [handleClose]);
@@ -128,7 +128,7 @@ export function CompactExplorerSidebar({
   );
 
   return (
-    <RetainedPanelActivity active={isOpen}>
+    <RetainedPanelActivity active={isActive}>
       <MobilePanelOverlay
         panel="file-explorer"
         closeGesture={closeGesture}
@@ -142,10 +142,122 @@ export function CompactExplorerSidebar({
           workspaceId={workspaceId}
           workspaceRoot={workspaceRoot}
           isGit={isGit}
-          isOpen={isOpen}
+          isOpen={isActive}
           onOpenFile={onOpenFile}
         />
       </MobilePanelOverlay>
+    </RetainedPanelActivity>
+  );
+}
+
+interface NativeExplorerSidebarDockProps extends ExplorerSidebarProps {
+  persistenceKey: string;
+  containerWidth: number;
+}
+
+export function NativeExplorerSidebarDock({
+  serverId,
+  workspaceId,
+  workspaceRoot,
+  isGit,
+  onOpenFile,
+  persistenceKey,
+  containerWidth,
+}: NativeExplorerSidebarDockProps) {
+  const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
+  const isOpen = usePanelStore(selectIsCompactFileExplorerOpen);
+  const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const storedWidth = useWorkspaceLayoutStore(
+    (state) => state.explorerSidebarWidthByWorkspace[persistenceKey],
+  );
+  const resizeExplorerSidebar = useWorkspaceLayoutStore((state) => state.resizeExplorerSidebar);
+  const visibleWidth = resolveExplorerSidebarWidth({
+    requestedWidth: storedWidth,
+    containerWidth,
+  });
+  const resizeWidth = useSharedValue(visibleWidth);
+  const startWidthRef = useRef(visibleWidth);
+  const [resizePressed, setResizePressed] = useState(false);
+  const { explorerTab, handleTabPress } = useExplorerSidebarSharedState({
+    serverId,
+    workspaceRoot,
+    isGit,
+  });
+
+  useEffect(() => {
+    resizeWidth.value = visibleWidth;
+  }, [resizeWidth, visibleWidth]);
+
+  const showResizeGrip = useCallback(() => setResizePressed(true), []);
+  const hideResizeGrip = useCallback(() => setResizePressed(false), []);
+  const commitWidth = useCallback(
+    (width: number) => resizeExplorerSidebar(persistenceKey, width),
+    [persistenceKey, resizeExplorerSidebar],
+  );
+  const resizeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(true)
+        .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
+        .onBegin(() => scheduleOnRN(showResizeGrip))
+        .activeOffsetX([-SIDEBAR_RESIZE_ACTIVATION_OFFSET, SIDEBAR_RESIZE_ACTIVATION_OFFSET])
+        .failOffsetY([-SIDEBAR_RESIZE_FAIL_OFFSET, SIDEBAR_RESIZE_FAIL_OFFSET])
+        .onStart((event) => {
+          startWidthRef.current = visibleWidth + event.translationX;
+          resizeWidth.value = visibleWidth;
+        })
+        .onUpdate((event) => {
+          resizeWidth.value = resolveExplorerSidebarWidth({
+            requestedWidth: startWidthRef.current - event.translationX,
+            containerWidth,
+          });
+        })
+        .onEnd(() => runOnJS(commitWidth)(resizeWidth.value))
+        .onFinalize(() => scheduleOnRN(hideResizeGrip)),
+    [commitWidth, containerWidth, hideResizeGrip, resizeWidth, showResizeGrip, visibleWidth],
+  );
+  const animatedWidthStyle = useAnimatedStyle(() => ({ width: resizeWidth.value }));
+  const dockStyle = useMemo(
+    () => [
+      styles.nativeDock,
+      {
+        display: isOpen ? ("flex" as const) : ("none" as const),
+        paddingTop: insets.top + HEADER_TOP_PADDING_MOBILE,
+        backgroundColor: theme.colors.surfaceSidebar,
+      },
+      animatedWidthStyle,
+    ],
+    [animatedWidthStyle, insets.top, isOpen, theme.colors.surfaceSidebar],
+  );
+  const dockContentStyle = useMemo(
+    () => [styles.nativeDockContent, { borderLeftColor: theme.colors.border }],
+    [theme.colors.border],
+  );
+
+  return (
+    <RetainedPanelActivity active={isOpen}>
+      <Animated.View style={dockStyle} testID="native-explorer-sidebar-dock">
+        <View style={dockContentStyle}>
+          <SidebarResizeHandle
+            edge="left"
+            gesture={resizeGesture}
+            pressed={resizePressed}
+            testID="native-explorer-sidebar-resize-handle"
+          />
+          <ExplorerSidebarContent
+            activeTab={explorerTab}
+            onTabPress={handleTabPress}
+            onClose={showMobileAgent}
+            serverId={serverId}
+            workspaceId={workspaceId}
+            workspaceRoot={workspaceRoot}
+            isGit={isGit}
+            isOpen={isOpen}
+            onOpenFile={onOpenFile}
+          />
+        </View>
+      </Animated.View>
     </RetainedPanelActivity>
   );
 }
@@ -211,56 +323,20 @@ function ExplorerSidebarContent({
     enabled: isOpen,
     timelineEnabled: activeTab === "pr",
   });
-  const hasPullRequest = prPane.prNumber !== null;
-  const contributions = useExplorerTabContributions({
-    serverId,
-    workspaceId,
-    workspaceRoot,
-    isGit,
-    isOpen,
-    activeTab,
-    hasPullRequest,
-    prLoading: prPane.isLoading,
-    prForge: prPane.forge,
-  });
   const requestedTab: ExplorerTab =
     !isGit && (activeTab === "changes" || activeTab === "pr") ? "files" : activeTab;
-  let resolvedTab = requestedTab;
-  if (
-    (requestedTab === "pr" && !showPrTab) ||
-    (isExplorerTabContributionId(requestedTab) &&
-      !contributions.some((contribution) => contribution.tab === requestedTab))
-  ) {
-    resolvedTab = "changes";
-  }
+  const resolvedTab: ExplorerTab = requestedTab === "pr" && !showPrTab ? "changes" : requestedTab;
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const availableTabs = useMemo<ExplorerTab[]>(() => {
-    const tabs: ExplorerTab[] = isGit ? ["changes"] : [];
-    tabs.push(...contributions.filter((item) => item.rank < 2).map((item) => item.tab));
-    tabs.push("files");
+    const tabs: ExplorerTab[] = isGit ? ["changes", "files"] : ["files"];
     if (isGit && showPrTab) tabs.push("pr");
-    tabs.push(...contributions.filter((item) => item.rank >= 2).map((item) => item.tab));
     return tabs;
-  }, [contributions, isGit, showPrTab]);
+  }, [isGit, showPrTab]);
   const { mountedTabIds } = useMountedTabSet({
     activeTabId: resolvedTab,
     allTabIds: availableTabs,
     cap: availableTabs.length,
   });
-  const beforeFiles = contributions.filter((contribution) => contribution.rank < 2);
-  const afterPullRequest = contributions.filter((contribution) => contribution.rank >= 2);
-  const renderContribution = (contribution: ExplorerTabContribution) => (
-    <ExplorerTabButton
-      key={contribution.tab}
-      tab={contribution.tab}
-      active={resolvedTab === contribution.tab}
-      label={contribution.label}
-      onTabPress={onTabPress}
-      testID={`explorer-tab-${contribution.tab.replace(/_/g, "-")}`}
-    >
-      {contribution.icon?.({ active: resolvedTab === contribution.tab, theme })}
-    </ExplorerTabButton>
-  );
 
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
@@ -277,16 +353,15 @@ function ExplorerSidebarContent({
             <ExplorerTabButton
               tab="changes"
               active={resolvedTab === "changes"}
-              label={t("workspace.tabs.sidePanel.changes")}
+              label={t("workspace.tabs.explorerSidebar.changes")}
               onTabPress={onTabPress}
               testID="explorer-tab-changes"
             />
           )}
-          {beforeFiles.map(renderContribution)}
           <ExplorerTabButton
             tab="files"
             active={resolvedTab === "files"}
-            label={t("workspace.tabs.sidePanel.files")}
+            label={t("workspace.tabs.explorerSidebar.files")}
             onTabPress={onTabPress}
             testID="explorer-tab-files"
           />
@@ -307,7 +382,6 @@ function ExplorerSidebarContent({
               />
             </ExplorerTabButton>
           )}
-          {afterPullRequest.map(renderContribution)}
         </View>
         <View style={styles.headerRightSection}>
           <Pressable
@@ -317,7 +391,7 @@ function ExplorerSidebarContent({
             nativeID="explorer-close"
             accessible
             accessibilityRole="button"
-            accessibilityLabel={t("workspace.tabs.sidePanel.close")}
+            accessibilityLabel={t("workspace.tabs.explorerSidebar.close")}
             hitSlop={8}
           >
             {({ hovered, pressed }) => (
@@ -363,13 +437,6 @@ function ExplorerSidebarContent({
             />
           </RetainedPanel>
         ) : null}
-        {contributions.map((contribution) =>
-          mountedTabIds.has(contribution.tab) ? (
-            <RetainedPanel key={contribution.tab} active={resolvedTab === contribution.tab}>
-              {contribution.content}
-            </RetainedPanel>
-          ) : null,
-        )}
       </View>
     </View>
   );
@@ -391,7 +458,6 @@ function ChangedFilesPane({
   );
   return (
     <ChangesSurface
-      host="explorer"
       serverId={serverId}
       workspaceId={workspaceId}
       cwd={workspaceRoot}
@@ -426,6 +492,18 @@ function FilesPane({
 const PrTabContent = PullRequestContent;
 
 const styles = StyleSheet.create((theme) => ({
+  nativeDock: {
+    position: "relative",
+    height: "100%",
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  nativeDockContent: {
+    position: "relative",
+    flex: 1,
+    minHeight: 0,
+    borderLeftWidth: 1,
+  },
   sidebarContent: {
     flex: 1,
     minHeight: 0,

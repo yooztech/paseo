@@ -1,7 +1,9 @@
 import type { Query, QueryClient } from "@tanstack/react-query";
-// FORK(explorer-tabs): invalidate fork-owned checkout views alongside core git views.
-import { explorerTabContributionQueryKinds } from "@/fork/explorer-tabs/registry";
+import { branchCiPipelineQueryKind } from "@/fork/branch-ci/query-keys";
+import { repositoryGraphQueryKind } from "@/fork/repository-graph/query-keys";
 import { prPanePipelineQueryKind, prPaneTimelineQueryKind } from "./pull-request-panel/query-keys";
+
+const forkCheckoutQueryKinds = [repositoryGraphQueryKind, branchCiPipelineQueryKind] as const;
 
 interface CheckoutQueryIdentity {
   serverId: string;
@@ -77,7 +79,7 @@ export async function invalidateCheckoutGitQueriesForClient(
 
   // Fork-only views should refresh after a mutation without extending the upstream action wait.
   void Promise.all(
-    explorerTabContributionQueryKinds.map((kind) =>
+    forkCheckoutQueryKinds.map((kind) =>
       queryClient.invalidateQueries({
         predicate: checkoutQueryPredicate(kind, identity),
       }),
@@ -98,7 +100,7 @@ export async function invalidateCheckoutGitQueriesForServer(
     "checkoutCommits",
     prPaneTimelineQueryKind,
     prPanePipelineQueryKind,
-    ...explorerTabContributionQueryKinds,
+    ...forkCheckoutQueryKinds,
   ];
   await Promise.all(
     kinds.map((kind) =>

@@ -10,7 +10,7 @@ import { DiffDocument } from "@/git/diff-document";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { useAppSettings } from "@/hooks/use-settings";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { useRepositoryGraphFileDiff } from "./use-file-diff";
@@ -98,13 +98,10 @@ function useDescriptor(
   };
 }
 
-export const repositoryGraphFileDiffPanelRegistration: PanelRegistration<"repository_graph_file_diff"> =
-  {
-    kind: "repository_graph_file_diff",
-    component: RepositoryGraphFileDiffPanel,
-    resourceKey: (target) => target.sha,
-    useDescriptor,
-  };
+export const repositoryGraphFileDiffPanelRegistration = definePanel("repository_graph_file_diff", {
+  component: RepositoryGraphFileDiffPanel,
+  useDescriptor,
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1, minHeight: 0 },

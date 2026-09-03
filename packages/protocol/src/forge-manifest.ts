@@ -5,12 +5,11 @@
  * branding). It is NEVER serialized over the wire, so adding a forge here is not
  * a protocol change.
  *
- * Keep this free of runtime dependencies: its only import is the fork-owned
- * declarative overlay. Behavioural concerns (CLI invocation, host probing, REST
- * adapters) live in the server adapter keyed by {@link ForgeDefinition.id}; this
- * file is only the declarative half.
+ * Keep this a pure leaf: no imports, no zod, no functions with runtime deps.
+ * Behavioural concerns (CLI invocation, host probing, REST adapters) live in the
+ * server adapter keyed by {@link ForgeDefinition.id}; this file is only the
+ * declarative half.
  */
-import { SELF_HOSTED_FORGE_MANIFEST_OVERLAY } from "./fork/forges/self-hosted.js";
 
 /**
  * Declarative sign-in recipe for a forge. The client renders install/sign-in
@@ -54,67 +53,9 @@ export interface ForgeDefinition {
    * recognized at runtime by the adapter's host probe, not by this field.
    */
   cloudHosts?: string[];
-  /** Known self-hosted hosts that can be matched without runtime probing. */
-  selfHostedHosts?: string[];
-  /** Web authorities for known hosts that require a non-default browser origin. */
-  webAuthorities?: Record<string, string>;
 }
 
-/**
- * Fork-owned additions may extend host aliases and web authorities, but cannot
- * replace a forge's shared presentation or authentication contract.
- */
-export interface ForgeDefinitionOverlay {
-  id: string;
-  cloudHosts?: readonly string[];
-  selfHostedHosts?: readonly string[];
-  webAuthorities?: Readonly<Record<string, string>>;
-}
-
-export interface ForgeManifestOverlay {
-  definitions: readonly ForgeDefinitionOverlay[];
-}
-
-function applyForgeManifestOverlays(
-  definitions: ForgeDefinition[],
-  overlays: readonly ForgeManifestOverlay[],
-): ForgeDefinition[] {
-  const overrides = new Map<string, ForgeDefinitionOverlay>();
-  for (const overlay of overlays) {
-    for (const override of overlay.definitions) {
-      const existing = overrides.get(override.id);
-      overrides.set(override.id, {
-        id: override.id,
-        cloudHosts: [...(existing?.cloudHosts ?? []), ...(override.cloudHosts ?? [])],
-        selfHostedHosts: [
-          ...(existing?.selfHostedHosts ?? []),
-          ...(override.selfHostedHosts ?? []),
-        ],
-        webAuthorities: { ...existing?.webAuthorities, ...override.webAuthorities },
-      });
-    }
-  }
-  return definitions.map((definition) => {
-    const override = overrides.get(definition.id);
-    if (!override) {
-      return definition;
-    }
-    return {
-      ...definition,
-      cloudHosts: override.cloudHosts?.length
-        ? [...(definition.cloudHosts ?? []), ...override.cloudHosts]
-        : definition.cloudHosts,
-      selfHostedHosts: override.selfHostedHosts?.length
-        ? [...(definition.selfHostedHosts ?? []), ...override.selfHostedHosts]
-        : definition.selfHostedHosts,
-      webAuthorities: Object.keys(override.webAuthorities ?? {}).length
-        ? { ...definition.webAuthorities, ...override.webAuthorities }
-        : definition.webAuthorities,
-    };
-  });
-}
-
-const DEFAULT_FORGE_DEFINITIONS: ForgeDefinition[] = [
+export const FORGE_DEFINITIONS: ForgeDefinition[] = [
   {
     id: "github",
     displayName: "GitHub",
@@ -171,19 +112,10 @@ const DEFAULT_FORGE_DEFINITIONS: ForgeDefinition[] = [
   },
 ];
 
-export const FORGE_DEFINITIONS = applyForgeManifestOverlays(DEFAULT_FORGE_DEFINITIONS, [
-  SELF_HOSTED_FORGE_MANIFEST_OVERLAY,
-]);
-
 /** Forge definitions only present in dev builds (none today; mirrors providers). */
 export const DEV_FORGE_DEFINITIONS: ForgeDefinition[] = [];
 
 export const FORGE_IDS: string[] = FORGE_DEFINITIONS.map((definition) => definition.id);
-
-/** Hosts that can be matched directly without probing the forge CLI. */
-export function getForgeKnownHosts(definition: ForgeDefinition): string[] {
-  return [...(definition.cloudHosts ?? []), ...(definition.selfHostedHosts ?? [])];
-}
 
 export function getForgeDefinition(
   id: string,

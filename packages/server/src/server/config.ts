@@ -22,13 +22,7 @@ import { AgentProviderSchema } from "@getpaseo/protocol/provider-manifest";
 import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
-import {
-  hostnamesFromPublicBaseUrl,
-  hostnamesFromServiceProxyEnv,
-  mergeHostnames,
-  parseHostnamesEnv,
-  type HostnamesConfig,
-} from "./hostnames.js";
+import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
 
 const DEFAULT_PORT = 6767;
@@ -608,11 +602,7 @@ export function resolveConfigFromPersisted(
     desktopManaged: env.PASEO_DESKTOP_MANAGED === "1",
     worktreesRoot: resolveWorktreesRoot(paseoHome, persisted),
     corsAllowedOrigins: resolveCorsAllowedOrigins(env, persisted),
-    hostnames: mergeHostnames([
-      hostnames,
-      hostnamesFromPublicBaseUrl(serviceProxy.publicBaseUrl),
-      hostnamesFromServiceProxyEnv(env),
-    ]),
+    hostnames,
     trustedProxies,
     mcpEnabled,
     mcpInjectIntoAgents,
@@ -624,6 +614,8 @@ export function resolveConfigFromPersisted(
     terminalProfiles,
     agentProfiles,
     skillSelection: persisted.agents?.skills?.selection,
+    pluginsEnabled: persisted.pluginsEnabled ?? false,
+    plugins: persisted.plugins,
     mcpDebug: env.MCP_DEBUG === "1",
     isDev: resolvePaseoNodeEnv(env) === "development",
     agentStoragePath: path.join(paseoHome, "agents"),

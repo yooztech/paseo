@@ -148,11 +148,10 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "commit_diff") {
     return `workspace-commit-diff-close-${encodeFilePathForPathSegment(tab.target.sha)}`;
   }
-  // FORK(repository-graph): identify fork-only file diff close controls.
   if (tab.target.kind === "repository_graph_file_diff") {
     return `workspace-repository-graph-file-diff-close-${encodeFilePathForPathSegment(tab.target.sha)}`;
   }
-  if (tab.target.kind === "working_diff") {
+  if (tab.target.kind === "working_diff" || tab.target.kind === "changes_tree") {
     return `workspace-working-diff-close-${encodeFilePathForPathSegment(buildDeterministicWorkspaceTabId(tab.target))}`;
   }
   if (
@@ -162,6 +161,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
     tab.target.kind === "branch_ci"
   ) {
     return `workspace-${tab.target.kind}-close`;
+  }
+  if (tab.target.kind === "plugin") {
+    return `workspace-plugin-close-${encodeFilePathForPathSegment(buildDeterministicWorkspaceTabId(tab.target))}`;
   }
   if (tab.target.kind === "new_tab") {
     return `workspace-new-tab-close-${tab.tabId}`;

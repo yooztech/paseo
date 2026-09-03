@@ -68,4 +68,27 @@ describe("canonical CLI surface", () => {
     expect(open?.helpInformation()).toContain("<agent-id>");
     expect(open?.helpInformation()).toContain("--server <server-id>");
   });
+
+  it("offers the complete local plugin lifecycle", () => {
+    const plugin = createCli().commands.find((command) => command.name() === "plugin");
+
+    expect(plugin?.commands.map((command) => command.name())).toEqual([
+      "init",
+      "ls",
+      "logs",
+      "install",
+      "status",
+      "update",
+      "reload",
+      "enable",
+      "disable",
+      "remove",
+    ]);
+    expect(
+      plugin?.commands.find((command) => command.name() === "init")?.helpInformation(),
+    ).toContain("--id <id>");
+    expect(
+      plugin?.commands.find((command) => command.name() === "install")?.helpInformation(),
+    ).toContain("--id <id>");
+  });
 });

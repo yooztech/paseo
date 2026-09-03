@@ -62,7 +62,7 @@ export const en = {
       agents: "Agents",
       newAgent: "New agent",
       open: "Open {{name}}",
-      openInSidePanel: "Open {{name}} in Side panel",
+      openInSidePane: "Open {{name}} in side pane",
       openInFocusedPane: "Open {{name}} in focused pane",
       addProject: "Add project",
       home: "Home",
@@ -200,6 +200,7 @@ export const en = {
     empty: "Start chatting with this agent...",
     scrollToBottom: "Scroll to bottom",
     historyLoadFailed: "Couldn't load agent history",
+    messageCapped: "This message was capped ({{bytes}} bytes).",
     permission: {
       plan: "Plan",
       required: "Permission Required",
@@ -343,7 +344,6 @@ export const en = {
         added: "Added",
         started: "Started",
         completed: "Completed",
-        reopened: "Reopened",
       },
     },
     compaction: {
@@ -414,6 +414,8 @@ export const en = {
     },
     fileActions: {
       openFile: "Open file",
+      openIn: "Open in {{target}}",
+      openToSide: "Open to the side",
       copyPath: "Copy path",
       copyRelativePath: "Copy relative path",
       revealIn: "Reveal in {{target}}",
@@ -550,42 +552,6 @@ export const en = {
       updateHost: "Update the host to use the native terminal renderer.",
       unableToSubscribe: "Unable to subscribe to terminal",
     },
-    repositoryGraph: {
-      loading: "Loading repository history...",
-      loadError: "Unable to load repository history",
-      retry: "Retry",
-      empty: "No commits found",
-      updateHost: "Update the host to view the repository graph",
-      limit: "Showing the latest {{count}} commits",
-      detailsLoading: "Loading commit details...",
-      detailsLoadError: "Unable to load commit details",
-      detailsUpdateHost: "Update the host to view commit details",
-      commit: "Commit:",
-      parents: "Parents:",
-      author: "Author:",
-      authorDate: "Author Date:",
-      committer: "Committer:",
-      committerDate: "Committer Date:",
-      none: "None",
-      noChangedFiles: "No changed files",
-      actions: {
-        renameBranch: "Rename Branch...",
-        renameTag: "Rename Tag...",
-        deleteBranch: "Delete Branch...",
-        deleteTag: "Delete Tag...",
-        copyBranchName: "Copy Branch Name",
-        copyTagName: "Copy Tag Name",
-        branchNameCopied: "Branch name copied",
-        tagNameCopied: "Tag name copied",
-        deleteMessage: "Delete {{name}}?",
-        forceDelete: "Force delete",
-        deleteOnRemote: "Delete this branch on the remote",
-        delete: "Delete",
-        deleteFailed: "Unable to delete reference",
-        renamed: "Reference renamed",
-        deleted: "Reference deleted",
-      },
-    },
     tabs: {
       loading: "Loading...",
       modified: "Unsaved changes",
@@ -616,6 +582,7 @@ export const en = {
         closeLeft: "Close to the left",
         closeRight: "Close to the right",
         closeOthers: "Close other tabs",
+        moveToMain: "Move to main panel",
         reloadAgent: "Reload agent",
         reloadAgentTooltip: "Reload agent to update skills, MCPs or login status.",
         close: "Close",
@@ -641,15 +608,12 @@ export const en = {
         terminalProfilesMenu: "Terminal profiles",
         editTerminalProfiles: "Edit profiles",
       },
-      sidePanel: {
-        open: "Open side panel",
-        close: "Close side panel",
-        toggle: "Toggle side panel",
+      explorerSidebar: {
+        open: "Open Explorer sidebar",
+        close: "Close Explorer sidebar",
+        toggle: "Toggle Explorer sidebar",
         changes: "Changes",
-        repositoryGraph: "Repository Graph",
         files: "Files",
-        ci: "CI",
-        ciUpdateHost: "Update the host to view branch CI.",
       },
       toasts: {
         copyFailed: "Copy failed",
@@ -778,8 +742,6 @@ export const en = {
         },
         viewPr: "View PR",
         viewPr_mr: "View MR",
-        viewPrConflict: "PR conflict",
-        viewPrConflict_mr: "MR conflict",
         createPr: {
           label: "Create PR",
           pending: "Creating PR...",
@@ -903,6 +865,7 @@ export const en = {
       },
       diff: {
         openChangesTab: "Open Changes tab",
+        openDiffTab: "Open Diff tab",
         closeChangesTab: "Close Changes tab",
         binaryFile: "Binary file",
         tooLarge: "Diff too large to display",
@@ -913,6 +876,7 @@ export const en = {
         switchToUnified: "Switch to unified diff",
         switchToSplit: "Switch to side-by-side diff",
         options: "Diff options",
+        inlineDiff: "Inline diff",
         hideWhitespace: "Hide whitespace",
         showWhitespace: "Show whitespace",
         scrollLongLines: "Scroll long lines",
@@ -942,7 +906,7 @@ export const en = {
         modifiedFile: "Modified",
         commits: {
           title: "Commits",
-          countLabel: "{{count}} commits",
+          countLabel: "{{count}} workspace commits",
           noneAhead: "No commits ahead of {{baseRef}} yet",
           fileDiffEmpty: "No changes to display",
           fileDiffError: "Failed to load file diff",
@@ -978,7 +942,6 @@ export const en = {
         },
         empty: {
           noJobs: "No jobs",
-          noChecks: "No checks",
           loadingPipeline: "Loading pipeline…",
           pipelineJobsLoadFailed: "Could not load pipeline jobs",
           allowedToFail: "allowed to fail",
@@ -987,6 +950,16 @@ export const en = {
         accessibility: {
           pullRequest: "Pull request #{{number}}",
           pullRequest_mr: "Merge request !{{number}}",
+          checkStatus: {
+            passed: "Passed",
+            failed: "Failed",
+            warning: "Warning",
+            actionRequired: "Action required",
+            manual: "Manual",
+            pending: "Pending",
+            skipped: "Skipped",
+            cancelled: "Cancelled",
+          },
         },
         states: {
           draft: "Draft",
@@ -1177,6 +1150,14 @@ export const en = {
         serviceUnhealthy: "Service {{name}} unhealthy",
         creating: "Creating...",
       },
+      checks: {
+        passed: "Passed: {{count}}",
+        failed: "Failed: {{count}}",
+        warning: "Warnings: {{count}}",
+        actionRequired: "Action required: {{count}}",
+        manual: "Manual: {{count}}",
+        pending: "Pending: {{count}}",
+      },
       actions: {
         menu: "Workspace actions",
         newWorkspace: "New workspace",
@@ -1262,6 +1243,12 @@ export const en = {
     },
   },
   desktop: {
+    windowControls: {
+      minimize: "Minimize window",
+      maximize: "Maximize window",
+      restore: "Restore window",
+      close: "Close window",
+    },
     quitting: {
       title: "Quitting Paseo...",
       detail: "Stopping the local daemon.",
@@ -1581,6 +1568,10 @@ export const en = {
         title: "Direct connection",
         description: "Local network or VPN.",
       },
+      remoteSsh: {
+        title: "Remote SSH",
+        description: "Connect through the desktop SSH client.",
+      },
       scanQr: {
         title: "Scan QR code",
         description: "Encrypted relay connection.",
@@ -1630,6 +1621,23 @@ export const en = {
           "TLS error. Direct connections use SSL only when a TLS terminator is in front of the daemon.",
         unableToConnect: "Unable to connect. Check the host/port and that the daemon is reachable.",
         details: "Details: {{detail}}",
+      },
+    },
+    remoteSsh: {
+      title: "Remote SSH",
+      helper: "Connect to a Paseo daemon running on the remote host.",
+      fields: {
+        target: "SSH host",
+      },
+      actions: {
+        cancel: "Cancel",
+        connect: "Connect",
+        connecting: "Connecting...",
+      },
+      errors: {
+        targetRequired: "SSH host is required",
+        invalidTarget: "Enter a valid ssh:// host",
+        failedToConnect: "Unable to connect over SSH. {{detail}}",
       },
     },
     link: {
@@ -1796,6 +1804,7 @@ export const en = {
     },
     diff: {
       changesLabel: "Changes",
+      diffLabel: "Diff",
       changesSubtitle: "Working tree diff",
       commitSubtitle: "Commit diff",
       uncommittedSubtitle: "Uncommitted changes",
@@ -1890,6 +1899,7 @@ export const en = {
     sections: {
       general: "General",
       appearance: "Appearance",
+      layout: "Layout",
       editor: "Editor",
       shortcuts: "Shortcuts",
       integrations: "Integrations",
@@ -1897,6 +1907,42 @@ export const en = {
       permissions: "Permissions",
       diagnostics: "Diagnostics",
       about: "About",
+    },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+          explorer: "Explorer sidebar",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          diffs: {
+            label: "Opening a diff",
+            description: "Open diffs from Explorer and agent conversations beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+        },
+      },
     },
     editor: {
       title: "Editor",
@@ -1927,7 +1973,64 @@ export const en = {
       providers: "Providers",
       usage: "Usage",
       terminals: "Terminals",
+      plugins: "Plugins",
       host: "Overview",
+    },
+    plugins: {
+      title: "Plugins",
+      trustedTitle: "Plugins are trusted code",
+      trustedDescription:
+        "They run on this host and inside the app without sandboxing. Install only code you trust.",
+      globalTitle: "Enable plugins",
+      globalHint: "Global switch for every configured plugin",
+      directoryLabel: "Plugin directory",
+      directoryPlaceholder: "/absolute/path/on/host",
+      idLabel: "Plugin installation ID",
+      idHint: "Leave blank to use paseo-plugin.json",
+      idPlaceholder: "Manifest default",
+      install: "Install directory",
+      installing: "Installing…",
+      logs: {
+        action: "Logs",
+        title: "Logs: {{id}}",
+        loading: "Loading logs…",
+        refresh: "Refresh",
+        refreshing: "Refreshing…",
+        errorTitle: "Unable to load plugin logs",
+        empty: "No plugin output yet",
+      },
+      status: { running: "running", disabled: "disabled", failed: "failed" },
+      actions: {
+        reload: "Reload",
+        reloading: "Reloading…",
+        enable: "Enable",
+        enabling: "Enabling…",
+        disable: "Disable",
+        disabling: "Disabling…",
+        remove: "Remove",
+        removing: "Removing…",
+      },
+      feedback: {
+        installed: "Installed {{id}}",
+        reload: "Reloaded {{id}}",
+        enable: "Enabled {{id}}",
+        disable: "Disabled {{id}}",
+        remove: "Removed {{id}}",
+        kept: "Kept {{id}}",
+        globalEnabled: "Plugins enabled",
+        globalDisabled: "Plugins disabled",
+      },
+      removeConfirmTitle: "Remove {{id}}?",
+      removeConfirmMessage: "This removes the configuration. The source directory is not deleted.",
+      states: {
+        offlineTitle: "Plugin host is offline",
+        offlineDescription: "Reconnect to this host to manage its plugins.",
+        updateTitle: "Update this host to manage plugins",
+        loading: "Loading plugins…",
+        errorTitle: "Unable to load plugins",
+        retry: "Retry",
+        empty: "No plugins configured",
+      },
     },
     metadataGeneration: {
       title: "Metadata generation",
@@ -1983,11 +2086,6 @@ export const en = {
         label: "Terminal scrollback",
         description: "Lines kept in the built-in terminal buffer",
         accessibilityLabel: "Terminal scrollback lines",
-      },
-      sidePanelRouting: {
-        label: "Open supporting tabs in the Side panel",
-        description:
-          "File links, pull requests, and setup progress open beside your work instead of in the focused pane",
       },
       autoExpandReasoning: {
         label: "Always expand reasoning",
@@ -2178,11 +2276,10 @@ export const en = {
         toggleCommandCenter: "Toggle command center",
         showKeyboardShortcuts: "Show keyboard shortcuts",
         toggleLeftSidebar: "Toggle left sidebar",
-        toggleRightSidebar: "Toggle side panel",
+        toggleRightSidebar: "Toggle Explorer sidebar",
         toggleBothSidebars: "Toggle both sidebars",
         toggleSettings: "Toggle settings",
         toggleFocusMode: "Toggle focus mode",
-        toggleExplorerPaneMaximization: "Toggle Side panel maximization",
         cycleTheme: "Cycle theme",
         focusMessageInput: "Focus message input",
         cycleAgentMode: "Cycle agent mode",
@@ -2266,6 +2363,7 @@ export const en = {
       badges: {
         relay: "Relay",
         local: "Local",
+        remoteSsh: "Remote SSH",
       },
       connections: {
         title: "Connections",

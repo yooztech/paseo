@@ -13,13 +13,11 @@ import { useToast } from "@/contexts/toast-context";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { getForgePresentation } from "@/git/forge";
 import { mapPipelineStatus } from "@/git/forges/gitlab";
+import { classifyCheck } from "@/git/check-presentation";
+import { CheckPresentationIcon } from "@/git/check-presentation.view";
 import {
-  CheckStatusIcon,
+  CheckPresentationSummaryPill,
   Section,
-  SUMMARY_DANGER_ICON,
-  SUMMARY_SUCCESS_ICON,
-  SUMMARY_WARNING_ICON,
-  SummaryPill,
   foregroundMutedColorMapping,
   sectionKitStyles,
 } from "@/git/pull-request-panel/section-kit";
@@ -129,25 +127,27 @@ export function BranchCiPane({
           onToggle={handleToggle}
           summary={
             <>
-              <SummaryPill
+              <CheckPresentationSummaryPill
                 count={counts.passed}
-                icon={SUMMARY_SUCCESS_ICON}
-                variant="success"
+                presentation="success"
                 testID="branch-ci-passed"
               />
-              <SummaryPill
+              <CheckPresentationSummaryPill
                 count={counts.failed}
-                icon={SUMMARY_DANGER_ICON}
-                variant="danger"
+                presentation="failure"
                 testID="branch-ci-failed"
               />
-              <SummaryPill
+              <CheckPresentationSummaryPill
                 count={counts.pending}
-                icon={SUMMARY_WARNING_ICON}
-                variant="warning"
+                presentation="pending"
                 testID="branch-ci-pending"
               />
-              {pipeline ? <CheckStatusIcon status={mapPipelineStatus(pipeline.status)} /> : null}
+              {pipeline ? (
+                <CheckPresentationIcon
+                  presentation={classifyCheck({ status: mapPipelineStatus(pipeline.status) })}
+                  size={12}
+                />
+              ) : null}
             </>
           }
         >
@@ -174,7 +174,10 @@ export function BranchCiPane({
                 disabled={!pipeline.url}
                 testID="branch-ci-pipeline-link"
               >
-                <CheckStatusIcon status={mapPipelineStatus(pipeline.status)} />
+                <CheckPresentationIcon
+                  presentation={classifyCheck({ status: mapPipelineStatus(pipeline.status) })}
+                  size={12}
+                />
                 <Text style={sectionKitStyles.checkName} numberOfLines={1}>
                   {`Pipeline #${pipeline.id}`}
                 </Text>
@@ -208,7 +211,10 @@ function PipelineStageGroup({ stage }: { stage: CheckoutPipelineStage }) {
   return (
     <View>
       <View style={styles.pipelineStageHeader}>
-        <CheckStatusIcon status={mapPipelineStatus(stage.status)} />
+        <CheckPresentationIcon
+          presentation={classifyCheck({ status: mapPipelineStatus(stage.status) })}
+          size={12}
+        />
         <Text style={styles.pipelineStageName} numberOfLines={1}>
           {stage.name}
         </Text>
@@ -233,7 +239,10 @@ function PipelineJobRow({ job }: { job: CheckoutPipelineJob }) {
       : "";
   return (
     <Pressable onPress={handlePress} style={jobRowPressableStyle} disabled={!job.url}>
-      <CheckStatusIcon status={mapPipelineStatus(job.status)} />
+      <CheckPresentationIcon
+        presentation={classifyCheck({ status: mapPipelineStatus(job.status) })}
+        size={12}
+      />
       <Text style={sectionKitStyles.checkName} numberOfLines={1}>
         {job.name}
       </Text>

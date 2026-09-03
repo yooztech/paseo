@@ -3,6 +3,12 @@ const legacyAppTagPattern = /^v(\d+\.\d+\.\d+)-fork\.(\d+)-app$/;
 const appTagPattern = /^app-v(\d+\.\d+\.\d+)-fork\.(\d+)$/;
 const maxForkNumber = 999;
 const maxAndroidVersionCode = 2_100_000_000;
+const FDROID_ABI_VERSION_CODE_SUFFIXES = {
+  "armeabi-v7a": 1,
+  "arm64-v8a": 2,
+  x86: 3,
+  x86_64: 4,
+};
 
 function getForkNumber(releaseTag, appVersion, isBeta) {
   const normalizedReleaseTag = releaseTag ?? "";
@@ -42,8 +48,12 @@ function getNativeReleaseVersion(version, releaseTag) {
   }
 
   const baseVersionCode = major * 1_000_000 + minor * 1_000 + patch;
-  if (!Number.isSafeInteger(baseVersionCode) || baseVersionCode <= 0) {
-    throw new Error(`Derived native base version is out of range: ${baseVersionCode}`);
+  if (
+    !Number.isSafeInteger(baseVersionCode) ||
+    baseVersionCode <= 0 ||
+    baseVersionCode * 10 + 9 > maxAndroidVersionCode
+  ) {
+    throw new Error(`Derived Android versionCode is out of range: ${baseVersionCode}`);
   }
 
   const appVersion = `${major}.${minor}.${patch}`;
@@ -79,4 +89,16 @@ function getNativeReleaseVersion(version, releaseTag) {
   };
 }
 
-module.exports = { getNativeReleaseVersion };
+function getFdroidVersionCodes(version) {
+  const { androidVersionCode } = getNativeReleaseVersion(version);
+  return Object.entries(FDROID_ABI_VERSION_CODE_SUFFIXES).map(([abi, suffix]) => ({
+    abi,
+    versionCode: androidVersionCode * 10 + suffix,
+  }));
+}
+
+module.exports = {
+  FDROID_ABI_VERSION_CODE_SUFFIXES,
+  getFdroidVersionCodes,
+  getNativeReleaseVersion,
+};

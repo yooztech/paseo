@@ -1,4 +1,5 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
   common: {
@@ -64,7 +65,7 @@ export const ru: TranslationResources = {
       agents: "Агенты",
       newAgent: "Новый агент",
       open: "Открыть {{name}}",
-      openInSidePanel: "Открыть {{name}} в боковой панели",
+      openInSidePane: "Открыть {{name}} в боковой панели",
       openInFocusedPane: "Открыть {{name}} в активной области",
       addProject: "Добавить проект",
       home: "Главная",
@@ -202,6 +203,7 @@ export const ru: TranslationResources = {
     empty: "Начните общаться с этим агентом...",
     scrollToBottom: "Прокрутить вниз",
     historyLoadFailed: "Не удалось загрузить историю агента",
+    messageCapped: "Это сообщение было обрезано ({{bytes}} байт).",
     permission: {
       plan: "План",
       required: "Требуется разрешение",
@@ -346,7 +348,6 @@ export const ru: TranslationResources = {
         added: "Добавлена",
         started: "Начата",
         completed: "Завершена",
-        reopened: "Возобновлена",
       },
     },
     compaction: {
@@ -418,6 +419,8 @@ export const ru: TranslationResources = {
     },
     fileActions: {
       openFile: "Открыть файл",
+      openIn: "Открыть в {{target}}",
+      openToSide: "Открыть сбоку",
       copyPath: "Копировать путь",
       copyRelativePath: "Копировать относительный путь",
       revealIn: "Показать в {{target}}",
@@ -556,42 +559,6 @@ export const ru: TranslationResources = {
       updateHost: "Обновите хост, чтобы использовать нативный рендерер терминала.",
       unableToSubscribe: "Не удалось подключиться к терминалу",
     },
-    repositoryGraph: {
-      loading: "Загрузка истории репозитория...",
-      loadError: "Не удалось загрузить историю репозитория",
-      retry: "Повторить",
-      empty: "Коммиты не найдены",
-      updateHost: "Обновите хост для просмотра графа репозитория",
-      limit: "Показаны последние {{count}} коммитов",
-      detailsLoading: "Loading commit details...",
-      detailsLoadError: "Unable to load commit details",
-      detailsUpdateHost: "Update the host to view commit details",
-      commit: "Commit:",
-      parents: "Parents:",
-      author: "Author:",
-      authorDate: "Author Date:",
-      committer: "Committer:",
-      committerDate: "Committer Date:",
-      none: "None",
-      noChangedFiles: "No changed files",
-      actions: {
-        renameBranch: "Rename Branch...",
-        renameTag: "Rename Tag...",
-        deleteBranch: "Delete Branch...",
-        deleteTag: "Delete Tag...",
-        copyBranchName: "Copy Branch Name",
-        copyTagName: "Copy Tag Name",
-        branchNameCopied: "Branch name copied",
-        tagNameCopied: "Tag name copied",
-        deleteMessage: "Delete {{name}}?",
-        forceDelete: "Force delete",
-        deleteOnRemote: "Delete this branch on the remote",
-        delete: "Delete",
-        deleteFailed: "Unable to delete reference",
-        renamed: "Reference renamed",
-        deleted: "Reference deleted",
-      },
-    },
     tabs: {
       loading: "Загрузка...",
       modified: "Несохранённые изменения",
@@ -612,7 +579,7 @@ export const ru: TranslationResources = {
       },
       menu: {
         openFor: "Открыть меню для {{label}}",
-        copyResumeCommand: "Скопировать команду возобновления",
+        copyResumeCommand: "Копировать команду продолжения",
         copyAgentId: "Скопировать идентификатор агента",
         copyTerminalId: "Скопировать идентификатор терминала",
         copyFilePath: "Скопировать путь к файлу",
@@ -622,6 +589,7 @@ export const ru: TranslationResources = {
         closeLeft: "Закрыть вкладки слева",
         closeRight: "Закрыть вкладки справа",
         closeOthers: "Закрыть другие вкладки",
+        moveToMain: "Переместить на основную панель",
         reloadAgent: "Перезагрузить агента",
         reloadAgentTooltip: "Перезагрузите агента, чтобы обновить навыки, MCP или статус входа.",
         close: "Закрыть",
@@ -647,21 +615,18 @@ export const ru: TranslationResources = {
         terminalProfilesMenu: "Профили терминала",
         editTerminalProfiles: "Изменить профили",
       },
-      sidePanel: {
+      explorerSidebar: {
         open: "Открыть боковую панель",
         close: "Закрыть боковую панель",
         toggle: "Переключить боковую панель",
         changes: "Изменения",
-        repositoryGraph: "Граф репозитория",
         files: "Файлы",
-        ci: "CI",
-        ciUpdateHost: "Обновите хост, чтобы просматривать CI ветки.",
       },
       toasts: {
         copyFailed: "Не удалось скопировать",
         agentIdCopiedLabel: "ID агента",
         terminalIdCopiedLabel: "Идентификатор терминала",
-        resumeCommandCopiedLabel: "команда возобновления",
+        resumeCommandCopiedLabel: "команда продолжения",
         filePathCopiedLabel: "Путь к файлу",
         resumeIdUnavailable: "ID возобновления недоступен",
         resumeCommandUnavailable: "Команда возобновления недоступна",
@@ -786,7 +751,6 @@ export const ru: TranslationResources = {
           success: "Изменения получены и отправлены",
         },
         viewPr: "Посмотреть PR",
-        viewPrConflict: "Конфликт PR",
         createPr: {
           label: "Создать PR",
           pending: "Создание PR...",
@@ -823,7 +787,6 @@ export const ru: TranslationResources = {
           success_mr: "Слияние MR выполнено",
         },
         viewPr_mr: "Посмотреть MR",
-        viewPrConflict_mr: "Конфликт MR",
         autoMerge: {
           enableSquash: "Включить автослияние (squash)",
           enableMerge: "Включить автослияние (merge)",
@@ -908,6 +871,7 @@ export const ru: TranslationResources = {
       },
       diff: {
         openChangesTab: "Открыть вкладку «Изменения»",
+        openDiffTab: "Открыть вкладку «Дифф»",
         closeChangesTab: "Закрыть вкладку «Изменения»",
         binaryFile: "Бинарный файл",
         tooLarge: "Дифф слишком велик для отображения",
@@ -918,6 +882,7 @@ export const ru: TranslationResources = {
         switchToUnified: "Переключиться на унифицированный дифф",
         switchToSplit: "Переключиться на параллельный дифф",
         options: "Параметры диффа",
+        inlineDiff: "Встроенный дифф",
         hideWhitespace: "Скрыть пробельные изменения",
         showWhitespace: "Показать пробельные изменения",
         scrollLongLines: "Прокручивать длинные строки",
@@ -982,8 +947,7 @@ export const ru: TranslationResources = {
           reviews: "Ревью",
         },
         empty: {
-          noJobs: "Нет задач",
-          noChecks: "Нет проверок",
+          noJobs: "Нет заданий",
           loadingPipeline: "Загрузка пайплайна...",
           pipelineJobsLoadFailed: "Не удалось загрузить задания пайплайна",
           allowedToFail: "допускается сбой",
@@ -992,6 +956,16 @@ export const ru: TranslationResources = {
         accessibility: {
           pullRequest: "PR #{{number}}",
           pullRequest_mr: "MR !{{number}}",
+          checkStatus: {
+            passed: "Успешно",
+            failed: "Ошибка",
+            warning: "Предупреждение",
+            actionRequired: "Требуется действие",
+            manual: "Вручную",
+            pending: "Ожидание",
+            skipped: "Пропущено",
+            cancelled: "Отменено",
+          },
         },
         states: {
           draft: "Черновик",
@@ -1183,6 +1157,14 @@ export const ru: TranslationResources = {
         serviceUnhealthy: "Сервис {{name}} работает некорректно",
         creating: "Создание...",
       },
+      checks: {
+        passed: "Успешные: {{count}}",
+        failed: "Ошибки: {{count}}",
+        warning: "Предупреждения: {{count}}",
+        actionRequired: "Требуется действие: {{count}}",
+        manual: "Вручную: {{count}}",
+        pending: "Ожидают: {{count}}",
+      },
       actions: {
         menu: "Действия рабочего пространства",
         newWorkspace: "Новое рабочее пространство",
@@ -1269,6 +1251,12 @@ export const ru: TranslationResources = {
     },
   },
   desktop: {
+    windowControls: {
+      minimize: "Свернуть окно",
+      maximize: "Развернуть окно",
+      restore: "Восстановить окно",
+      close: "Закрыть окно",
+    },
     quitting: {
       title: "Завершение работы Paseo...",
       detail: "Остановка локального демона.",
@@ -1597,6 +1585,10 @@ export const ru: TranslationResources = {
         title: "Прямое подключение",
         description: "Локальная сеть или VPN.",
       },
+      remoteSsh: {
+        title: "Удалённый SSH",
+        description: "Подключение через SSH-клиент настольного приложения.",
+      },
       scanQr: {
         title: "Сканировать QR-код",
         description: "Зашифрованное подключение через ретранслятор.",
@@ -1647,6 +1639,23 @@ export const ru: TranslationResources = {
         unableToConnect:
           "Не удалось подключиться. Проверьте адрес хоста и порт, а также доступность демона.",
         details: "Подробности: {{detail}}",
+      },
+    },
+    remoteSsh: {
+      title: "Удалённый SSH",
+      helper: "Подключитесь к демону Paseo на удалённом хосте.",
+      fields: {
+        target: "Хост SSH",
+      },
+      actions: {
+        cancel: "Отмена",
+        connect: "Подключить",
+        connecting: "Подключение...",
+      },
+      errors: {
+        targetRequired: "Укажите хост SSH",
+        invalidTarget: "Укажите корректный хост ssh://",
+        failedToConnect: "Не удалось подключиться по SSH. {{detail}}",
       },
     },
     link: {
@@ -1816,6 +1825,7 @@ export const ru: TranslationResources = {
     },
     diff: {
       changesLabel: "Изменения",
+      diffLabel: "Дифф",
       changesSubtitle: "Изменения в worktree",
       commitSubtitle: "Изменения в коммите",
       uncommittedSubtitle: "Незафиксированные изменения",
@@ -1910,6 +1920,7 @@ export const ru: TranslationResources = {
     sections: {
       general: "Основные",
       appearance: "Оформление",
+      layout: en.settings.sections.layout,
       editor: "Редактор",
       shortcuts: "Сочетания клавиш",
       integrations: "Интеграции",
@@ -1918,6 +1929,7 @@ export const ru: TranslationResources = {
       diagnostics: "Диагностика",
       about: "О приложении",
     },
+    layout: en.settings.layout,
     editor: {
       title: "Редактор",
       vimKeybindings: "Сочетания клавиш Vim",
@@ -1947,8 +1959,10 @@ export const ru: TranslationResources = {
       providers: "Провайдеры",
       usage: "Использование",
       terminals: "Терминалы",
+      plugins: "Плагины",
       host: "Обзор",
     },
+    plugins: pluginSettings.ru,
     metadataGeneration: {
       title: "Генерация метаданных",
       description:
@@ -2006,11 +2020,6 @@ export const ru: TranslationResources = {
         label: "Буфер прокрутки терминала",
         description: "Количество строк, сохраняемых во встроенном буфере терминала",
         accessibilityLabel: "Количество строк в буфере прокрутки терминала",
-      },
-      sidePanelRouting: {
-        label: "Открывать вспомогательные вкладки в боковой панели",
-        description:
-          "Ссылки на файлы, пул-реквесты и ход настройки открываются рядом с вашей работой, а не в активной панели",
       },
       autoExpandReasoning: {
         label: "Всегда разворачивать размышления",
@@ -2210,7 +2219,6 @@ export const ru: TranslationResources = {
         toggleBothSidebars: "Переключить обе боковые панели",
         toggleSettings: "Переключить настройки",
         toggleFocusMode: "Переключить режим фокусировки",
-        toggleExplorerPaneMaximization: "Развернуть или восстановить боковую панель",
         cycleTheme: "Переключить тему",
         focusMessageInput: "Перейти к полю ввода сообщения",
         cycleAgentMode: "Переключить режим агента",
@@ -2294,6 +2302,7 @@ export const ru: TranslationResources = {
       badges: {
         relay: "Ретранслятор",
         local: "Локальный",
+        remoteSsh: "Удалённый SSH",
       },
       connections: {
         title: "Подключения",

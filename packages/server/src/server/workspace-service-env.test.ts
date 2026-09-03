@@ -160,7 +160,6 @@ describe("buildWorkspaceServiceEnv", () => {
         ],
       }),
     ).toMatchObject({
-      PASEO_SERVICE_PROXY_PUBLIC_BASE_URL: "https://services.example.com",
       PASEO_URL: "https://web--feature-x--paseo.services.example.com",
       PASEO_SERVICE_API_URL: "https://api--feature-x--paseo.services.example.com",
       PASEO_SERVICE_WEB_URL: "https://web--feature-x--paseo.services.example.com",

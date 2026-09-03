@@ -10,14 +10,8 @@ import { ForgeBrandIcon, getForgeBrandColorMapping } from "@/git/forge-icon";
 import { type CheckoutGitActionStatus, useCheckoutGitActionsStore } from "@/git/actions-store";
 import { type CheckoutStatusPayload, useCheckoutStatusQuery } from "@/git/use-status-query";
 import { type CheckoutPrStatusPayload, useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
-import {
-  buildGitActions,
-  narrowPullRequestState,
-  type BuildGitActionsInput,
-  type GitAction,
-  type GitActions,
-} from "@/git/policy";
-import { forkGitActionPolicy } from "@/fork/git-action-policy";
+import { narrowPullRequestState, type GitAction, type GitActions } from "@/git/policy";
+import { buildForkGitActions, type ForkBuildGitActionsInput } from "@/fork/git-action-policy";
 import { deriveMergeCapability } from "@/git/merge-capability";
 import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -118,6 +112,8 @@ interface DeriveGitActionsStateArgs {
   status: CheckoutStatusPayload | null;
   gitStatus: CheckoutStatusPayload | null;
   prStatus: PrStatusValue;
+  hasUncommittedChanges: boolean;
+  postShipArchiveSuggested: boolean;
   isStatusLoading: boolean;
   baseRefLabel: string;
 }
@@ -133,6 +129,7 @@ interface DerivedGitActionsState {
   hasRemote: boolean;
   isPaseoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
+  shouldPromoteArchive: boolean;
 }
 
 interface GitCommitCounts {
@@ -145,21 +142,40 @@ interface GitCommitCounts {
 
 function extractGitCommitCounts(gitStatus: CheckoutStatusPayload | null): GitCommitCounts {
   const aheadCount = gitStatus?.aheadBehind?.ahead ?? 0;
-  const aheadOfOrigin = gitStatus?.aheadOfOrigin ?? null;
   return {
     aheadCount,
     // COMPAT(gitContentDifference): added in v0.2.6, remove after 2027-02-03 once daemon floor >= v0.2.6.
     hasChangesFromBase: gitStatus?.hasChangesFromBase ?? aheadCount > 0,
     behindBaseCount: gitStatus?.aheadBehind?.behind ?? 0,
-    aheadOfOrigin,
+    aheadOfOrigin: gitStatus?.aheadOfOrigin ?? null,
     behindOfOrigin: gitStatus?.behindOfOrigin ?? null,
   };
 }
 
+function computeShouldPromoteArchive(input: {
+  hasUncommittedChanges: boolean;
+  postShipArchiveSuggested: boolean;
+  isMergedPullRequest: boolean;
+}): boolean {
+  return (
+    !input.hasUncommittedChanges && (input.postShipArchiveSuggested || input.isMergedPullRequest)
+  );
+}
+
 function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActionsState {
-  const { isGit, status, gitStatus, prStatus, isStatusLoading, baseRefLabel } = args;
+  const {
+    isGit,
+    status,
+    gitStatus,
+    prStatus,
+    hasUncommittedChanges,
+    postShipArchiveSuggested,
+    isStatusLoading,
+    baseRefLabel,
+  } = args;
   const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
   const isPaseoOwnedWorktree = gitStatus?.isPaseoOwnedWorktree ?? false;
+  const isMergedPullRequest = Boolean(prStatus?.isMerged);
   return {
     actionsDisabled,
     ...extractGitCommitCounts(gitStatus),
@@ -167,6 +183,11 @@ function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActio
     hasRemote: gitStatus?.hasRemote ?? false,
     isPaseoOwnedWorktree,
     isOnBaseBranch: gitStatus?.currentBranch === baseRefLabel,
+    shouldPromoteArchive: computeShouldPromoteArchive({
+      hasUncommittedChanges,
+      postShipArchiveSuggested,
+      isMergedPullRequest,
+    }),
   };
 }
 
@@ -299,6 +320,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const { t } = useTranslation();
   const toast = useToast();
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("pr");
 
   const { status, isLoading: isStatusLoading } = useCheckoutStatusQuery({ serverId, cwd });
@@ -374,6 +396,10 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     },
     [shipDefaultStorageKey],
   );
+
+  useEffect(() => {
+    setPostShipArchiveSuggested(false);
+  }, [cwd]);
 
   const commitStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "commit" }),
@@ -524,6 +550,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       void persistShipDefault("pr");
       void runMergePr({ serverId, cwd, method })
         .then(() => {
+          setPostShipArchiveSuggested(true);
           toastActionSuccess(t("workspace.git.actions.mergePr.success", forgeVocabulary(forge)));
           return;
         })
@@ -576,6 +603,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     void persistShipDefault("merge");
     void runMergeBranch({ serverId, cwd, baseRef })
       .then(() => {
+        setPostShipArchiveSuggested(true);
         toastActionSuccess(t("workspace.git.actions.mergeBranch.success"));
         return;
       })
@@ -627,6 +655,8 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     status,
     gitStatus,
     prStatus,
+    hasUncommittedChanges,
+    postShipArchiveSuggested,
     isStatusLoading,
     baseRefLabel,
   });
@@ -641,6 +671,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     hasRemote,
     isPaseoOwnedWorktree,
     isOnBaseBranch,
+    shouldPromoteArchive,
   } = derived;
 
   const handlePrAction = useCallback(() => {
@@ -654,7 +685,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const pullRequestChecksStatus = getPullRequestChecksStatus(prStatus);
 
   // Build actions
-  const gitActionsInput = useMemo<BuildGitActionsInput>(() => {
+  const gitActionsInput = useMemo<ForkBuildGitActionsInput>(() => {
     const presentation = getForgePresentation(forge);
     return {
       isGit,
@@ -678,12 +709,11 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       baseRefAvailable: Boolean(baseRef),
       baseRefLabel,
       aheadCount,
+      contentDiff: { hasChangesFromBase },
       behindBaseCount,
       aheadOfOrigin,
       behindOfOrigin,
-      contentDiff: {
-        hasChangesFromBase,
-      },
+      shouldPromoteArchive,
       shipDefault,
       runtime: {
         commit: {
@@ -804,6 +834,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     behindOfOrigin,
     shipDefault,
     baseRefLabel,
+    shouldPromoteArchive,
     actionsDisabled,
     commitStatus,
     pullStatus,
@@ -839,7 +870,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const gitActions: GitActions = useMemo(
     () =>
-      translateGitActions(buildGitActions(gitActionsInput, forkGitActionPolicy), {
+      translateGitActions(buildForkGitActions(gitActionsInput), {
         baseRefLabel,
         hasPullRequest,
         pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",

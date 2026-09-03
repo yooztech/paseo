@@ -16,7 +16,6 @@ export interface WorkspaceWorkingDiffTabTarget {
   focusPath?: string;
   focusRequestId?: number;
 }
-
 // FORK(repository-graph): fork-only file diff target registration.
 export interface RepositoryGraphFileDiffTabTarget {
   kind: "repository_graph_file_diff";
@@ -24,6 +23,22 @@ export interface RepositoryGraphFileDiffTabTarget {
   path: string;
   requestId?: number;
 }
+
+export type PluginWorkspaceTabTarget =
+  | {
+      kind: "plugin";
+      pluginId: string;
+      panelId: string;
+      context: "workspace";
+    }
+  | {
+      kind: "plugin";
+      pluginId: string;
+      panelId: string;
+      context: "agent";
+      agentId: string;
+    };
+
 export type WorkspaceTabTarget =
   | { kind: "new_tab" }
   | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
@@ -31,12 +46,14 @@ export type WorkspaceTabTarget =
   | { kind: "provider_subagent"; parentAgentId: string; subagentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
+  | { kind: "changes_tree" }
   | { kind: "files" }
   | { kind: "pull_request" }
   | { kind: "repository_graph" }
   | { kind: "branch_ci" }
   | WorkspaceFileTabTarget
   | WorkspaceWorkingDiffTabTarget
+  | PluginWorkspaceTabTarget
   | RepositoryGraphFileDiffTabTarget
   | { kind: "setup"; workspaceId: string }
   | { kind: "commit_diff"; sha: string };

@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { Text, View } from "react-native";
 import { GitGraph } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -9,11 +10,24 @@ import { BranchCiPane } from "@/fork/branch-ci/pane";
 import { useBranchCiPipeline } from "@/fork/branch-ci/use-data";
 import { RepositoryGraphPane } from "@/fork/repository-graph/pane";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useSessionStore } from "@/stores/session-store";
 
 const ThemedGitGraph = withUnistyles(GitGraph);
+const repositoryGraphPresentation = {
+  label: (t: TFunction) => t("workspace.tabs.sidePanel.repositoryGraph"),
+  subtitle: (t: TFunction) => t("workspace.tabs.sidePanel.repositoryGraph"),
+  tooltip: (t: TFunction) => t("workspace.tabs.sidePanel.repositoryGraph"),
+  icon: ThemedGitGraph,
+};
+
+const branchCiPresentation = {
+  label: (t: TFunction) => t("workspace.tabs.sidePanel.ci"),
+  subtitle: (t: TFunction) => t("workspace.tabs.sidePanel.ci"),
+  tooltip: (t: TFunction) => t("workspace.tabs.sidePanel.ci"),
+  icon: GitLabIcon,
+};
 
 function RepositoryGraphPanel() {
   const { serverId, workspaceId, target } = usePaneContext();
@@ -86,7 +100,7 @@ function MissingDirectory() {
 
 function useRepositoryGraphDescriptor(): PanelDescriptor {
   const { t } = useTranslation();
-  const label = t("workspace.tabs.sidePanel.repositoryGraph");
+  const label = repositoryGraphPresentation.label(t);
   return {
     label,
     subtitle: label,
@@ -99,7 +113,7 @@ function useRepositoryGraphDescriptor(): PanelDescriptor {
 
 function useBranchCiDescriptor(): PanelDescriptor {
   const { t } = useTranslation();
-  const label = t("workspace.tabs.sidePanel.ci");
+  const label = branchCiPresentation.label(t);
   return {
     label,
     subtitle: label,
@@ -110,19 +124,17 @@ function useBranchCiDescriptor(): PanelDescriptor {
   };
 }
 
-export const repositoryGraphPanelRegistration: PanelRegistration<"repository_graph"> = {
-  kind: "repository_graph",
+export const repositoryGraphPanelRegistration = definePanel("repository_graph", {
   component: RepositoryGraphPanel,
   useDescriptor: useRepositoryGraphDescriptor,
-  resourceKey: () => "repository_graph",
-};
+  presentation: repositoryGraphPresentation,
+});
 
-export const branchCiPanelRegistration: PanelRegistration<"branch_ci"> = {
-  kind: "branch_ci",
+export const branchCiPanelRegistration = definePanel("branch_ci", {
   component: BranchCiPanel,
   useDescriptor: useBranchCiDescriptor,
-  resourceKey: () => "branch_ci",
-};
+  presentation: branchCiPresentation,
+});
 
 const styles = StyleSheet.create((theme) => ({
   centerState: {

@@ -10,7 +10,6 @@ import {
   buildPublicServiceHostname,
   buildServiceProxyLabel,
   createServiceProxySubsystem,
-  createWebSocketUpgradeDispatcher,
   findFreePort,
   ServiceProxyRouteCollisionError,
   ServiceProxyRouteRegistry,
@@ -89,10 +88,6 @@ describe("service proxy subsystem shape", () => {
       await expect(httpGet(port, `missing.services.example.com:${port}`)).resolves.toEqual({
         status: 404,
         body: "404 Not Found",
-      });
-      await expect(httpGet(port, `services.example.com:${port}`)).resolves.toEqual({
-        status: 200,
-        body: "daemon-api",
       });
       await expect(httpGet(port, `daemon.localhost:${port}`)).resolves.toEqual({
         status: 200,
@@ -310,7 +305,6 @@ describe("service proxy subsystem shape", () => {
 interface ForwardedFixture {
   daemonPort: number;
   hostname: string;
-  getDaemonUpgradeCount(): number;
   close(): Promise<void>;
 }
 
@@ -356,33 +350,15 @@ async function startForwardedHeadersFixture(): Promise<ForwardedFixture> {
     res.status(404).send("404 Not Found");
   });
   const daemon = http.createServer(app);
-  let daemonUpgradeCount = 0;
-  const daemonUpgradeSockets: net.Socket[] = [];
-  daemon.on(
-    "upgrade",
-    createWebSocketUpgradeDispatcher({
-      serviceProxyHandler: serviceProxy.upgradeHandler({ passthroughUnknown: true }),
-      daemonHandler: (req, socket) => {
-        daemonUpgradeCount += 1;
-        daemonUpgradeSockets.push(socket);
-        socket.on("error", () => socket.destroy());
-        const payload = JSON.stringify(req.headers);
-        socket.write(
-          `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Echo-Length: ${payload.length}\r\n\r\n${payload}`,
-        );
-      },
-    }),
-  );
+  daemon.on("upgrade", serviceProxy.upgradeHandler({ passthroughUnknown: false }));
   await new Promise<void>((resolve) => daemon.listen(daemonPort, "127.0.0.1", resolve));
 
   return {
     daemonPort,
     hostname: route.hostname,
-    getDaemonUpgradeCount: () => daemonUpgradeCount,
     async close() {
       // Upgraded sockets keep the server alive; close() alone would hang.
       for (const socket of upgradeSockets) socket.destroy();
-      for (const socket of daemonUpgradeSockets) socket.destroy();
       daemon.closeAllConnections();
       await new Promise<void>((resolve) => daemon.close(() => resolve()));
       upstream.closeAllConnections();
@@ -441,18 +417,6 @@ function upgradeThroughProxy(
 }
 
 describe("service proxy forwarded headers", () => {
-  it("hands non-service upgrades to the daemon handler", async () => {
-    const fixture = await startForwardedHeadersFixture();
-    try {
-      const headers = await upgradeThroughProxy(fixture.daemonPort, "daemon.localhost");
-
-      expect(headers.host).toBe("daemon.localhost");
-      expect(fixture.getDaemonUpgradeCount()).toBe(1);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("forwards the client authority with its port so services build reachable URLs", async () => {
     const fixture = await startForwardedHeadersFixture();
     try {
@@ -588,7 +552,6 @@ describe("service proxy forwarded headers", () => {
       // its port survives. Asserted rather than hidden so the day it is fixed
       // this test fails loudly instead of silently passing.
       expect(behindTls["x-forwarded-proto"]).toBe("http");
-      expect(fixture.getDaemonUpgradeCount()).toBe(0);
     } finally {
       await fixture.close();
     }

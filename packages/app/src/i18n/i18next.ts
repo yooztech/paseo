@@ -1,5 +1,6 @@
 import { createInstance } from "i18next";
 import { initReactI18next } from "react-i18next";
+import { withForkTranslations } from "@/fork/i18n-resources";
 import { observeI18nInit } from "./init";
 import { ar } from "./resources/ar";
 import { en } from "./resources/en";
@@ -19,15 +20,15 @@ observeI18nInit(
     fallbackLng: "en",
     lng: "en",
     resources: {
-      ar: { translation: ar },
-      en: { translation: en },
-      es: { translation: es },
-      fr: { translation: fr },
-      ja: { translation: ja },
-      ko: { translation: ko },
-      "pt-BR": { translation: ptBR },
-      ru: { translation: ru },
-      "zh-CN": { translation: zhCN },
+      ar: { translation: withForkTranslations(ar, "ar") },
+      en: { translation: withForkTranslations(en, "en") },
+      es: { translation: withForkTranslations(es, "es") },
+      fr: { translation: withForkTranslations(fr, "fr") },
+      ja: { translation: withForkTranslations(ja, "ja") },
+      ko: { translation: withForkTranslations(ko, "ko") },
+      "pt-BR": { translation: withForkTranslations(ptBR, "pt-BR") },
+      ru: { translation: withForkTranslations(ru, "ru") },
+      "zh-CN": { translation: withForkTranslations(zhCN, "zh-CN") },
     },
     interpolation: {
       escapeValue: false,

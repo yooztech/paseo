@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PackageVersionResolutionError, resolvePackageVersion } from "../package-version.js";
-
-const SERVER_PACKAGE_NAME = "@getpaseo/server";
+import {
+  DaemonVersionResolutionError,
+  resolveDaemonVersion as resolveUpstreamDaemonVersion,
+} from "../daemon-version.js";
+export { DaemonVersionResolutionError };
 const RELEASE_TAG_PATTERN = /^v(?<version>\d+\.\d+\.\d+(?:-(?:beta|fork)\.\d+)?)$/;
-
-export class DaemonVersionResolutionError extends PackageVersionResolutionError {}
 
 function resolveCheckoutVersion(moduleUrl: string): string | null {
   try {
@@ -31,18 +31,5 @@ export function resolveDaemonVersion(moduleUrl: string = import.meta.url): strin
     return checkoutVersion;
   }
 
-  try {
-    return resolvePackageVersion({
-      moduleUrl,
-      packageName: SERVER_PACKAGE_NAME,
-    });
-  } catch (error) {
-    if (error instanceof PackageVersionResolutionError) {
-      throw new DaemonVersionResolutionError({
-        moduleUrl,
-        packageName: SERVER_PACKAGE_NAME,
-      });
-    }
-    throw error;
-  }
+  return resolveUpstreamDaemonVersion(moduleUrl);
 }
