@@ -103,6 +103,40 @@ describe("service proxy subsystem shape", () => {
     }
   });
 
+  it("passes requests for the daemon's own proxied hostnames through to daemon APIs", async () => {
+    const serviceProxy = createServiceProxySubsystem({
+      logger,
+      publicBaseUrl: "https://services.example.com",
+      daemonHostnames: [
+        "daemon--feature-x--repo.services.example.com",
+        "daemon--feature-x--repo.localhost",
+      ],
+    });
+    const port = await findFreePort();
+    const app = express();
+    app.use(serviceProxy.middleware());
+    app.use((_req, res) => {
+      res.status(200).send("daemon-api");
+    });
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      await expect(
+        httpGet(port, `daemon--feature-x--repo.services.example.com:${port}`),
+      ).resolves.toEqual({ status: 200, body: "daemon-api" });
+      await expect(httpGet(port, `daemon--feature-x--repo.localhost:${port}`)).resolves.toEqual({
+        status: 200,
+        body: "daemon-api",
+      });
+      await expect(httpGet(port, `missing.services.example.com:${port}`)).resolves.toEqual({
+        status: 404,
+        body: "404 Not Found",
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("keeps configured public namespace classified after the last public route is removed", async () => {
     const serviceProxy = createServiceProxySubsystem({
       logger,

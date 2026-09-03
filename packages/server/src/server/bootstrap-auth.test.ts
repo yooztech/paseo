@@ -1,3 +1,4 @@
+import http from "node:http";
 import { WebSocket } from "ws";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -98,6 +99,37 @@ describe("daemon bearer auth", () => {
         `http://127.0.0.1:${daemonHandle.port}/api/files/download?token=invalid-token`,
       );
       expect(invalidToken.status).toBe(403);
+    } finally {
+      await daemonHandle.close();
+    }
+  });
+
+  test("serves file downloads on the daemon's own service-proxy hostname", async () => {
+    const daemonHostname = "daemon--feature-x--repo.services.example.com";
+    const daemonHandle = await createTestPaseoDaemon({
+      serviceProxy: {
+        publicBaseUrl: "https://services.example.com",
+        standaloneListen: null,
+        daemonHostnames: [daemonHostname],
+      },
+    });
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        const request = http.get(
+          {
+            hostname: "127.0.0.1",
+            port: daemonHandle.port,
+            path: "/api/files/download",
+            headers: { host: daemonHostname },
+          },
+          (response) => {
+            response.resume();
+            resolve(response.statusCode ?? 0);
+          },
+        );
+        request.on("error", reject);
+      });
+      expect(status).toBe(400);
     } finally {
       await daemonHandle.close();
     }
