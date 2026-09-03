@@ -68,6 +68,27 @@ describe("panel-store explorer tab resolution", () => {
     ).toBe("files");
   });
 
+  it("restores stored fork tabs for git checkouts", () => {
+    const key = buildExplorerCheckoutKey(serverId, cwd)!;
+
+    expect(
+      resolveExplorerTabForCheckout({
+        serverId,
+        cwd,
+        isGit: true,
+        explorerTabByCheckout: { [key]: "repository_graph" },
+      }),
+    ).toBe("repository_graph");
+    expect(
+      resolveExplorerTabForCheckout({
+        serverId,
+        cwd,
+        isGit: true,
+        explorerTabByCheckout: { [key]: "branch_ci" },
+      }),
+    ).toBe("branch_ci");
+  });
+
   it("falls back to default when stored tab is invalid", () => {
     const key = buildExplorerCheckoutKey(serverId, cwd)!;
     expect(

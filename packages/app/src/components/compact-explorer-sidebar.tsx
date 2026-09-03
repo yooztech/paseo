@@ -40,6 +40,10 @@ import {
 } from "@/components/sidebar-resize-handle-layout";
 import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import {
+  useCompactExplorerForkTabs,
+  type CompactExplorerForkTab,
+} from "@/fork/explorer-tabs/panels";
 
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
@@ -323,20 +327,55 @@ function ExplorerSidebarContent({
     enabled: isOpen,
     timelineEnabled: activeTab === "pr",
   });
-  const requestedTab: ExplorerTab =
-    !isGit && (activeTab === "changes" || activeTab === "pr") ? "files" : activeTab;
-  const resolvedTab: ExplorerTab = requestedTab === "pr" && !showPrTab ? "changes" : requestedTab;
+  const hasPullRequest = prPane.prNumber !== null;
+  const forkTabs = useCompactExplorerForkTabs({
+    serverId,
+    workspaceId,
+    workspaceRoot,
+    isGit,
+    isOpen,
+    activeTab,
+    hasPullRequest,
+    prLoading: prPane.isLoading,
+    prForge: prPane.forge,
+  });
+  const requestedTab: ExplorerTab = !isGit && activeTab !== "files" ? "files" : activeTab;
+  let resolvedTab = requestedTab;
+  if (
+    (requestedTab === "pr" && !showPrTab) ||
+    ((requestedTab === "repository_graph" || requestedTab === "branch_ci") &&
+      !forkTabs.some((tab) => tab.tab === requestedTab))
+  ) {
+    resolvedTab = "changes";
+  }
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const availableTabs = useMemo<ExplorerTab[]>(() => {
-    const tabs: ExplorerTab[] = isGit ? ["changes", "files"] : ["files"];
+    const tabs: ExplorerTab[] = isGit ? ["changes"] : [];
+    tabs.push(...forkTabs.filter((tab) => tab.rank < 2).map((tab) => tab.tab));
+    tabs.push("files");
     if (isGit && showPrTab) tabs.push("pr");
+    tabs.push(...forkTabs.filter((tab) => tab.rank >= 2).map((tab) => tab.tab));
     return tabs;
-  }, [isGit, showPrTab]);
+  }, [forkTabs, isGit, showPrTab]);
   const { mountedTabIds } = useMountedTabSet({
     activeTabId: resolvedTab,
     allTabIds: availableTabs,
     cap: availableTabs.length,
   });
+  const beforeFiles = forkTabs.filter((tab) => tab.rank < 2);
+  const afterPullRequest = forkTabs.filter((tab) => tab.rank >= 2);
+  const renderForkTab = (tab: CompactExplorerForkTab) => (
+    <ExplorerTabButton
+      key={tab.tab}
+      tab={tab.tab}
+      active={resolvedTab === tab.tab}
+      label={tab.label}
+      onTabPress={onTabPress}
+      testID={`explorer-tab-${tab.tab.replace(/_/g, "-")}`}
+    >
+      {tab.icon?.({ active: resolvedTab === tab.tab, theme })}
+    </ExplorerTabButton>
+  );
 
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
@@ -358,6 +397,7 @@ function ExplorerSidebarContent({
               testID="explorer-tab-changes"
             />
           )}
+          {beforeFiles.map(renderForkTab)}
           <ExplorerTabButton
             tab="files"
             active={resolvedTab === "files"}
@@ -382,6 +422,7 @@ function ExplorerSidebarContent({
               />
             </ExplorerTabButton>
           )}
+          {afterPullRequest.map(renderForkTab)}
         </View>
         <View style={styles.headerRightSection}>
           <Pressable
@@ -437,6 +478,13 @@ function ExplorerSidebarContent({
             />
           </RetainedPanel>
         ) : null}
+        {forkTabs.map((tab) =>
+          mountedTabIds.has(tab.tab) ? (
+            <RetainedPanel key={tab.tab} active={resolvedTab === tab.tab}>
+              {tab.content}
+            </RetainedPanel>
+          ) : null,
+        )}
       </View>
     </View>
   );

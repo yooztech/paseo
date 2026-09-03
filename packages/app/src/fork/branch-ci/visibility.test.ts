@@ -18,14 +18,16 @@ describe("Branch CI tab visibility", () => {
   });
 
   it("keeps a supported persisted CI tab visible while its pipeline is empty", () => {
-    expect(
-      shouldShowBranchCiTab({
-        ...visiblePipeline,
-        prForge: "github",
-        activeTab: "ci",
-        hasPipeline: false,
-      }),
-    ).toBe(true);
+    for (const activeTab of ["ci", "branch_ci"]) {
+      expect(
+        shouldShowBranchCiTab({
+          ...visiblePipeline,
+          prForge: "github",
+          activeTab,
+          hasPipeline: false,
+        }),
+      ).toBe(true);
+    }
   });
 
   it("hides a persisted CI tab when branch pipeline RPCs are unavailable", () => {
