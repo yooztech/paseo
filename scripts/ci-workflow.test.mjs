@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { relative as relativePath } from "node:path";
 import test from "node:test";
+import { load } from "js-yaml";
 
 const repoRoot = new URL("../", import.meta.url);
 const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
@@ -109,11 +110,11 @@ test("gated checks are statically named jobs with real job-level gating", () => 
 
 test("main push CI skips GitHub pull-request merge commits", () => {
   const workflowSource = readFileSync(ciWorkflowPath, "utf8");
-  const changes = jobBlocks(workflowSource).get("changes")?.join("\n") ?? "";
+  const workflow = load(workflowSource);
 
-  assert.match(
-    changes,
-    /if: \$\{\{ github\.event_name != 'push' \|\| !startsWith\(github\.event\.head_commit\.message, 'Merge pull request #'\) \}\}/,
+  assert.equal(
+    workflow.jobs.changes.if,
+    "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request #') }}",
   );
 });
 
