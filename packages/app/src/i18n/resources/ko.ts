@@ -1,4 +1,5 @@
 import { en, type TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   common: {
@@ -64,7 +65,7 @@ export const ko: TranslationResources = {
       agents: "에이전트",
       newAgent: "새 에이전트",
       open: "{{name}} 열기",
-      openInSidePanel: "사이드 패널에서 {{name}} 열기",
+      openInSidePane: "사이드 패널에서 {{name}} 열기",
       openInFocusedPane: "포커스된 창에서 {{name}} 열기",
       addProject: "프로젝트 추가",
       home: "홈",
@@ -202,6 +203,7 @@ export const ko: TranslationResources = {
     empty: "이 에이전트와 대화를 시작하세요...",
     scrollToBottom: "맨 아래로 스크롤",
     historyLoadFailed: "에이전트 기록을 로드할 수 없습니다.",
+    messageCapped: "이 메시지는 길이 제한으로 잘렸습니다({{bytes}}바이트).",
     permission: {
       plan: "계획",
       required: "권한 필요",
@@ -345,7 +347,6 @@ export const ko: TranslationResources = {
         added: "추가됨",
         started: "시작됨",
         completed: "완료됨",
-        reopened: "다시 열림",
       },
     },
     compaction: {
@@ -416,6 +417,8 @@ export const ko: TranslationResources = {
     },
     fileActions: {
       openFile: "파일 열기",
+      openIn: "{{target}}에서 열기",
+      openToSide: "옆에 열기",
       copyPath: "경로 복사",
       copyRelativePath: "상대 경로 복사",
       revealIn: "{{target}}에서 보기",
@@ -552,42 +555,6 @@ export const ko: TranslationResources = {
       updateHost: "기본 터미널 렌더러를 사용하도록 호스트를 업데이트합니다.",
       unableToSubscribe: "터미널을 구독할 수 없습니다",
     },
-    repositoryGraph: {
-      loading: "리포지토리 기록을 불러오는 중...",
-      loadError: "리포지토리 기록을 불러올 수 없습니다",
-      retry: "다시 시도",
-      empty: "커밋을 찾을 수 없습니다",
-      updateHost: "리포지토리 그래프를 보려면 호스트를 업데이트하세요",
-      limit: "최신 {{count}}개 커밋 표시 중",
-      detailsLoading: "Loading commit details...",
-      detailsLoadError: "Unable to load commit details",
-      detailsUpdateHost: "Update the host to view commit details",
-      commit: "Commit:",
-      parents: "Parents:",
-      author: "Author:",
-      authorDate: "Author Date:",
-      committer: "Committer:",
-      committerDate: "Committer Date:",
-      none: "None",
-      noChangedFiles: "No changed files",
-      actions: {
-        renameBranch: "Rename Branch...",
-        renameTag: "Rename Tag...",
-        deleteBranch: "Delete Branch...",
-        deleteTag: "Delete Tag...",
-        copyBranchName: "Copy Branch Name",
-        copyTagName: "Copy Tag Name",
-        branchNameCopied: "Branch name copied",
-        tagNameCopied: "Tag name copied",
-        deleteMessage: "Delete {{name}}?",
-        forceDelete: "Force delete",
-        deleteOnRemote: "Delete this branch on the remote",
-        delete: "Delete",
-        deleteFailed: "Unable to delete reference",
-        renamed: "Reference renamed",
-        deleted: "Reference deleted",
-      },
-    },
     tabs: {
       loading: "불러오는 중...",
       modified: "저장되지 않은 변경사항",
@@ -618,6 +585,7 @@ export const ko: TranslationResources = {
         closeLeft: "왼쪽 탭 닫기",
         closeRight: "오른쪽 탭 닫기",
         closeOthers: "다른 탭 닫기",
+        moveToMain: "기본 패널로 이동",
         reloadAgent: "에이전트 다시 로드",
         reloadAgentTooltip:
           "스킬, MCP 또는 로그인 상태를 업데이트하려면 에이전트를 다시 로드하세요.",
@@ -644,15 +612,12 @@ export const ko: TranslationResources = {
         terminalProfilesMenu: "터미널 프로필",
         editTerminalProfiles: "프로필 편집",
       },
-      sidePanel: {
+      explorerSidebar: {
         open: "사이드 패널 열기",
         close: "사이드 패널 닫기",
         toggle: "사이드 패널 토글",
         changes: "변경 사항",
-        repositoryGraph: "리포지토리 그래프",
         files: "파일",
-        ci: "CI",
-        ciUpdateHost: "브랜치 CI를 보려면 호스트를 업데이트하세요.",
       },
       toasts: {
         copyFailed: "복사 실패",
@@ -781,8 +746,6 @@ export const ko: TranslationResources = {
         },
         viewPr: "PR 보기",
         viewPr_mr: "MR 보기",
-        viewPrConflict: "PR 충돌 보기",
-        viewPrConflict_mr: "MR 충돌 보기",
         createPr: {
           label: "PR 생성",
           pending: "PR 생성 중...",
@@ -900,6 +863,7 @@ export const ko: TranslationResources = {
       },
       diff: {
         openChangesTab: "변경사항 탭 열기",
+        openDiffTab: "Diff 탭 열기",
         closeChangesTab: "변경사항 탭 닫기",
         binaryFile: "바이너리 파일",
         tooLarge: "표시하기에 diff가 너무 큽니다",
@@ -910,6 +874,7 @@ export const ko: TranslationResources = {
         switchToUnified: "통합 diff로 전환",
         switchToSplit: "나란히 보기 diff로 전환",
         options: "Diff 옵션",
+        inlineDiff: "인라인 Diff",
         hideWhitespace: "공백 숨기기",
         showWhitespace: "공백 표시",
         scrollLongLines: "긴 줄 스크롤",
@@ -975,7 +940,6 @@ export const ko: TranslationResources = {
         },
         empty: {
           noJobs: "작업 없음",
-          noChecks: "검사 없음",
           loadingPipeline: "파이프라인 로드 중…",
           pipelineJobsLoadFailed: "파이프라인 작업을 로드할 수 없습니다.",
           allowedToFail: "실패가 허용됨",
@@ -984,6 +948,16 @@ export const ko: TranslationResources = {
         accessibility: {
           pullRequest: "풀 리퀘스트 #{{number}}",
           pullRequest_mr: "병합 요청 !{{number}}",
+          checkStatus: {
+            passed: "통과",
+            failed: "실패",
+            warning: "경고",
+            actionRequired: "조치 필요",
+            manual: "수동",
+            pending: "대기 중",
+            skipped: "건너뜀",
+            cancelled: "취소됨",
+          },
         },
         states: {
           draft: "초안",
@@ -1174,6 +1148,14 @@ export const ko: TranslationResources = {
         serviceUnhealthy: "서비스 {{name}} 비정상",
         creating: "생성하는 중...",
       },
+      checks: {
+        passed: "통과: {{count}}개",
+        failed: "실패: {{count}}개",
+        warning: "경고: {{count}}개",
+        actionRequired: "조치 필요: {{count}}개",
+        manual: "수동: {{count}}개",
+        pending: "대기 중: {{count}}개",
+      },
       actions: {
         menu: "워크스페이스 작업",
         newWorkspace: "새 워크스페이스",
@@ -1259,6 +1241,12 @@ export const ko: TranslationResources = {
     },
   },
   desktop: {
+    windowControls: {
+      minimize: "창 최소화",
+      maximize: "창 최대화",
+      restore: "창 복원",
+      close: "창 닫기",
+    },
     quitting: {
       title: "Paseo 종료 중...",
       detail: "로컬 데몬을 중지하는 중입니다.",
@@ -1580,6 +1568,10 @@ export const ko: TranslationResources = {
         title: "직접 연결",
         description: "로컬 네트워크 또는 VPN.",
       },
+      remoteSsh: {
+        title: "원격 SSH",
+        description: "데스크톱 SSH 클라이언트를 통해 연결합니다.",
+      },
       scanQr: {
         title: "QR 코드 스캔",
         description: "암호화된 릴레이 연결.",
@@ -1628,6 +1620,23 @@ export const ko: TranslationResources = {
         tlsError: "TLS 오류. 직접 연결은 데몬 앞에 TLS 종단 장치가 있을 때만 SSL을 사용합니다.",
         unableToConnect: "연결할 수 없습니다. 호스트/포트와 데몬에 접근 가능한지 확인하세요.",
         details: "세부 정보: {{detail}}",
+      },
+    },
+    remoteSsh: {
+      title: "원격 SSH",
+      helper: "원격 호스트에서 실행 중인 Paseo 데몬에 연결합니다.",
+      fields: {
+        target: "SSH 호스트",
+      },
+      actions: {
+        cancel: "취소",
+        connect: "연결",
+        connecting: "연결 중...",
+      },
+      errors: {
+        targetRequired: "SSH 호스트가 필요합니다",
+        invalidTarget: "유효한 ssh:// 호스트를 입력하세요",
+        failedToConnect: "SSH로 연결할 수 없습니다. {{detail}}",
       },
     },
     link: {
@@ -1795,6 +1804,7 @@ export const ko: TranslationResources = {
     },
     diff: {
       changesLabel: "변경 사항",
+      diffLabel: "Diff",
       changesSubtitle: "작업 트리 diff",
       commitSubtitle: "커밋 diff",
       uncommittedSubtitle: "커밋되지 않은 변경 사항",
@@ -1889,6 +1899,7 @@ export const ko: TranslationResources = {
     sections: {
       general: "일반",
       appearance: "모양",
+      layout: en.settings.sections.layout,
       editor: "편집기",
       shortcuts: "단축키",
       integrations: "통합",
@@ -1897,6 +1908,7 @@ export const ko: TranslationResources = {
       diagnostics: "진단",
       about: "정보",
     },
+    layout: en.settings.layout,
     editor: {
       title: "편집기",
       vimKeybindings: "Vim 키 바인딩",
@@ -1926,8 +1938,10 @@ export const ko: TranslationResources = {
       providers: "프로바이더",
       usage: "사용량",
       terminals: "터미널",
+      plugins: "플러그인",
       host: "개요",
     },
+    plugins: pluginSettings.ko,
     metadataGeneration: {
       title: "메타데이터 생성",
       description:
@@ -1984,11 +1998,6 @@ export const ko: TranslationResources = {
         label: "터미널 스크롤백",
         description: "내장 터미널 버퍼에 보관되는 줄 수",
         accessibilityLabel: "터미널 스크롤백 줄 수",
-      },
-      sidePanelRouting: {
-        label: "보조 탭을 사이드 패널에서 열기",
-        description:
-          "파일 링크, 풀 리퀘스트, 설정 진행 상황이 포커스된 창이 아니라 작업 옆에서 열립니다",
       },
       autoExpandReasoning: {
         label: "추론 항상 펼치기",
@@ -2183,7 +2192,6 @@ export const ko: TranslationResources = {
         toggleBothSidebars: "양쪽 사이드바 토글",
         toggleSettings: "설정 토글",
         toggleFocusMode: "집중 모드 토글",
-        toggleExplorerPaneMaximization: "사이드 패널 최대화 전환",
         cycleTheme: "테마 순환",
         focusMessageInput: "메시지 입력란에 포커스",
         cycleAgentMode: "에이전트 모드 전환",
@@ -2267,6 +2275,7 @@ export const ko: TranslationResources = {
       badges: {
         relay: "릴레이",
         local: "로컬",
+        remoteSsh: "원격 SSH",
       },
       connections: {
         title: "연결",

@@ -1,17 +1,7 @@
-import {
-  isExplorerTabContributionId,
-  type ExplorerTabContributionId,
-} from "@/fork/explorer-tabs/registry";
-
-export type ExplorerTab = "changes" | "files" | "pr" | ExplorerTabContributionId;
+export type ExplorerTab = "changes" | "files" | "pr";
 
 export function isExplorerTab(value: unknown): value is ExplorerTab {
-  return (
-    value === "changes" ||
-    value === "files" ||
-    value === "pr" ||
-    (typeof value === "string" && isExplorerTabContributionId(value))
-  );
+  return value === "changes" || value === "files" || value === "pr";
 }
 
 export function buildExplorerCheckoutKey(serverId: string, cwd: string): string | null {

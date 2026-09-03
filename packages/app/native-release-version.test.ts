@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-const { getNativeReleaseVersion } = require("./native-release-version");
+const {
+  FDROID_ABI_VERSION_CODE_SUFFIXES,
+  getFdroidVersionCodes,
+  getNativeReleaseVersion,
+} = require("./native-release-version");
 
 describe("native release version", () => {
   it("uses the base Android version and leaves the fork slots available for iOS", () => {
@@ -57,5 +61,20 @@ describe("native release version", () => {
     expect(() => getNativeReleaseVersion("2.101.0", "app-v2.101.0-fork.999")).toThrow(
       "Derived native build version is out of range: 2101000999",
     );
+  });
+
+  it("derives one F-Droid version code per published ABI", () => {
+    expect(FDROID_ABI_VERSION_CODE_SUFFIXES).toEqual({
+      "armeabi-v7a": 1,
+      "arm64-v8a": 2,
+      x86: 3,
+      x86_64: 4,
+    });
+    expect(getFdroidVersionCodes("0.5.0")).toEqual([
+      { abi: "armeabi-v7a", versionCode: 50001 },
+      { abi: "arm64-v8a", versionCode: 50002 },
+      { abi: "x86", versionCode: 50003 },
+      { abi: "x86_64", versionCode: 50004 },
+    ]);
   });
 });

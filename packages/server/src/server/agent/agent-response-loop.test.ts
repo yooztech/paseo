@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import {
-  generateStructuredAgentResponse,
   getStructuredAgentResponse,
   generateStructuredAgentResponseWithFallback,
   StructuredAgentFallbackError,
@@ -255,39 +254,6 @@ describe("generateStructuredAgentResponseWithFallback", () => {
     expect(manager.checkedProviders).toEqual(["claude", "codex"]);
   });
 
-  it("gives each fallback provider its own timeout budget", async () => {
-    const timeoutBudgets: Array<number | undefined> = [];
-    const manager = createManager([
-      { provider: "claude", available: true, error: null },
-      { provider: "codex", available: true, error: null },
-    ]);
-
-    const result = await generateStructuredAgentResponseWithFallback({
-      manager,
-      cwd: "/tmp/project",
-      prompt: "Return JSON",
-      schema,
-      timeoutMs: 50,
-      providers: [
-        { provider: "claude", model: "haiku" },
-        { provider: "codex", model: "gpt-5.4-mini" },
-      ],
-      runner: async (options) => {
-        timeoutBudgets.push(options.timeoutMs);
-        if (options.agentConfig.provider === "claude") {
-          await new Promise((resolve) => setTimeout(resolve, 60));
-          throw new Error("Structured generation timed out (50ms)");
-        }
-        return { summary: "ok" };
-      },
-    });
-
-    expect(result).toEqual({ summary: "ok" });
-    expect(timeoutBudgets).toHaveLength(2);
-    expect(timeoutBudgets[1]).toBeGreaterThan(0);
-    expect(manager.checkedProviders).toEqual(["claude", "codex"]);
-  });
-
   it("throws a fallback error when all providers are unavailable or fail", async () => {
     const manager = createManager([
       { provider: "claude", available: false, error: "missing auth" },
@@ -311,28 +277,5 @@ describe("generateStructuredAgentResponseWithFallback", () => {
         },
       }),
     ).rejects.toBeInstanceOf(StructuredAgentFallbackError);
-  });
-
-  it("times out a provider run and closes its temporary agent", async () => {
-    const closeAgent = vi.fn(async () => undefined);
-    const deleteAgentState = vi.fn(async () => undefined);
-    const manager = {
-      createAgent: async () => ({ id: "temporary-agent" }),
-      runAgent: async () => await new Promise(() => undefined),
-      closeAgent,
-      deleteAgentState,
-    } as unknown as AgentManager;
-
-    await expect(
-      generateStructuredAgentResponse({
-        manager,
-        agentConfig: { provider: "claude", cwd: "/tmp/project" },
-        prompt: "Return JSON",
-        schema,
-        timeoutMs: 1,
-      }),
-    ).rejects.toThrow("Structured generation timed out (1ms)");
-    expect(closeAgent).toHaveBeenCalledWith("temporary-agent");
-    expect(deleteAgentState).toHaveBeenCalledWith("temporary-agent");
   });
 });

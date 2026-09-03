@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useCheckoutCommitsQuery, type CheckoutCommitsQueryResult } from "@/git/use-commits-query";
 import { ThemedChevron, chevronColorMapping } from "@/git/themed-chevron";
+import { normalizeBranchOptionName } from "@/utils/branch-suggestions";
 import { CommitRow } from "./commit-row";
 
 interface CommitsSectionProps {
@@ -55,23 +57,25 @@ function CommitsSectionContent({
   if (query.status !== "loaded") {
     return <CommitsSectionSkeleton />;
   }
-  // YOOZ DOWNSTREAM(sync): retain the base-context records returned by the daemon.
-  const commits = query.data.commits;
-  if (commits.length === 0) {
+  const workspaceCommits = query.data.commits.filter((commit) => !commit.isOnBase);
+  const baseRef = normalizeBranchOptionName(query.data.baseRef) ?? t("workspace.git.diff.base");
+  if (workspaceCommits.length === 0) {
     return (
       <View style={styles.noWorkspaceCommitsRow} testID="commits-section-no-workspace-commits">
-        <Text style={styles.noWorkspaceCommitsText}>{t("workspace.git.diff.commits.empty")}</Text>
+        <Text style={styles.noWorkspaceCommitsText}>
+          {t("workspace.git.diff.commits.noneAhead", { baseRef })}
+        </Text>
       </View>
     );
   }
   return (
     <View style={styles.list}>
-      {commits.map((commit, index) => (
+      {workspaceCommits.map((commit, index) => (
         <CommitRow
           key={commit.sha}
           commit={commit}
           isFirst={index === 0}
-          isLast={index === commits.length - 1}
+          isLast={index === workspaceCommits.length - 1}
           now={now}
           onCommitPress={onCommitPress}
         />
@@ -88,6 +92,7 @@ export function CommitsSection({
   onCollapsedChange,
 }: CommitsSectionProps) {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const isPanelActive = useRetainedPanelActive();
   const [now, setNow] = useState(() => new Date());
   const displayNow = useMemo(() => (isPanelActive ? new Date() : now), [isPanelActive, now]);
@@ -116,14 +121,21 @@ export function CommitsSection({
     () => [styles.headerChevron, !collapsed && styles.headerChevronExpanded],
     [collapsed],
   );
+  const containerStyle = useMemo(
+    () => [styles.container, { paddingBottom: insets.bottom }],
+    [insets.bottom],
+  );
 
   if (query.status === "unsupported") {
     return null;
   }
-  const commitCount = query.status === "loaded" ? query.data.commits.length : null;
+  const commitCount =
+    query.status === "loaded"
+      ? query.data.commits.filter((commit) => !commit.isOnBase).length
+      : null;
 
   return (
-    <View style={styles.container}>
+    <View style={containerStyle}>
       <Pressable
         accessibilityRole="button"
         testID="commits-section-header"

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSy
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   assertPullRequestAutoMergeDisableReady,
@@ -18,7 +18,8 @@ import {
   FileTransferOpcode,
   type FileTransferFrame,
 } from "@getpaseo/protocol/binary-frames/index";
-import { isSessionRpcAllowed, Session } from "./session.js";
+import { Session } from "./session.js";
+import { OWNER_PERMISSIONS, type DaemonPermission } from "./authorization/index.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
@@ -281,7 +282,7 @@ vi.mock("./worktree-bootstrap.js", async (importOriginal) => {
 });
 
 interface SessionForTestOptions {
-  scopes?: readonly string[];
+  permissions?: readonly DaemonPermission[];
   agentManager?: { [K in keyof SessionOptions["agentManager"]]?: unknown };
   agentStorage?: { [K in keyof SessionOptions["agentStorage"]]?: unknown };
   github?: Partial<ForgeService & GitHubService>;
@@ -290,7 +291,6 @@ interface SessionForTestOptions {
     getCheckout?: ReturnType<typeof vi.fn>;
     getCheckoutDiff?: ReturnType<typeof vi.fn>;
     getSnapshot?: ReturnType<typeof vi.fn>;
-    requestFetch?: ReturnType<typeof vi.fn>;
     suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
     listStashes?: ReturnType<typeof vi.fn>;
     peekSnapshot?: ReturnType<typeof vi.fn>;
@@ -301,8 +301,6 @@ interface SessionForTestOptions {
     resolveForge?: ReturnType<typeof vi.fn>;
     getWorkspaceGitMetadata?: ReturnType<typeof vi.fn>;
     getProjectSlug?: ReturnType<typeof vi.fn>;
-    setPullRequestStatusSettling?: ReturnType<typeof vi.fn>;
-    refreshCreatedPullRequestCiStatus?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
@@ -324,6 +322,7 @@ interface SessionForTestOptions {
   messages?: unknown[];
   targetedMessages?: Array<{ source: object; message: SessionOutboundMessage }>;
   binaryMessages?: Uint8Array[];
+  pluginRuntime?: SessionOptions["pluginRuntime"];
   orchestrationSkills?: SessionOptions["orchestrationSkills"];
   workspaceLabelService?: WorkspaceLabelService;
 }
@@ -343,7 +342,6 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     getCheckout: vi.fn(),
     getCheckoutDiff: vi.fn(),
     getSnapshot: vi.fn(),
-    requestFetch: vi.fn(),
     suggestBranchesForCwd: vi.fn(),
     listStashes: vi.fn(),
     peekSnapshot: vi.fn(),
@@ -356,8 +354,6 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     // Mirror production: invalidateForge resolves the forge and busts the
     // adapter's cache. The resolved forge here is github, so delegate to it.
     invalidateForge: vi.fn((cwd: string) => github.invalidate({ cwd })),
-    setPullRequestStatusSettling: vi.fn(),
-    refreshCreatedPullRequestCiStatus: vi.fn().mockResolvedValue(undefined),
     getProjectSlug: vi.fn(),
     ...options.workspaceGitService,
   };
@@ -415,6 +411,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       })),
       onChange: vi.fn(() => () => {}),
     }),
+    pluginRuntime: options.pluginRuntime,
     orchestrationSkills: options.orchestrationSkills,
     stt: options.stt ?? null,
     tts: null,
@@ -430,7 +427,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     serverId: options.serverId,
     daemonVersion: options.daemonVersion,
     daemonRuntimeConfig: options.daemonRuntimeConfig,
-    scopes: options.scopes ?? ["*"],
+    permissions: options.permissions ?? OWNER_PERMISSIONS,
   };
   return new Session(sessionOptions);
 }
@@ -472,6 +469,89 @@ test("routes host-scoped agent skills requests through the daemon owner", async 
     type: "agent.skills.save_selection.response",
     payload: { requestId: "save-skills", ...status, confirmationRequired: null },
   });
+});
+
+test("routes plugin requests and releases its owned catalog subscription on cleanup", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const listeners = new Set<(pluginId: string) => void>();
+  const releasePluginSubscription = vi.fn((listener: (pluginId: string) => void) => {
+    listeners.delete(listener);
+  });
+  const plugin = {
+    id: "example",
+    path: "/plugins/example",
+    enabled: true,
+    status: "running" as const,
+  };
+  const pluginRuntime: NonNullable<SessionOptions["pluginRuntime"]> = {
+    listPlugins: () => [plugin],
+    getLogs: () => [
+      {
+        sequence: 1,
+        timestamp: "2026-08-16T12:00:00.000Z",
+        stream: "stdout",
+        message: "ready",
+      },
+    ],
+    installDirectory: async () => plugin,
+    inspectDirectory: async () => ({ id: "example" }),
+    reloadPlugin: async () => plugin,
+    enablePlugin: async () => plugin,
+    disablePlugin: async () => ({ ...plugin, enabled: false, status: "disabled" }),
+    removePlugin: async () => undefined,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => releasePluginSubscription(listener);
+    },
+    catalog: () => [{ id: "example", clientBundle: "bundle" }],
+    invokePluginRpc: async () => ({ ok: true }),
+  };
+  const session = createSessionForTest({ messages, pluginRuntime });
+
+  await session.handleMessage({ type: "plugin.list.request", requestId: "list" });
+  await session.handleMessage({
+    type: "plugin.logs.get.request",
+    requestId: "logs",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.directory.install.request",
+    requestId: "install",
+    path: "/plugins/example",
+  });
+  await session.handleMessage({
+    type: "plugin.reload.request",
+    requestId: "reload",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.disable.request",
+    requestId: "disable",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.remove.request",
+    requestId: "remove",
+    pluginId: "example",
+  });
+  for (const listener of listeners) listener("example");
+
+  expect(messages.map((message) => message.type)).toEqual([
+    "plugin.list.response",
+    "plugin.logs.get.response",
+    "plugin.directory.install.response",
+    "plugin.reload.response",
+    "plugin.disable.response",
+    "plugin.remove.response",
+    "status",
+  ]);
+  expect(messages.at(-1)).toEqual({
+    type: "status",
+    payload: { status: "plugin_catalog_changed", pluginId: "example" },
+  });
+  await session.cleanup();
+  expect(listeners.size).toBe(0);
+  expect(releasePluginSubscription).toHaveBeenCalledOnce();
 });
 
 describe("workspace label subscriptions", () => {
@@ -641,7 +721,8 @@ describe("workspace label editing", () => {
     ]);
   });
 });
-describe("session authorization scopes", () => {
+
+describe("session authorization permissions", () => {
   test("routes named-agent validation through the session source", async () => {
     const messages: SessionOutboundMessage[] = [];
     const providers = createProviderSnapshotManagerStub();
@@ -680,10 +761,10 @@ describe("session authorization scopes", () => {
     });
   });
 
-  test("rejects an RPC outside an exact grant with the generic RPC error", async () => {
+  test("rejects an operation without its semantic permission", async () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
-      scopes: ["hub.execution.agent.create.request"],
+      permissions: ["hub.execute"],
       messages,
     });
 
@@ -702,32 +783,16 @@ describe("session authorization scopes", () => {
     ]);
   });
 
-  test.each([
-    ["*", "ping"],
-    ["hub.execution.*", "hub.execution.agent.create.request"],
-    ["hub.execution.agent.create.request", "hub.execution.agent.create.request"],
-  ])("scope %s authorizes %s", (scope, requestType) => {
-    expect(isSessionRpcAllowed([scope], requestType)).toBe(true);
-  });
-
-  test.each([
-    ["hub.execution.*", "hub.management.daemon.get_status.request"],
-    ["hub.execution.agent.create.request", "hub.execution.agent.update"],
-    ["hub.execution.*", "hub.executions.agent.create.request"],
-  ])("scope %s rejects %s", (scope, requestType) => {
-    expect(isSessionRpcAllowed([scope], requestType)).toBe(false);
-  });
-
-  test("replaces a session's scopes without reconstructing the session", async () => {
+  test("replaces a session's permissions without reconstructing the session", async () => {
     const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ scopes: ["hub.execution.*"], messages });
+    const session = createSessionForTest({ permissions: ["hub.execute"], messages });
 
     await session.handleMessage({
       type: "ping",
       requestId: "before-scope-change",
       clientSentAt: 1,
     });
-    session.setScopes(["*"]);
+    session.setPermissions(["daemon.read"]);
     await session.handleMessage({ type: "ping", requestId: "after-scope-change", clientSentAt: 2 });
 
     expect(messages).toEqual([
@@ -2586,20 +2651,10 @@ diff --git a/file.txt b/file.txt
 `;
 
   afterEach(() => {
-    vi.useRealTimers();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  async function completePrCreate(request: Promise<void>): Promise<void> {
-    await vi.runAllTimersAsync();
-    await request;
-  }
 
   function makeRoot(): string {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "pr-metadata-session-test-")));
@@ -2646,16 +2701,14 @@ diff --git a/file.txt b/file.txt
     });
     const session = createSessionForTest({ workspaceGitService });
 
-    await completePrCreate(
-      session.handleMessage({
-        type: "checkout_pr_create_request",
-        cwd: join(repoRoot, "nested"),
-        baseRef: "main",
-        title: "",
-        body: "",
-        requestId: "request-generated-pr",
-      }),
-    );
+    await session.handleMessage({
+      type: "checkout_pr_create_request",
+      cwd: join(repoRoot, "nested"),
+      baseRef: "main",
+      title: "",
+      body: "",
+      requestId: "request-generated-pr",
+    });
 
     return agentResponseMocks.generateStructuredAgentResponseWithFallback.mock.calls[0]?.[0];
   }
@@ -2693,16 +2746,14 @@ diff --git a/file.txt b/file.txt
     });
     const session = createSessionForTest({ workspaceGitService, messages });
 
-    await completePrCreate(
-      session.handleMessage({
-        type: "checkout_pr_create_request",
-        cwd: "/tmp/request-worktree",
-        baseRef: "main",
-        title: "",
-        body: "",
-        requestId: "request-generated-pr",
-      }),
-    );
+    await session.handleMessage({
+      type: "checkout_pr_create_request",
+      cwd: "/tmp/request-worktree",
+      baseRef: "main",
+      title: "",
+      body: "",
+      requestId: "request-generated-pr",
+    });
 
     expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledTimes(1);
     expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledWith("/tmp/request-worktree", {
@@ -2834,16 +2885,14 @@ diff --git a/file.txt b/file.txt
     });
     const session = createSessionForTest({ workspaceGitService, messages });
 
-    await completePrCreate(
-      session.handleMessage({
-        type: "checkout_pr_create_request",
-        cwd: "/tmp/request-worktree",
-        baseRef: "main",
-        title: "",
-        body: "",
-        requestId: "request-generated-pr-fallback",
-      }),
-    );
+    await session.handleMessage({
+      type: "checkout_pr_create_request",
+      cwd: "/tmp/request-worktree",
+      baseRef: "main",
+      title: "",
+      body: "",
+      requestId: "request-generated-pr-fallback",
+    });
 
     expect(checkoutGitMocks.createPullRequest).toHaveBeenCalledWith(
       "/tmp/request-worktree",
@@ -2866,18 +2915,17 @@ diff --git a/file.txt b/file.txt
     });
   });
 
-  test("returns creation before starting the background CI-only refresh", async () => {
+  test("forces workspace git and GitHub refresh after creating a pull request", async () => {
     const messages: unknown[] = [];
-    const ciRefresh = new Promise<void>(() => {});
+    const github = { invalidate: vi.fn() };
     const workspaceGitService = {
-      setPullRequestStatusSettling: vi.fn(),
-      refreshCreatedPullRequestCiStatus: vi.fn().mockReturnValue(ciRefresh),
+      getSnapshot: vi.fn().mockResolvedValue({}),
     };
     checkoutGitMocks.createPullRequest.mockResolvedValue({
       url: "https://github.com/getpaseo/paseo/pull/2",
       number: 2,
     });
-    const session = createSessionForTest({ workspaceGitService, messages });
+    const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
       type: "checkout_pr_create_request",
@@ -2888,19 +2936,11 @@ diff --git a/file.txt b/file.txt
       requestId: "request-pr-create",
     });
 
-    expect(workspaceGitService.refreshCreatedPullRequestCiStatus).toHaveBeenCalledWith(
-      "/tmp/request-worktree",
-      {
-        number: 2,
-        url: "https://github.com/getpaseo/paseo/pull/2",
-        title: "Update file",
-        baseRef: "main",
-      },
-    );
-    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenCalledWith(
-      "/tmp/request-worktree",
-      true,
-    );
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
+      force: true,
+      reason: "create-pr",
+    });
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
       payload: {
@@ -2909,78 +2949,6 @@ diff --git a/file.txt b/file.txt
         number: 2,
         error: null,
         requestId: "request-pr-create",
-      },
-    });
-  });
-
-  test("keeps the optimistic PR status instead of forcing a full forge refresh", async () => {
-    const workspaceGitService = {
-      setPullRequestStatusSettling: vi.fn(),
-      refreshCreatedPullRequestCiStatus: vi.fn().mockResolvedValue(undefined),
-      invalidateForge: vi.fn(),
-      getSnapshot: vi.fn().mockResolvedValue(null),
-    };
-    checkoutGitMocks.createPullRequest.mockResolvedValue({
-      url: "https://gitlab.com/getpaseo/paseo/-/merge_requests/2",
-      number: 2,
-    });
-    const session = createSessionForTest({ workspaceGitService });
-
-    await completePrCreate(
-      session.handleMessage({
-        type: "checkout_pr_create_request",
-        cwd: "/tmp/request-worktree",
-        baseRef: "main",
-        title: "Update file",
-        body: "Updates file.",
-        requestId: "request-mr-create-no-full-refresh",
-      }),
-    );
-
-    expect(workspaceGitService.refreshCreatedPullRequestCiStatus).toHaveBeenCalledOnce();
-    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
-    expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
-    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenLastCalledWith(
-      "/tmp/request-worktree",
-      false,
-    );
-  });
-
-  test("clears settling after a background CI refresh failure without changing creation success", async () => {
-    const messages: unknown[] = [];
-    const workspaceGitService = {
-      setPullRequestStatusSettling: vi.fn(),
-      refreshCreatedPullRequestCiStatus: vi.fn().mockRejectedValue(new Error("CI unavailable")),
-    };
-    checkoutGitMocks.createPullRequest.mockResolvedValue({
-      url: "https://github.com/getpaseo/paseo/pull/3",
-      number: 3,
-    });
-    const session = createSessionForTest({ workspaceGitService, messages });
-
-    await completePrCreate(
-      session.handleMessage({
-        type: "checkout_pr_create_request",
-        cwd: "/tmp/request-worktree",
-        baseRef: "main",
-        title: "Update file",
-        body: "Updates file.",
-        requestId: "request-pr-create-refresh-failure",
-      }),
-    );
-
-    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenLastCalledWith(
-      "/tmp/request-worktree",
-      false,
-    );
-    expect(messages).toContainEqual({
-      type: "checkout_pr_create_response",
-      payload: {
-        cwd: "/tmp/request-worktree",
-        url: "https://github.com/getpaseo/paseo/pull/3",
-        number: 3,
-        error: null,
-        requestId: "request-pr-create-refresh-failure",
       },
     });
   });
@@ -3710,10 +3678,7 @@ describe("session checkout refresh handling", () => {
   test("forces a git, GitHub, and diff refresh on demand", async () => {
     const messages: unknown[] = [];
     const github = { invalidate: vi.fn() };
-    const workspaceGitService = {
-      getSnapshot: vi.fn().mockResolvedValue({}),
-      requestFetch: vi.fn(),
-    };
+    const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const checkoutDiffManager = { scheduleRefreshForCwd: vi.fn() };
     const session = createSessionForTest({
       github,
@@ -3729,7 +3694,6 @@ describe("session checkout refresh handling", () => {
     });
 
     expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
-    expect(workspaceGitService.requestFetch).toHaveBeenCalledWith("/tmp/request-worktree");
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       includeForge: true,

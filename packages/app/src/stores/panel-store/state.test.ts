@@ -95,34 +95,6 @@ describe("panel-store explorer tab resolution", () => {
       }),
     ).toBe("files");
   });
-
-  it("restores a stored repository graph tab for git checkouts", () => {
-    const key = buildExplorerCheckoutKey(serverId, cwd)!;
-    expect(
-      resolveExplorerTabForCheckout({
-        serverId,
-        cwd,
-        isGit: true,
-        explorerTabByCheckout: {
-          [key]: "repository_graph",
-        },
-      }),
-    ).toBe("repository_graph");
-  });
-
-  it("coerces a stored repository graph tab to files for non-git checkouts", () => {
-    const key = buildExplorerCheckoutKey(serverId, cwd)!;
-    expect(
-      resolveExplorerTabForCheckout({
-        serverId,
-        cwd,
-        isGit: false,
-        explorerTabByCheckout: {
-          [key]: "repository_graph",
-        },
-      }),
-    ).toBe("files");
-  });
 });
 
 describe("panel-store migration", () => {
@@ -142,16 +114,6 @@ describe("panel-store migration", () => {
     const state = migratePanelState({ diffCollapsedFoldersByWorkspace: { ws: ["src/app"] } }, 12);
 
     expect(state.diffCollapsedFoldersByWorkspace).toEqual({ ws: ["src/app"] });
-  });
-
-  it("preserves contributed explorer tabs", () => {
-    const state = migratePanelState(
-      { explorerTab: "ci", explorerTabByCheckout: { ws: "repository_graph" } },
-      12,
-    );
-
-    expect(state.explorerTab).toBe("ci");
-    expect(state.explorerTabByCheckout).toEqual({ ws: "repository_graph" });
   });
 
   it("initializes and preserves collapsed diff file paths by workspace", () => {

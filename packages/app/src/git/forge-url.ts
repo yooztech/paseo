@@ -6,12 +6,13 @@
  * format); an unknown forge has no grammar and yields null, so the action is
  * simply absent rather than wrong.
  *
- * URL grammar lives on each client forge module. The repo identity and host use
- * manifest metadata only to map known aliases or custom web origins; an
- * unconfigured self-hosted host is used as-is.
+ * URL grammar lives on each client forge module. The repo identity and host
+ * both ride the manifest's `cloudHosts` only to canonicalize a cloud SSH alias
+ * (e.g. ssh.github.com -> github.com); a self-hosted host is used as-is.
  */
 import { getForgeDefinition } from "@getpaseo/protocol/forge-manifest";
 import { normalizeHost, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
+import { getForkForgeWebAuthority } from "@getpaseo/protocol/fork/forges/self-hosted";
 import { getClientForgeLogicModule } from "@/git/forges";
 
 export interface ForgeBlobUrlInput {
@@ -27,6 +28,23 @@ export interface ForgeBranchTreeUrlInput {
   branch: string | null | undefined;
 }
 
+export function buildForgeChecksUrl(forge: string, changeRequestUrl: string): string | null {
+  const suffix = getClientForgeLogicModule(forge)?.urlGrammar?.changeRequestChecksSuffix;
+  if (!suffix) {
+    return null;
+  }
+  try {
+    const url = new URL(changeRequestUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    url.pathname = `${url.pathname.replace(/\/$/, "")}${suffix}`;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 interface ForgeWebLocation {
   host: string;
   /** Non-default port for a self-hosted http(s) origin, or undefined. */
@@ -35,9 +53,11 @@ interface ForgeWebLocation {
 }
 
 /**
- * Web host + repo path from a remote. Manifest overrides map hosts with custom
- * browser origins; cloud SSH aliases otherwise use the forge's primary host.
- * The repo path supports nested groups since it is the full remote path.
+ * Web host + repo path from a remote. The host is the remote's host, except a
+ * cloud SSH alias (a non-first entry in the forge's `cloudHosts`, e.g.
+ * ssh.github.com) is canonicalized to the forge's web host (`cloudHosts[0]`).
+ * Self-hosted hosts are returned untouched. The repo path supports nested
+ * groups (e.g. GitLab subgroups) since it is the full remote path.
  */
 function isValidRepoPath(path: string): boolean {
   const segments = path.split("/").filter((segment) => segment.length > 0);
@@ -58,14 +78,14 @@ function resolveForgeWebLocation(
   if (!location || !isValidRepoPath(location.path)) {
     return null;
   }
-  const definition = getForgeDefinition(forge);
-  const cloudHosts = (definition?.cloudHosts ?? []).map(normalizeHost);
+  const cloudHosts = (getForgeDefinition(forge)?.cloudHosts ?? []).map(normalizeHost);
   const isCloudHost = cloudHosts.includes(location.host);
-  const configuredAuthority = definition?.webAuthorities?.[location.host];
+  const configuredAuthority = getForkForgeWebAuthority(forge, location.host);
   const [configuredHost, configuredPort] = configuredAuthority?.split(":") ?? [];
   const webHost = configuredHost ?? (isCloudHost ? cloudHosts[0] : location.host);
-  // Without an explicit web authority, only an http(s) remote can supply the
-  // browser port. An SSH remote's port is unrelated to the web origin.
+  // Carry a non-default port only for a self-hosted http(s) origin (e.g.
+  // `:60443`): the web UI shares that origin. An SSH/scp remote's port is not the
+  // web port, and a canonicalized cloud host always serves on the default port.
   const port =
     configuredPort ??
     (!isCloudHost && (location.transport === "http" || location.transport === "https")

@@ -1,9 +1,7 @@
 import type {
-  ParsedDiffFile,
   RepositoryGraphCommit,
   RepositoryGraphCommitDetails,
 } from "@getpaseo/protocol/messages";
-import { parseAndHighlightDiff } from "../../utils/diff-highlighter.js";
 import { repositoryGraphGitPrimitives } from "../../../utils/checkout-git.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
 
@@ -228,29 +226,4 @@ export async function getRepositoryGraphCommitDetails({
     body: fields.slice(9).join("\x1f").trimEnd(),
     files: records[0]?.files ?? [],
   };
-}
-
-export async function getRepositoryGraphFileDiff({
-  cwd,
-  sha,
-  path,
-}: {
-  cwd: string;
-  sha: string;
-  path: string;
-}): Promise<ParsedDiffFile | null> {
-  const { stdout } = await runGitCommand(
-    ["show", sha, "--format=", "--diff-merges=first-parent", "--", path],
-    { cwd, envOverlay: READ_ONLY_GIT_ENV },
-  );
-  if (stdout.trim().length === 0) {
-    return null;
-  }
-  const files = await parseAndHighlightDiff(stdout, cwd, {
-    getOldFileContent: (file) =>
-      repositoryGraphGitPrimitives.readFileAtRef(cwd, `${sha}^`, file.path),
-    getNewFileContent: (file) => repositoryGraphGitPrimitives.readFileAtRef(cwd, sha, file.path),
-  });
-  const file = files.find((candidate) => candidate.path === path) ?? null;
-  return file?.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout) ? null : file;
 }

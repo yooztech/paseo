@@ -1,11 +1,5 @@
 import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
-const SINGLETON_WORKSPACE_TAB_KINDS: Partial<Record<WorkspaceTabTarget["kind"], true>> = {
-  files: true,
-  pull_request: true,
-  repository_graph: true,
-  branch_ci: true,
-};
 
 export function normalizeWorkspaceTabTarget(
   value: WorkspaceTabTarget | null | undefined,
@@ -41,6 +35,21 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "working_diff") {
     return normalizeWorkingDiffTabTarget(value);
   }
+  if (value.kind === "plugin") {
+    return normalizePluginTabTarget(value);
+  }
+  if (value.kind === "repository_graph_file_diff") {
+    const sha = trimNonEmpty(value.sha);
+    const path = trimNonEmpty(value.path);
+    return sha && path
+      ? {
+          kind: "repository_graph_file_diff",
+          sha,
+          path,
+          ...(value.requestId === undefined ? {} : { requestId: value.requestId }),
+        }
+      : null;
+  }
   return normalizeSimpleWorkspaceTabTarget(value);
 }
 
@@ -58,6 +67,7 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
       const browserId = trimNonEmpty(value.browserId);
       return browserId ? { kind: "browser", browserId } : null;
     }
+    case "changes_tree":
     case "files":
     case "pull_request":
     case "repository_graph":
@@ -70,19 +80,6 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
     case "commit_diff": {
       const sha = trimNonEmpty(value.sha);
       return sha ? { kind: "commit_diff", sha } : null;
-    }
-    // FORK(repository-graph): normalize the fork-only file diff target.
-    case "repository_graph_file_diff": {
-      const sha = trimNonEmpty(value.sha);
-      const path = trimNonEmpty(value.path);
-      return sha && path
-        ? {
-            kind: "repository_graph_file_diff",
-            sha,
-            path,
-            ...(typeof value.requestId === "number" ? { requestId: value.requestId } : {}),
-          }
-        : null;
     }
     default:
       return null;
@@ -132,13 +129,47 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "terminal" && right.kind === "terminal") {
     return left.terminalId === right.terminalId;
   }
+  if (left.kind === "plugin" && right.kind === "plugin") {
+    return (
+      left.pluginId === right.pluginId &&
+      left.panelId === right.panelId &&
+      left.context === right.context &&
+      (left.context === "workspace" ||
+        (right.context === "agent" && left.agentId === right.agentId))
+    );
+  }
   return secondaryWorkspaceTabTargetsEqual(left, right);
+}
+
+function forkWorkspaceTabTargetsEqual(
+  left: WorkspaceTabTarget,
+  right: WorkspaceTabTarget,
+): boolean | null {
+  if (left.kind === "repository_graph") {
+    return right.kind === "repository_graph";
+  }
+  if (left.kind === "branch_ci") {
+    return right.kind === "branch_ci";
+  }
+  if (left.kind === "repository_graph_file_diff") {
+    return (
+      right.kind === "repository_graph_file_diff" &&
+      left.sha === right.sha &&
+      left.path === right.path &&
+      left.requestId === right.requestId
+    );
+  }
+  return null;
 }
 
 function secondaryWorkspaceTabTargetsEqual(
   left: WorkspaceTabTarget,
   right: WorkspaceTabTarget,
 ): boolean {
+  const forkResult = forkWorkspaceTabTargetsEqual(left, right);
+  if (forkResult !== null) {
+    return forkResult;
+  }
   if (left.kind === "browser" && right.kind === "browser") {
     return left.browserId === right.browserId;
   }
@@ -148,7 +179,13 @@ function secondaryWorkspaceTabTargetsEqual(
   if (left.kind === "working_diff" && right.kind === "working_diff") {
     return left.focusPath === right.focusPath && left.focusRequestId === right.focusRequestId;
   }
-  if (left.kind === right.kind && SINGLETON_WORKSPACE_TAB_KINDS[left.kind] === true) {
+  if (left.kind === "files" && right.kind === "files") {
+    return true;
+  }
+  if (left.kind === "changes_tree" && right.kind === "changes_tree") {
+    return true;
+  }
+  if (left.kind === "pull_request" && right.kind === "pull_request") {
     return true;
   }
   if (left.kind === "setup" && right.kind === "setup") {
@@ -156,10 +193,6 @@ function secondaryWorkspaceTabTargetsEqual(
   }
   if (left.kind === "commit_diff" && right.kind === "commit_diff") {
     return left.sha === right.sha;
-  }
-  // FORK(repository-graph): compare the fork-only file diff target.
-  if (left.kind === "repository_graph_file_diff" && right.kind === "repository_graph_file_diff") {
-    return left.sha === right.sha && left.path === right.path && left.requestId === right.requestId;
   }
   return false;
 }
@@ -222,14 +255,14 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "commit_diff") {
     return `commit_diff_${target.sha}`;
   }
-  // FORK(repository-graph): one reusable file diff tab per commit.
-  if (target.kind === "repository_graph_file_diff") {
-    return `repository_graph_file_diff_${target.sha}`;
-  }
   if (target.kind === "working_diff") {
     return "working_diff";
   }
+  if (target.kind === "repository_graph_file_diff") {
+    return `repository_graph_file_diff_${target.sha}`;
+  }
   if (
+    target.kind === "changes_tree" ||
     target.kind === "files" ||
     target.kind === "pull_request" ||
     target.kind === "repository_graph" ||
@@ -237,7 +270,26 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   ) {
     return target.kind;
   }
+  if (target.kind === "plugin") {
+    const identity = `${target.pluginId.length}_${target.pluginId}_${target.panelId.length}_${target.panelId}`;
+    return target.context === "workspace"
+      ? `plugin_workspace_${identity}`
+      : `plugin_agent_${identity}_${target.agentId.length}_${target.agentId}`;
+  }
   return `file_${target.path}`;
+}
+
+function normalizePluginTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+): WorkspaceTabTarget | null {
+  const pluginId = trimNonEmpty(value.pluginId);
+  const panelId = trimNonEmpty(value.panelId);
+  if (!pluginId || !panelId) return null;
+  if (value.context === "workspace") {
+    return { kind: "plugin", pluginId, panelId, context: "workspace" };
+  }
+  const agentId = trimNonEmpty(value.agentId);
+  return agentId ? { kind: "plugin", pluginId, panelId, context: "agent", agentId } : null;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {

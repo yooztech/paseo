@@ -1,6 +1,4 @@
-import { isAbsolute } from "node:path";
 import type {
-  CheckoutCommitFileDiffRequest,
   CheckoutRepositoryGraphGetCommitDetailsRequest,
   CheckoutRepositoryGraphGetHistoryRequest,
   CheckoutRepositoryGraphMutateRefRequest,
@@ -11,7 +9,6 @@ import { assertSafeGitRef } from "../../worktree-session.js";
 import { expandTilde } from "../../../utils/path.js";
 import {
   getRepositoryGraphCommitDetails,
-  getRepositoryGraphFileDiff,
   getRepositoryGraphHistory,
   mutateRepositoryGraphRef,
 } from "./git.js";
@@ -51,26 +48,6 @@ export class RepositoryGraphForkSessionHandler {
       this.emit({
         type: "checkout.repository_graph.get_commit_details.response",
         payload: { cwd, sha, details: null, error: toCheckoutError(error), requestId },
-      });
-    }
-  }
-
-  async handleFileDiff(msg: CheckoutCommitFileDiffRequest): Promise<void> {
-    const { cwd, sha, path, requestId } = msg;
-    try {
-      assertSafeGitRef(sha, "commit");
-      if (path.length === 0 || isAbsolute(path) || path.split(/[\\/]/).includes("..")) {
-        throw new Error(`Invalid path: ${path}`);
-      }
-      const file = await getRepositoryGraphFileDiff({ cwd: expandTilde(cwd), sha, path });
-      this.emit({
-        type: "checkout.commits.file_diff.response",
-        payload: { cwd, sha, path, file, error: null, requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "checkout.commits.file_diff.response",
-        payload: { cwd, sha, path, file: null, error: toCheckoutError(error), requestId },
       });
     }
   }

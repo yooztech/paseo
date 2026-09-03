@@ -12,6 +12,8 @@ import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.j
 import {
   AgentProfileSchema,
   AgentSkillSelectionSchema,
+  PluginIdSchema,
+  PluginSourceSchema,
   TerminalProfileSchema,
 } from "@getpaseo/protocol/messages";
 import { PaseoServicePortAllocationSchema } from "@getpaseo/protocol/paseo-config-schema";
@@ -308,6 +310,8 @@ export const PersistedConfigSchema = z
       .optional(),
 
     providers: ProvidersSchema.optional(),
+    pluginsEnabled: z.boolean().optional(),
+    plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),
     worktrees: WorktreesConfigSchema.optional(),
     agents: z
       .object({

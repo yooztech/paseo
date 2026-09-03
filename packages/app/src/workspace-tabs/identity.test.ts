@@ -161,6 +161,14 @@ describe("commit diff tab identity", () => {
   });
 });
 
+describe("fork singleton tab identity", () => {
+  it("does not equate repository graph and branch CI targets", () => {
+    expect(workspaceTabTargetsEqual({ kind: "repository_graph" }, { kind: "branch_ci" })).toBe(
+      false,
+    );
+  });
+});
+
 describe("repository graph file diff tab identity", () => {
   it("keys one reusable file diff tab per commit", () => {
     expect(

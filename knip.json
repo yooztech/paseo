@@ -72,6 +72,7 @@
     "sherpa-onnx-node",
     "@playwright/test",
     "material-icon-theme",
+    "eas-cli",
     "wait-on",
     "concurrently",
     "get-port-cli",

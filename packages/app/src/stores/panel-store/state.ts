@@ -6,7 +6,6 @@ import {
 } from "../explorer-tab-memory";
 import { type ExplorerCheckoutContext } from "../explorer-checkout-context";
 import { z } from "zod";
-import { explorerTabContributionIds } from "@/fork/explorer-tabs/registry";
 
 export type MobilePanelView = "agent" | "agent-list" | "file-explorer";
 
@@ -117,7 +116,7 @@ export function buildToggleFileExplorerPatch(
   return { mobilePanel: setMobilePanelTarget(state.mobilePanel, "agent") };
 }
 
-const ExplorerTabSchema = z.enum(["changes", "files", "pr", ...explorerTabContributionIds]);
+const ExplorerTabSchema = z.enum(["changes", "files", "pr"]);
 const DesktopSidebarStorageSchema = z.strictObject({
   agentListOpen: z.boolean().optional(),
   focusModeEnabled: z.boolean().optional(),

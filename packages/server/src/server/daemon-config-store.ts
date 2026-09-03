@@ -29,6 +29,8 @@ interface SupportedMutableConfigPatch {
   terminalProfiles?: MutableDaemonConfig["terminalProfiles"];
   agentProfiles?: MutableDaemonConfig["agentProfiles"];
   skills?: MutableDaemonConfig["skills"];
+  pluginsEnabled?: boolean;
+  plugins?: MutableDaemonConfig["plugins"];
 }
 
 interface LoggerLike {
@@ -186,6 +188,7 @@ const RELOADABLE_PATHS = [
   "agents.catalogRefreshTimeoutMs",
   "agents.metadataGeneration",
   "agents.skills.selection",
+  "pluginsEnabled",
 ] as const;
 
 const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
@@ -208,6 +211,7 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["agents.catalogRefreshTimeoutMs", "catalogRefreshTimeoutMs"],
   ["agents.metadataGeneration", "metadataGeneration"],
   ["agents.skills.selection", "skills.selection"],
+  ["pluginsEnabled", "pluginsEnabled"],
 ]);
 
 function pathBelongsTo(path: string, owner: string): boolean {
@@ -270,6 +274,8 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
       : {}),
     ...(patch.terminalProfiles !== undefined ? { terminalProfiles: patch.terminalProfiles } : {}),
     ...(patch.agentProfiles !== undefined ? { agentProfiles: patch.agentProfiles } : {}),
+    ...(patch.pluginsEnabled !== undefined ? { pluginsEnabled: patch.pluginsEnabled } : {}),
+    ...(patch.plugins !== undefined ? { plugins: patch.plugins } : {}),
   };
 }
 
@@ -351,6 +357,7 @@ export class DaemonConfigStore {
     if (parsedPatch.skills?.selection !== undefined) {
       merged.skills = { selection: parsedPatch.skills.selection };
     }
+    if (parsedPatch.plugins !== undefined) merged.plugins = parsedPatch.plugins;
     const next = MutableDaemonConfigSchema.parse(
       omitMetadataGenerationProvidersFromConfig(
         omitProvidersFromConfig(merged, removedProviders),
@@ -391,7 +398,12 @@ export class DaemonConfigStore {
 
     const persisted = loadPersistedConfig(this.paseoHome, this.logger);
     const resolved = this.reloadSource.resolve(persisted);
-    const desired = MutableDaemonConfigSchema.parse(resolved.mutable);
+    // Plugin source changes require the plugin lifecycle operation or a daemon
+    // restart. The global switch is independently reloadable.
+    const desired = MutableDaemonConfigSchema.parse({
+      ...resolved.mutable,
+      plugins: this.current.plugins,
+    });
     const changedSinceLastApply = diffPaths(this.lastKnownPersisted, persisted);
     const overrideControlledPaths = compactOwnedPaths(
       changedSinceLastApply.filter((path) =>
@@ -564,6 +576,8 @@ function mergeMutablePatchIntoPersistedConfig(params: {
   const agents = mergeMutableAgentPatch(persisted.agents, patch, removeProviders);
   return {
     ...persisted,
+    ...(patch.pluginsEnabled !== undefined ? { pluginsEnabled: patch.pluginsEnabled } : {}),
+    ...(patch.plugins !== undefined ? { plugins: patch.plugins } : {}),
     ...(daemon ? { daemon } : { daemon: undefined }),
     ...(agents ? { agents } : { agents: undefined }),
   } as PersistedConfig;

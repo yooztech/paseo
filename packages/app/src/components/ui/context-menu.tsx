@@ -13,6 +13,7 @@ import {
   type PressableProps,
   type PressableStateCallbackType,
   type StyleProp,
+  type ViewProps,
   type ViewStyle,
 } from "react-native";
 import { isNative, isWeb } from "@/constants/platform";
@@ -28,7 +29,6 @@ import {
   type MenuTriggerState,
 } from "@/components/ui/menu";
 import { PressHighlight } from "@/components/ui/press-highlight";
-import { CONTEXT_MENU_TRIGGER_DATASET } from "@/components/ui/menu/context-menu-target";
 
 /**
  * A menu opened by a long press or a right click, anchored to the point of the gesture rather
@@ -99,6 +99,7 @@ type TriggerStyleProp = StyleProp<ViewStyle> | ((state: MenuTriggerState) => Sty
 
 export function ContextMenuTrigger({
   children,
+  contextOnly = false,
   disabled,
   highlightStyle,
   style,
@@ -119,6 +120,7 @@ export function ContextMenuTrigger({
     longPressDelayMs?: number;
     onContextMenu?: (event: unknown) => void;
     triggerRef?: Ref<View | null>;
+    contextOnly?: boolean;
   }
 >): ReactElement {
   const ctx = useMenuContext("ContextMenuTrigger");
@@ -189,11 +191,29 @@ export function ContextMenuTrigger({
     [style, ctx.open],
   );
 
+  if (contextOnly) {
+    const contextOnlyStyle =
+      typeof style === "function"
+        ? style({ pressed: false, hovered: false, open: ctx.open })
+        : style;
+    return (
+      <View
+        {...(props as ViewProps)}
+        ref={handleRef}
+        collapsable={false}
+        // @ts-ignore - onContextMenu is web-only and not in RN types.
+        onContextMenu={handleContextMenu}
+        style={contextOnlyStyle}
+      >
+        {children}
+      </View>
+    );
+  }
+
   return (
     <PressHighlight
       {...props}
       ref={handleRef}
-      dataSet={CONTEXT_MENU_TRIGGER_DATASET}
       collapsable={false}
       disabled={disabled}
       delayLongPress={longPressDelayMs}

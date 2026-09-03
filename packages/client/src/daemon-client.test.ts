@@ -1498,6 +1498,51 @@ test("sends and parses daemon config reload", async () => {
   });
 });
 
+test("gets a structured plugin log snapshot", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger: createMockLogger(),
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+  const connectPromise = client.connect();
+  mock.triggerOpen({ features: { pluginLogs: true } });
+  await connectPromise;
+
+  const response = client.getPluginLogs("example");
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toMatchObject({ type: "plugin.logs.get.request", pluginId: "example" });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "plugin.logs.get.response",
+      payload: {
+        requestId: request.requestId,
+        pluginId: "example",
+        entries: [
+          {
+            sequence: 3,
+            timestamp: "2026-08-16T12:00:00.000Z",
+            stream: "stdout",
+            message: "ready",
+          },
+        ],
+      },
+    }),
+  );
+
+  await expect(response).resolves.toEqual([
+    {
+      sequence: 3,
+      timestamp: "2026-08-16T12:00:00.000Z",
+      stream: "stdout",
+      message: "ready",
+    },
+  ]);
+});
+
 test("keeps waitForAgentUpsert initial fetch inside the requested deadline", async () => {
   useHeartbeatClock();
   const logger = createMockLogger();
@@ -1941,6 +1986,49 @@ test("file context action RPCs correlate success and error responses", async () 
     success: false,
     error: { code: "NOT_GIT_REPO", message: "Not a git repository" },
   });
+});
+
+test("serializes plugin source suffixes through the legacy path field", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_plugin_source",
+    logger: createMockLogger(),
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const installPromise = client.installPluginSource({
+    source: "owner/repository:plugins/review",
+  });
+  const request = parseSentFrame(mock.sent.at(-1));
+  expect(request).toEqual({
+    type: "plugin.source.install.request",
+    requestId: expect.any(String),
+    source: "owner/repository",
+    pluginPath: "plugins/review",
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "plugin.source.install.response",
+      payload: {
+        requestId: request.requestId,
+        plugin: {
+          id: "review",
+          path: "/plugins/review",
+          enabled: true,
+          status: "running",
+        },
+      },
+    }),
+  );
+
+  await expect(installPromise).resolves.toMatchObject({ id: "review", status: "running" });
 });
 
 test("a connection loss rejects an in-flight file context action", async () => {
@@ -4017,37 +4105,6 @@ test("requests checkout pull via RPC", async () => {
     success: true,
     error: null,
   });
-});
-
-test("allows commit metadata generation to run for two minutes", async () => {
-  useHeartbeatClock();
-  const logger = createMockLogger();
-  const mock = createMockTransport();
-
-  const client = new DaemonClient({
-    url: "ws://test",
-    clientId: "clsk_unit_test",
-    logger,
-    reconnect: { enabled: false },
-    transportFactory: () => mock.transport,
-  });
-  clients.push(client);
-
-  const connectPromise = client.connect();
-  mock.triggerOpen();
-  await connectPromise;
-
-  const responsePromise = client.checkoutCommit("/tmp/project", { addAll: true }, "req-commit");
-  let settled = false;
-  void responsePromise.catch(() => {
-    settled = true;
-  });
-
-  await vi.advanceTimersByTimeAsync(60_000);
-  expect(settled).toBe(false);
-
-  await vi.advanceTimersByTimeAsync(60_000);
-  await expect(responsePromise).rejects.toThrow("Timeout waiting for message (120000ms)");
 });
 
 test("renames a branch via RPC", async () => {

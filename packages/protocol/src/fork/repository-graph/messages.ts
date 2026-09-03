@@ -43,30 +43,6 @@ const RepositoryGraphCommitDetailsSchema = z.object({
   files: z.array(CheckoutCommitFileSchema),
 });
 
-const ParsedDiffFileSchema = z.object({
-  path: z.string(),
-  isNew: z.boolean(),
-  isDeleted: z.boolean(),
-  additions: z.number(),
-  deletions: z.number(),
-  hunks: z.array(
-    z.object({
-      oldStart: z.number(),
-      oldCount: z.number(),
-      newStart: z.number(),
-      newCount: z.number(),
-      lines: z.array(
-        z.object({
-          type: z.enum(["add", "remove", "context", "header"]),
-          content: z.string(),
-          tokens: z.array(z.object({ text: z.string(), style: z.string().nullable() })).optional(),
-        }),
-      ),
-    }),
-  ),
-  status: z.enum(["ok", "too_large", "binary"]).optional(),
-});
-
 export const CheckoutRepositoryGraphGetHistoryRequestSchema = z.object({
   type: z.literal("checkout.repository_graph.get_history.request"),
   cwd: z.string(),
@@ -90,14 +66,6 @@ export const CheckoutRepositoryGraphMutateRefRequestSchema = z.object({
   newName: z.string().optional(),
   force: z.boolean().optional(),
   deleteOnRemote: z.boolean().optional(),
-  requestId: z.string(),
-});
-
-export const CheckoutCommitFileDiffRequestSchema = z.object({
-  type: z.literal("checkout.commits.file_diff.request"),
-  cwd: z.string(),
-  sha: z.string(),
-  path: z.string(),
   requestId: z.string(),
 });
 
@@ -131,18 +99,6 @@ export const CheckoutRepositoryGraphMutateRefResponseSchema = z.object({
     refKind: z.enum(["head", "remote", "tag"]),
     name: z.string(),
     success: z.boolean(),
-    error: CheckoutErrorSchema.nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const CheckoutCommitFileDiffResponseSchema = z.object({
-  type: z.literal("checkout.commits.file_diff.response"),
-  payload: z.object({
-    cwd: z.string(),
-    sha: z.string(),
-    path: z.string(),
-    file: ParsedDiffFileSchema.nullable(),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),

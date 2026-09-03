@@ -1,7 +1,7 @@
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
@@ -536,9 +536,12 @@ describe("paseo daemon bootstrap", () => {
         await enrollmentReleased;
         return {
           daemonId: input.daemonId,
-          scopes: input.scopes,
+          permissions: input.permissions,
           webSocketUrl: "wss://hub.test/daemon",
         };
+      },
+      async updatePermissions(input) {
+        return { permissions: input.permissions };
       },
       async revoke(_input: HubRevocation): Promise<void> {},
       openSocket(_input: HubSocketCredentials, _events: HubSocketEvents): HubSocketConnection {
@@ -651,7 +654,7 @@ describe("paseo daemon bootstrap", () => {
     }
   });
 
-  test("rolls back already-open standalone listener when main daemon listen fails", async () => {
+  test("rolls back standalone listener without starting plugins when main listen fails", async () => {
     const mainPort = await findFreePort();
     const standalonePort = await findFreePort();
     const occupiedMain = http.createServer((_req, res) => {
@@ -662,7 +665,24 @@ describe("paseo daemon bootstrap", () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-main-rollback-"));
     const paseoHome = path.join(paseoHomeRoot, ".paseo");
     const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const pluginDirectory = path.join(paseoHomeRoot, "plugin");
+    const pluginPidPath = path.join(pluginDirectory, "plugin.pid");
     await mkdir(paseoHome, { recursive: true });
+    if (!isPlatform("win32")) {
+      await mkdir(pluginDirectory);
+      await writeFile(
+        path.join(pluginDirectory, "paseo-plugin.json"),
+        JSON.stringify({ id: "startup-rollback" }),
+      );
+      await writeFile(
+        path.join(pluginDirectory, "index.tsx"),
+        `import { writeFileSync } from "node:fs";
+export default function contribute(plugin: unknown) {
+  void plugin;
+  writeFileSync(${JSON.stringify(pluginPidPath)}, String(process.pid));
+}`,
+      );
+    }
     const config: PaseoDaemonConfig = {
       listen: `127.0.0.1:${mainPort}`,
       paseoHome,
@@ -678,12 +698,19 @@ describe("paseo daemon bootstrap", () => {
       openai: undefined,
       speech: undefined,
       serviceProxy: { standaloneListen: `127.0.0.1:${standalonePort}` },
+      pluginsEnabled: !isPlatform("win32"),
+      plugins: isPlatform("win32")
+        ? {}
+        : { "startup-rollback": { source: "directory", path: pluginDirectory } },
     };
     const daemon = await createPaseoDaemon(config, pino({ level: "silent" }));
 
     try {
       await expect(daemon.start()).rejects.toThrow();
       await expect(fetch(`http://127.0.0.1:${standalonePort}/api/health`)).rejects.toThrow();
+      if (!isPlatform("win32")) {
+        await expect(readFile(pluginPidPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      }
     } finally {
       await daemon.stop().catch(() => undefined);
       await new Promise<void>((resolve) => occupiedMain.close(() => resolve()));

@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import type pino from "pino";
 import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import { getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
@@ -52,6 +53,7 @@ import {
   pullCurrentBranch,
   pushCurrentBranch,
   listCheckoutCommits,
+  getCommitFileDiff,
 } from "../../../utils/checkout-git.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
 import { expandTilde } from "../../../utils/path.js";
@@ -314,7 +316,24 @@ export class CheckoutSession {
   }
 
   async handleCommitFileDiffRequest(msg: CheckoutCommitFileDiffRequest): Promise<void> {
-    return this.repositoryGraphFork.handleFileDiff(msg);
+    const { cwd, sha, path, requestId } = msg;
+
+    try {
+      assertSafeGitRef(sha, "commit");
+      if (path.length === 0 || isAbsolute(path) || path.split(/[\\/]/).includes("..")) {
+        throw new Error(`Invalid path: ${path}`);
+      }
+      const file = await getCommitFileDiff({ cwd: expandTilde(cwd), sha, path });
+      this.host.emit({
+        type: "checkout.commits.file_diff.response",
+        payload: { cwd, sha, path, file, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.commits.file_diff.response",
+        payload: { cwd, sha, path, file: null, error: toCheckoutError(error), requestId },
+      });
+    }
   }
 
   async handleValidateBranchRequest(msg: ValidateBranchRequest): Promise<void> {
@@ -1404,9 +1423,10 @@ export class CheckoutSession {
 
     try {
       const resolvedCwd = expandTilde(cwd);
-      // COMPAT(githubSearchRpc): added in v0.1.106, remove after 2026-12-28 —
-      // the legacy github_search RPC is GitHub by definition; the modern
-      // forge.search RPC resolves the cwd's forge.
+      // COMPAT(githubSearchRpc): the legacy github_search RPC is GitHub by
+      // definition; forge.search.* shipped in v0.2.0-beta.1 and resolves the
+      // cwd's forge. Remove after 2027-01-17 once the supported client floor
+      // is >= v0.2.0.
       const resolvedForge =
         msg.type === "github_search_request"
           ? { forge: "github", service: this.github }

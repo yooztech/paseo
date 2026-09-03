@@ -15,6 +15,10 @@ type CheckoutPrStatusWireStatus = Omit<CheckoutPrStatusPayloadStatus, "forge"> &
   forge?: string;
 };
 
+function toWireNullable<T>(value: T | null | undefined): T | null {
+  return value ?? null;
+}
+
 export function buildCheckoutStatusPayloadFromSnapshot({
   cwd,
   requestId,
@@ -25,7 +29,25 @@ export function buildCheckoutStatusPayloadFromSnapshot({
   snapshot: WorkspaceGitRuntimeSnapshot;
 }): CheckoutStatusResponse["payload"] {
   if (!snapshot.git.isGit) {
-    return buildNotGitCheckoutStatusPayload(cwd, requestId);
+    return {
+      cwd,
+      isGit: false,
+      repoRoot: null,
+      currentBranch: null,
+      isDirty: null,
+      baseRef: null,
+      aheadBehind: null,
+      upstreamRef: null,
+      aheadOfOrigin: null,
+      behindOfOrigin: null,
+      hasChangesFromBase: null,
+      hasChangesFromOrigin: null,
+      hasRemote: false,
+      remoteUrl: null,
+      isPaseoOwnedWorktree: false,
+      error: null,
+      requestId,
+    };
   }
 
   if (snapshot.git.repoRoot === null || snapshot.git.isDirty === null) {
@@ -37,64 +59,48 @@ export function buildCheckoutStatusPayloadFromSnapshot({
       throw new Error("Workspace git snapshot is missing required worktree status fields");
     }
 
-    return buildGitCheckoutStatusPayload(cwd, requestId, snapshot, true);
+    return {
+      cwd,
+      isGit: true,
+      repoRoot: snapshot.git.repoRoot,
+      mainRepoRoot: snapshot.git.mainRepoRoot,
+      currentBranch: toWireNullable(snapshot.git.currentBranch),
+      isDirty: snapshot.git.isDirty,
+      baseRef: snapshot.git.baseRef,
+      aheadBehind: toWireNullable(snapshot.git.aheadBehind),
+      upstreamRef: toWireNullable(snapshot.git.upstreamRef),
+      aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
+      behindOfOrigin: toWireNullable(snapshot.git.behindOfOrigin),
+      hasChangesFromBase: toWireNullable(snapshot.git.hasChangesFromBase),
+      hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
+      hasRemote: snapshot.git.hasRemote,
+      remoteUrl: snapshot.git.remoteUrl,
+      isPaseoOwnedWorktree: true,
+      error: null,
+      requestId,
+    };
   }
 
-  return buildGitCheckoutStatusPayload(cwd, requestId, snapshot, false);
-}
-
-function buildNotGitCheckoutStatusPayload(
-  cwd: string,
-  requestId: string,
-): CheckoutStatusResponse["payload"] {
   return {
     cwd,
-    isGit: false,
-    repoRoot: null,
-    currentBranch: null,
-    isDirty: null,
-    baseRef: null,
-    aheadBehind: null,
-    upstreamRef: null,
-    aheadOfOrigin: null,
-    behindOfOrigin: null,
-    hasRemote: false,
-    remoteUrl: null,
+    isGit: true,
+    repoRoot: snapshot.git.repoRoot,
+    mainRepoRoot: snapshot.git.mainRepoRoot,
+    currentBranch: toWireNullable(snapshot.git.currentBranch),
+    isDirty: snapshot.git.isDirty,
+    baseRef: toWireNullable(snapshot.git.baseRef),
+    aheadBehind: toWireNullable(snapshot.git.aheadBehind),
+    upstreamRef: toWireNullable(snapshot.git.upstreamRef),
+    aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
+    behindOfOrigin: toWireNullable(snapshot.git.behindOfOrigin),
+    hasChangesFromBase: toWireNullable(snapshot.git.hasChangesFromBase),
+    hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
+    hasRemote: snapshot.git.hasRemote,
+    remoteUrl: snapshot.git.remoteUrl,
     isPaseoOwnedWorktree: false,
     error: null,
     requestId,
   };
-}
-
-function buildGitCheckoutStatusPayload(
-  cwd: string,
-  requestId: string,
-  snapshot: WorkspaceGitRuntimeSnapshot,
-  isPaseoOwnedWorktree: true | false,
-): CheckoutStatusResponse["payload"] {
-  const { git } = snapshot;
-  return {
-    cwd,
-    isGit: true,
-    repoRoot: git.repoRoot,
-    mainRepoRoot: git.mainRepoRoot,
-    currentBranch: git.currentBranch ?? null,
-    isDirty: git.isDirty,
-    baseRef: isPaseoOwnedWorktree ? git.baseRef : (git.baseRef ?? null),
-    aheadBehind: git.aheadBehind ?? null,
-    ...(git.hasChangesFromBase !== undefined ? { hasChangesFromBase: git.hasChangesFromBase } : {}),
-    upstreamRef: git.upstreamRef ?? null,
-    aheadOfOrigin: git.aheadOfOrigin ?? null,
-    behindOfOrigin: git.behindOfOrigin ?? null,
-    ...(git.hasChangesFromOrigin !== undefined
-      ? { hasChangesFromOrigin: git.hasChangesFromOrigin }
-      : {}),
-    hasRemote: git.hasRemote,
-    remoteUrl: git.remoteUrl,
-    isPaseoOwnedWorktree,
-    error: null,
-    requestId,
-  } as CheckoutStatusResponse["payload"];
 }
 
 export function buildCheckoutPrStatusPayloadFromSnapshot({
@@ -115,8 +121,8 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
     status: normalizeCheckoutPrStatusPayload(snapshot.forge.pullRequest, forge),
     githubFeaturesEnabled: snapshot.forge.featuresEnabled,
     authState: snapshot.forge.authState,
-    pullRequestStatusSettling: snapshot.forge.pullRequestStatusSettling,
     ...(forge ? { forge } : {}),
+    pullRequestStatusSettling: snapshot.forge.pullRequestStatusSettling,
     error: snapshot.forge.error
       ? {
           code: "UNKNOWN",
@@ -158,9 +164,10 @@ export function normalizeCheckoutPrStatusPayload(
   }
   if (status.forgeSpecific) {
     payload.forgeSpecific = status.forgeSpecific;
-    // COMPAT(forgeSpecific): added in v0.1.106, remove after 2026-12-27. Keep
-    // mirroring GitHub facts onto `github` for clients that predate forgeSpecific;
-    // drop once the daemon floor >= v0.1.106.
+    // COMPAT(forgeSpecific): forgeSpecific shipped in v0.2.0-beta.1. Keep
+    // mirroring GitHub facts onto `github` for clients that predate it. Stop
+    // emitting the mirror after 2027-01-17 once the supported client floor
+    // is >= v0.2.0.
     if (isGitHubPullRequestStatusFacts(status.forgeSpecific)) {
       const { forge: _forge, ...githubFacts } = status.forgeSpecific;
       payload.github = githubFacts;
