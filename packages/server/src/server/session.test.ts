@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSy
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   assertPullRequestAutoMergeDisableReady,
@@ -291,6 +291,7 @@ interface SessionForTestOptions {
     getCheckout?: ReturnType<typeof vi.fn>;
     getCheckoutDiff?: ReturnType<typeof vi.fn>;
     getSnapshot?: ReturnType<typeof vi.fn>;
+    requestFetch?: ReturnType<typeof vi.fn>;
     suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
     listStashes?: ReturnType<typeof vi.fn>;
     peekSnapshot?: ReturnType<typeof vi.fn>;
@@ -301,6 +302,8 @@ interface SessionForTestOptions {
     resolveForge?: ReturnType<typeof vi.fn>;
     getWorkspaceGitMetadata?: ReturnType<typeof vi.fn>;
     getProjectSlug?: ReturnType<typeof vi.fn>;
+    setPullRequestStatusSettling?: ReturnType<typeof vi.fn>;
+    refreshCreatedPullRequestCiStatus?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
@@ -342,6 +345,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     getCheckout: vi.fn(),
     getCheckoutDiff: vi.fn(),
     getSnapshot: vi.fn(),
+    requestFetch: vi.fn(),
     suggestBranchesForCwd: vi.fn(),
     listStashes: vi.fn(),
     peekSnapshot: vi.fn(),
@@ -354,6 +358,8 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     // Mirror production: invalidateForge resolves the forge and busts the
     // adapter's cache. The resolved forge here is github, so delegate to it.
     invalidateForge: vi.fn((cwd: string) => github.invalidate({ cwd })),
+    setPullRequestStatusSettling: vi.fn(),
+    refreshCreatedPullRequestCiStatus: vi.fn().mockResolvedValue(undefined),
     getProjectSlug: vi.fn(),
     ...options.workspaceGitService,
   };
@@ -2651,10 +2657,20 @@ diff --git a/file.txt b/file.txt
 `;
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  async function completePrCreate(request: Promise<void>): Promise<void> {
+    await vi.runAllTimersAsync();
+    await request;
+  }
 
   function makeRoot(): string {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "pr-metadata-session-test-")));
@@ -2915,17 +2931,18 @@ diff --git a/file.txt b/file.txt
     });
   });
 
-  test("forces workspace git and GitHub refresh after creating a pull request", async () => {
+  test("returns creation before starting the background CI-only refresh", async () => {
     const messages: unknown[] = [];
-    const github = { invalidate: vi.fn() };
+    const ciRefresh = new Promise<void>(() => {});
     const workspaceGitService = {
-      getSnapshot: vi.fn().mockResolvedValue({}),
+      setPullRequestStatusSettling: vi.fn(),
+      refreshCreatedPullRequestCiStatus: vi.fn().mockReturnValue(ciRefresh),
     };
     checkoutGitMocks.createPullRequest.mockResolvedValue({
       url: "https://github.com/getpaseo/paseo/pull/2",
       number: 2,
     });
-    const session = createSessionForTest({ github, workspaceGitService, messages });
+    const session = createSessionForTest({ workspaceGitService, messages });
 
     await session.handleMessage({
       type: "checkout_pr_create_request",
@@ -2936,11 +2953,19 @@ diff --git a/file.txt b/file.txt
       requestId: "request-pr-create",
     });
 
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
-      force: true,
-      reason: "create-pr",
-    });
-    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    expect(workspaceGitService.refreshCreatedPullRequestCiStatus).toHaveBeenCalledWith(
+      "/tmp/request-worktree",
+      {
+        number: 2,
+        url: "https://github.com/getpaseo/paseo/pull/2",
+        title: "Update file",
+        baseRef: "main",
+      },
+    );
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenCalledWith(
+      "/tmp/request-worktree",
+      true,
+    );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
       payload: {
@@ -2949,6 +2974,78 @@ diff --git a/file.txt b/file.txt
         number: 2,
         error: null,
         requestId: "request-pr-create",
+      },
+    });
+  });
+
+  test("keeps the optimistic PR status instead of forcing a full forge refresh", async () => {
+    const workspaceGitService = {
+      setPullRequestStatusSettling: vi.fn(),
+      refreshCreatedPullRequestCiStatus: vi.fn().mockResolvedValue(undefined),
+      invalidateForge: vi.fn(),
+      getSnapshot: vi.fn().mockResolvedValue(null),
+    };
+    checkoutGitMocks.createPullRequest.mockResolvedValue({
+      url: "https://gitlab.com/getpaseo/paseo/-/merge_requests/2",
+      number: 2,
+    });
+    const session = createSessionForTest({ workspaceGitService });
+
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: "/tmp/request-worktree",
+        baseRef: "main",
+        title: "Update file",
+        body: "Updates file.",
+        requestId: "request-mr-create-no-full-refresh",
+      }),
+    );
+
+    expect(workspaceGitService.refreshCreatedPullRequestCiStatus).toHaveBeenCalledOnce();
+    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
+    expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenLastCalledWith(
+      "/tmp/request-worktree",
+      false,
+    );
+  });
+
+  test("clears settling after a background CI refresh failure without changing creation success", async () => {
+    const messages: unknown[] = [];
+    const workspaceGitService = {
+      setPullRequestStatusSettling: vi.fn(),
+      refreshCreatedPullRequestCiStatus: vi.fn().mockRejectedValue(new Error("CI unavailable")),
+    };
+    checkoutGitMocks.createPullRequest.mockResolvedValue({
+      url: "https://github.com/getpaseo/paseo/pull/3",
+      number: 3,
+    });
+    const session = createSessionForTest({ workspaceGitService, messages });
+
+    await completePrCreate(
+      session.handleMessage({
+        type: "checkout_pr_create_request",
+        cwd: "/tmp/request-worktree",
+        baseRef: "main",
+        title: "Update file",
+        body: "Updates file.",
+        requestId: "request-pr-create-refresh-failure",
+      }),
+    );
+
+    expect(workspaceGitService.setPullRequestStatusSettling).toHaveBeenLastCalledWith(
+      "/tmp/request-worktree",
+      false,
+    );
+    expect(messages).toContainEqual({
+      type: "checkout_pr_create_response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        url: "https://github.com/getpaseo/paseo/pull/3",
+        number: 3,
+        error: null,
+        requestId: "request-pr-create-refresh-failure",
       },
     });
   });
@@ -3776,6 +3873,8 @@ describe("session checkout status handling", () => {
         aheadOfOrigin: 2,
         behindOfOrigin: 1,
         upstreamRef: null,
+        hasChangesFromBase: null,
+        hasChangesFromOrigin: null,
         hasRemote: true,
         remoteUrl: "https://github.com/getpaseo/paseo.git",
         isPaseoOwnedWorktree: false,
