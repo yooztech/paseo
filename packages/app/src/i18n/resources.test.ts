@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { withForkTranslations } from "@/fork/i18n-resources";
 import { ar } from "./resources/ar";
 import { en } from "./resources/en";
 import { es } from "./resources/es";
@@ -517,6 +518,11 @@ describe("translation resources", () => {
     expect(en.message.attachments.imagePreviewLoadFailed).toBe("Unable to load image preview.");
     expect(en.workspace.tabs.explorerSidebar.changes).toBe("Changes");
     expect(en.workspace.tabs.explorerSidebar.files).toBe("Files");
+    const mergedEn = flattenStrings(withForkTranslations(en, "en"));
+    const mergedZhCN = flattenStrings(withForkTranslations(zhCN, "zh-CN"));
+    expect(mergedEn["workspace.tabs.explorerSidebar.repositoryGraph"]).toBe("Repository Graph");
+    expect(mergedEn["workspace.tabs.explorerSidebar.ci"]).toBe("CI");
+    expect(mergedZhCN["workspace.tabs.explorerSidebar.repositoryGraph"]).toBe("仓库图");
     expect(en.workspace.tabs.actions.maximizePane).toBe("Maximize pane");
     expect(en.workspace.tabs.actions.restorePane).toBe("Restore pane");
     expect(en.branchSwitcher.triggerTooltip).toBe("Switch workspace branch");

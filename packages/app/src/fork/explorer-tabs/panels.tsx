@@ -16,16 +16,16 @@ import { useSessionStore } from "@/stores/session-store";
 
 const ThemedGitGraph = withUnistyles(GitGraph);
 const repositoryGraphPresentation = {
-  label: (t: TFunction) => t("workspace.tabs.sidePanel.repositoryGraph"),
-  subtitle: (t: TFunction) => t("workspace.tabs.sidePanel.repositoryGraph"),
-  tooltip: (t: TFunction) => t("workspace.tabs.sidePanel.repositoryGraph"),
+  label: (t: TFunction) => t("workspace.tabs.explorerSidebar.repositoryGraph"),
+  subtitle: (t: TFunction) => t("workspace.tabs.explorerSidebar.repositoryGraph"),
+  tooltip: (t: TFunction) => t("workspace.tabs.explorerSidebar.repositoryGraph"),
   icon: ThemedGitGraph,
 };
 
 const branchCiPresentation = {
-  label: (t: TFunction) => t("workspace.tabs.sidePanel.ci"),
-  subtitle: (t: TFunction) => t("workspace.tabs.sidePanel.ci"),
-  tooltip: (t: TFunction) => t("workspace.tabs.sidePanel.ci"),
+  label: (t: TFunction) => t("workspace.tabs.explorerSidebar.ci"),
+  subtitle: (t: TFunction) => t("workspace.tabs.explorerSidebar.ci"),
+  tooltip: (t: TFunction) => t("workspace.tabs.explorerSidebar.ci"),
   icon: GitLabIcon,
 };
 
@@ -73,7 +73,7 @@ function BranchCiPanel() {
   if (!featureEnabled) {
     return (
       <View style={styles.centerState}>
-        <Text style={styles.mutedText}>{t("workspace.tabs.sidePanel.ciUpdateHost")}</Text>
+        <Text style={styles.mutedText}>{t("workspace.tabs.explorerSidebar.ciUpdateHost")}</Text>
       </View>
     );
   }

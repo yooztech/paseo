@@ -625,8 +625,8 @@ function MobileWorkspaceTabOption({
       changes: t("panels.diff.changesLabel"),
       files: t("panels.files.label"),
       pullRequest: t("panels.pullRequest.label"),
-      repositoryGraph: t("workspace.tabs.sidePanel.repositoryGraph"),
-      ci: t("workspace.tabs.sidePanel.ci"),
+      repositoryGraph: t("workspace.tabs.explorerSidebar.repositoryGraph"),
+      ci: t("workspace.tabs.explorerSidebar.ci"),
     }),
     [t],
   );
@@ -2381,8 +2381,8 @@ function WorkspaceScreenContent({
       changes: t("panels.diff.changesLabel"),
       files: t("panels.files.label"),
       pullRequest: t("panels.pullRequest.label"),
-      repositoryGraph: t("workspace.tabs.sidePanel.repositoryGraph"),
-      ci: t("workspace.tabs.sidePanel.ci"),
+      repositoryGraph: t("workspace.tabs.explorerSidebar.repositoryGraph"),
+      ci: t("workspace.tabs.explorerSidebar.ci"),
     }),
     [t],
   );
