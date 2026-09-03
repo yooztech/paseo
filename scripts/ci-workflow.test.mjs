@@ -107,6 +107,16 @@ test("gated checks are statically named jobs with real job-level gating", () => 
   }
 });
 
+test("main push CI skips GitHub pull-request merge commits", () => {
+  const workflowSource = readFileSync(ciWorkflowPath, "utf8");
+  const changes = jobBlocks(workflowSource).get("changes")?.join("\n") ?? "";
+
+  assert.match(
+    changes,
+    /if: \$\{\{ github\.event_name != 'push' \|\| !startsWith\(github\.event\.head_commit\.message, 'Merge pull request #'\) \}\}/,
+  );
+});
+
 test("change gating allows superseded workflow runs to cancel", () => {
   for (const workflowPath of [ciWorkflowPath, dockerWorkflowPath, nixWorkflowPath]) {
     const source = readFileSync(workflowPath, "utf8");

@@ -20,6 +20,9 @@ env:
 jobs:
   changes:
     name: changes
+    # The pull request already validated GitHub's default merge commit. Keep push CI for direct
+    # changes to main without paying for the same full suite again after a PR merge.
+    if: ${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request #') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
