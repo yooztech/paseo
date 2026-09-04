@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { checkoutStatusQueryKey } from "@/git/query-keys";
-import { useSessionStore } from "@/stores/session-store";
 import { fetchCheckoutStatus } from "./checkout-status-cache";
 
 export type { CheckoutStatusPayload } from "./checkout-status-cache";
@@ -19,16 +17,6 @@ export function useCheckoutStatusQuery({ serverId, cwd }: UseCheckoutStatusQuery
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const refreshSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutRefresh === true,
-  );
-
-  useEffect(() => {
-    if (!client || !isConnected || !cwd || !refreshSupported) {
-      return;
-    }
-    void client.checkoutRefresh(cwd).catch(() => undefined);
-  }, [client, cwd, isConnected, refreshSupported]);
 
   const query = useQuery({
     queryKey: checkoutStatusQueryKey(serverId, cwd),
