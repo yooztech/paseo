@@ -259,8 +259,6 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     scheduleRefreshForCwd: () => {},
     onWorkspaceStateMayHaveChanged: () => {},
     invalidateForge: () => {},
-    setPullRequestStatusSettling: () => {},
-    refreshCreatedPullRequestCiStatus: async () => {},
     getMetrics: () => ({
       workspaceTargetCount: 0,
       workspaceListenerCount: 0,

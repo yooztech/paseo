@@ -347,78 +347,6 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
-  test("pull request settling state is shared without changing ordinary snapshots", async () => {
-    const service = createService();
-    const listener = vi.fn();
-    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, listener);
-
-    service.setPullRequestStatusSettling(REPO_CWD, true);
-
-    expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequestStatusSettling).toBe(true);
-    expect(listener).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        forge: expect.objectContaining({ pullRequestStatusSettling: true }),
-      }),
-    );
-
-    service.setPullRequestStatusSettling(REPO_CWD, false);
-
-    expect(service.peekSnapshot(REPO_CWD)?.forge).not.toHaveProperty("pullRequestStatusSettling");
-    expect(listener).toHaveBeenLastCalledWith(
-      createSnapshot(REPO_CWD, {
-        git: {
-          isGit: false,
-          repoRoot: null,
-          mainRepoRoot: null,
-          currentBranch: null,
-          remoteUrl: null,
-          isPaseoOwnedWorktree: false,
-          isDirty: null,
-          baseRef: null,
-          aheadBehind: null,
-          aheadOfOrigin: null,
-          behindOfOrigin: null,
-          upstreamRef: null,
-          hasRemote: false,
-          diffStat: null,
-        },
-        forge: {
-          featuresEnabled: false,
-          authState: "no_remote",
-          forge: undefined,
-          pullRequest: null,
-        },
-      }),
-    );
-
-    subscription.unsubscribe();
-    service.dispose();
-  });
-
-  test("created pull request CI refresh replaces stale merge facts with an unknown state", async () => {
-    const service = createService();
-    await service.getSnapshot(REPO_CWD);
-
-    const refresh = service.refreshCreatedPullRequestCiStatus(REPO_CWD, {
-      number: 42,
-      url: "https://github.com/acme/repo/pull/42",
-      title: "New pull request",
-      baseRef: "main",
-    });
-
-    expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest).toMatchObject({
-      number: 42,
-      state: "open",
-      mergeable: "UNKNOWN",
-      checksStatus: "none",
-      reviewDecision: null,
-    });
-    expect(service.peekSnapshot(REPO_CWD)?.forge.pullRequest?.forgeSpecific).toBeUndefined();
-
-    await refresh;
-    service.dispose();
-  });
-
   test("onSnapshotUpdated emits only for observed workspace snapshots and can unsubscribe", async () => {
     const service = createService();
     const snapshotListener = vi.fn();
@@ -920,7 +848,7 @@ describe("WorkspaceGitServiceImpl", () => {
       createSnapshot(REPO_CWD),
     );
 
-    expect(getPullRequestStatus).toHaveBeenCalledTimes(2);
+    expect(getPullRequestStatus).toHaveBeenCalledTimes(1);
     expect(resolveAbsoluteGitDir).toHaveBeenCalledTimes(0);
 
     subscription.unsubscribe();

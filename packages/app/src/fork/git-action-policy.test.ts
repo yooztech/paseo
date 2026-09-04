@@ -37,8 +37,6 @@ function createInput(overrides: Partial<ForkBuildGitActionsInput> = {}): ForkBui
     pullRequestIsDraft: false,
     pullRequestIsMerged: false,
     pullRequestMergeable: "UNKNOWN",
-    pullRequestChecksStatus: undefined,
-    prCreationPending: false,
     mergeCapability: null,
     hasRemote: false,
     isPaseoOwnedWorktree: true,
@@ -92,14 +90,6 @@ describe("fork git action policy", () => {
     );
 
     expect(actions.primary?.id).not.toBe("merge-branch");
-  });
-
-  it("defers merge actions while pull request checks are attaching", () => {
-    const actions = buildForkGitActions(
-      mergeablePullRequest({ pullRequestChecksStatus: "pending" }),
-    );
-
-    expect(actions.primary?.id).not.toMatch(/^merge-pr-/);
   });
 
   it("defaults direct pull request merges to merge commits", () => {

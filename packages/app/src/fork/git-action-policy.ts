@@ -1,8 +1,6 @@
 import { buildGitActions, type BuildGitActionsInput, type GitActions } from "../git/policy";
 
 export interface ForkBuildGitActionsInput extends BuildGitActionsInput {
-  pullRequestChecksStatus?: string;
-  prCreationPending: boolean;
   contentDiff?: {
     hasChangesFromBase?: boolean;
   };
@@ -54,13 +52,11 @@ function removeArchiveAction(actions: GitActions): GitActions {
 
 export function buildForkGitActions(input: ForkBuildGitActionsInput): GitActions {
   const hasChangesFromBase = input.contentDiff?.hasChangesFromBase ?? input.aheadCount > 0;
-  const deferPullRequestActions =
-    input.prCreationPending || input.pullRequestChecksStatus === "pending";
 
   const upstreamActions = buildGitActions({
     ...input,
     aheadCount: hasChangesFromBase ? Math.max(input.aheadCount, 1) : 0,
-    pullRequestIsDraft: input.pullRequestIsDraft || deferPullRequestActions,
+    pullRequestIsDraft: input.pullRequestIsDraft,
     mergeCapability: preferMergeCommit(input),
     shouldPromoteArchive: false,
   });

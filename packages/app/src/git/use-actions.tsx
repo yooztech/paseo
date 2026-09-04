@@ -103,10 +103,6 @@ function formatBaseRefLabel(baseRef: string | undefined, fallbackLabel: string):
 
 type PrStatusValue = NonNullable<CheckoutPrStatusPayload["status"]> | null;
 
-function getPullRequestChecksStatus(status: PrStatusValue): string | undefined {
-  return status?.checksStatus;
-}
-
 interface DeriveGitActionsStateArgs {
   isGit: boolean;
   status: CheckoutStatusPayload | null;
@@ -335,7 +331,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     status: prStatus,
     githubFeaturesEnabled,
     forge,
-    pullRequestStatusSettling,
   } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
@@ -682,8 +677,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     handleCreatePr();
   }, [prStatus?.url, handleCreatePr]);
 
-  const pullRequestChecksStatus = getPullRequestChecksStatus(prStatus);
-
   // Build actions
   const gitActionsInput = useMemo<ForkBuildGitActionsInput>(() => {
     const presentation = getForgePresentation(forge);
@@ -699,8 +692,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       pullRequestIsDraft: prStatus?.isDraft ?? false,
       pullRequestIsMerged: prStatus?.isMerged ?? false,
       pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
-      pullRequestChecksStatus,
-      prCreationPending: prCreateStatus === "pending" || pullRequestStatusSettling,
       mergeCapability: deriveMergeCapability(prStatus?.forgeSpecific, prStatus?.github),
       hasRemote,
       isPaseoOwnedWorktree,
@@ -817,8 +808,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     prStatus?.isDraft,
     prStatus?.isMerged,
     prStatus?.mergeable,
-    pullRequestChecksStatus,
-    pullRequestStatusSettling,
     prStatus?.forgeSpecific,
     prStatus?.github,
     aheadCount,

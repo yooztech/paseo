@@ -946,7 +946,6 @@ export class CheckoutSession {
   ): Promise<void> {
     const { cwd, requestId } = msg;
 
-    let result: { url: string; number: number; title: string; baseRef: string };
     try {
       let title = msg.title?.trim() ?? "";
       let body = msg.body?.trim() ?? "";
@@ -958,7 +957,7 @@ export class CheckoutSession {
       }
 
       const { service } = await this.requireForgeService(cwd);
-      const created = await createPullRequest(
+      const result = await createPullRequest(
         cwd,
         {
           title,
@@ -967,7 +966,18 @@ export class CheckoutSession {
         },
         service,
       );
-      result = { ...created, title, baseRef: msg.baseRef ?? "" };
+      await this.gitMutation.notifyGitMutation(cwd, "create-pr", { invalidateForge: true });
+
+      this.host.emit({
+        type: "checkout_pr_create_response",
+        payload: {
+          cwd,
+          url: result.url ?? null,
+          number: result.number ?? null,
+          error: null,
+          requestId,
+        },
+      });
     } catch (error) {
       this.host.emit({
         type: "checkout_pr_create_response",
@@ -979,37 +989,7 @@ export class CheckoutSession {
           requestId,
         },
       });
-      return;
     }
-
-    // Return remote creation before the optional CI-only refresh.
-    this.workspaceGitService.setPullRequestStatusSettling(cwd, true);
-    const ciRefresh = this.workspaceGitService.refreshCreatedPullRequestCiStatus(cwd, {
-      number: result.number,
-      url: result.url,
-      title: result.title,
-      baseRef: result.baseRef,
-    });
-    this.host.emit({
-      type: "checkout_pr_create_response",
-      payload: {
-        cwd,
-        url: result.url ?? null,
-        number: result.number ?? null,
-        error: null,
-        requestId,
-      },
-    });
-    void ciRefresh
-      .catch((error) => {
-        this.logger.warn(
-          { err: error, cwd, number: result.number, reason: "create-pr-ci-status" },
-          "Failed to refresh pull request CI status after creation",
-        );
-      })
-      .finally(() => {
-        this.workspaceGitService.setPullRequestStatusSettling(cwd, false);
-      });
   }
 
   async handleCheckoutPrMergeRequest(

@@ -5026,8 +5026,6 @@ const CheckoutPrStatusPayloadSchema = z.object({
   // githubFeaturesEnabled normalization after 2027-01-17 once the supported
   // daemon floor is >= v0.2.0.
   authState: ForgeAuthStateSchema,
-  // COMPAT(pullRequestStatusSettling): added in v0.2.6, remove after 2027-02-10.
-  pullRequestStatusSettling: z.boolean().optional(),
   // COMPAT(forge): added in v0.2.0-beta.1. Remove the GitHub default after
   // 2027-01-17 once the supported daemon floor is >= v0.2.0.
   forge: z.string().optional().default("github"),
