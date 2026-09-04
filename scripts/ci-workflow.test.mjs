@@ -100,6 +100,7 @@ test("gated checks are statically named jobs with real job-level gating", () => 
     const job = jobs.get(jobId)?.join("\n");
     assert.ok(job, `missing static job ${jobId}`);
     assert.match(job, new RegExp(`^    name: ${expected.name.replace(/[()]/g, "\\$&")}$`, "m"));
+    assert.match(job, /needs\.changes\.result == 'success'/);
     assert.match(job, /needs\.changes\.outputs\.full != 'false'/);
     for (const contract of expected.contracts ?? [expected.contract]) {
       assert.match(job, new RegExp(`needs\\.changes\\.outputs\\.${contract} != 'false'`));
@@ -124,7 +125,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
     assert.doesNotMatch(
       source,
       /\$\{\{\s*always\(\)/,
-      "always() keeps jobs alive after concurrency cancellation; use !cancelled() for fail-open gating",
+      "always() keeps jobs alive after concurrency cancellation",
     );
   }
 });
