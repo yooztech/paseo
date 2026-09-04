@@ -1421,6 +1421,64 @@ describe("ForgeService", () => {
     service.dispose?.();
   });
 
+  it("uses a fork-internal PR from the fork repository without redirecting to the parent", async () => {
+    let now = 0;
+    const parent = { owner: { login: "upstream" }, name: "widgets" };
+    const forkPr = batchPollPrNodeJson({
+      url: "https://github.com/forkowner/widgets/pull/33",
+      headRefName: "feat-a",
+      headRefOid: "oid-a",
+      headRepositoryOwner: { login: "forkowner" },
+    });
+    const runner = createScriptedRunner([
+      batchPollStatusJson({
+        t0: batchPollRepositoryJson([forkPr], {
+          isFork: true,
+          parent,
+          owner: { login: "forkowner" },
+        }),
+      }),
+      batchPollStatusJson({
+        t0: batchPollChecksAliasJson([
+          { __typename: "StatusContext", context: "ci", state: "SUCCESS" },
+        ]),
+      }),
+    ]);
+    const service = createGitHubService({
+      ttlMs: 0,
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => "forkowner/widgets",
+      now: () => now,
+    });
+    const statuses: Array<CurrentPullRequestStatus | null> = [];
+
+    const subscription = service.retainCurrentPullRequestStatusPoll?.({
+      cwd: "/ws-a",
+      headRef: "feat-a",
+      headSha: "oid-a",
+      onStatus: (status) => statuses.push(status),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+
+    expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(0);
+    expect(runner.calls).toHaveLength(2);
+    expect(runner.calls[0]?.args[3]).toContain(
+      't0: repository(owner: "forkowner", name: "widgets")',
+    );
+    expect(runner.calls[1]?.args[3]).not.toContain(
+      't0: repository(owner: "upstream", name: "widgets")',
+    );
+    expect(statuses).toEqual([
+      expect.objectContaining({ number: 42, repoOwner: "forkowner", checksStatus: "success" }),
+    ]);
+
+    subscription?.unsubscribe();
+    service.dispose?.();
+  });
+
   it("redirects a fork poll to its parent and reuses that batch address", async () => {
     let now = 0;
     const parent = { owner: { login: "upstream" }, name: "widgets" };
