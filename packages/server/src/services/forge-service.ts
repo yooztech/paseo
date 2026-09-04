@@ -521,7 +521,7 @@ export interface ForgeService {
     headRepositoryOwner?: string;
     onStatus?: (status: CurrentPullRequestStatus | null) => void;
     onError?: (error: unknown) => void;
-  }): { unsubscribe: () => void; nudge?: () => void };
+  }): { unsubscribe: () => void };
   invalidate(options: { cwd: string }): void;
   dispose?(): void;
 }

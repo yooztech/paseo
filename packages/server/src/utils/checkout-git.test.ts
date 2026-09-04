@@ -755,6 +755,7 @@ const x = 1;
     }
     expect(behindStatus.aheadOfOrigin).toBe(0);
     expect(behindStatus.behindOfOrigin).toBe(1);
+    expect(behindStatus.hasChangesFromOrigin).toBe(true);
 
     commitFile(repoDir, "local-1.txt", "local 1\n", "local update 1");
     commitFile(repoDir, "local-2.txt", "local 2\n", "local update 2");
@@ -779,6 +780,7 @@ const x = 1;
     expect(divergedStatus.upstreamRef).toBe("refs/remotes/origin/main");
     expect(divergedStatus.aheadOfOrigin).toBe(3);
     expect(divergedStatus.behindOfOrigin).toBe(2);
+    expect(divergedStatus.hasChangesFromOrigin).toBe(true);
     expect(upstreamCountCommands).toHaveLength(1);
     expect(upstreamCountCommands[0]?.args).toEqual([
       "for-each-ref",
@@ -820,6 +822,7 @@ const x = 1;
       return;
     }
     expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
+    expect(status.hasChangesFromOrigin).toBe(false);
   });
 
   it("compares a feature branch against the same most-ahead base ref used for updates", async () => {
