@@ -28,8 +28,13 @@ import type {
 import { DiffStat } from "@/components/diff-stat";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
-import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
+import {
+  PaneContentToolbar,
+  paneContentToolbarIconSize,
+  ToolbarButton,
+  ToolbarControls,
+} from "@/components/ui/pane-content-toolbar";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -40,6 +45,8 @@ import {
 import { useToast } from "@/contexts/toast-context";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { useSessionStore } from "@/stores/session-store";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { extraMutedIconColorMapping } from "@/components/ui/icon-button-chrome";
 import type { Theme } from "@/styles/theme";
 import { formatTimeAgo } from "@/utils/time";
 import {
@@ -81,6 +88,7 @@ const ThemedPencil = withUnistyles(Pencil);
 const ThemedTrash = withUnistyles(Trash2);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedTag = withUnistyles(Tag);
+const ThemedRotateCw = withUnistyles(RotateCw);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
@@ -659,6 +667,7 @@ export function RepositoryGraphPane({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const isCompact = useIsCompactFormFactor();
   const [search, setSearch] = useState("");
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<GraphRef | null>(null);
@@ -806,7 +815,7 @@ export function RepositoryGraphPane({
       : deleteTarget?.kind === "head" && Boolean(deleteTarget.upstream);
   return (
     <View style={styles.list}>
-      <View style={styles.toolbar}>
+      <PaneContentToolbar style={styles.toolbar} testID="repository-graph-toolbar">
         <SearchField
           value={search}
           onChangeText={setSearch}
@@ -815,17 +824,28 @@ export function RepositoryGraphPane({
           testID="repository-graph-search"
           clearTestID="repository-graph-search-clear"
         />
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={RotateCw}
-          loading={query.isFetching}
-          onPress={refresh}
-          accessibilityLabel={t("workspace.repositoryGraph.refresh")}
-          testID="repository-graph-refresh"
-          style={styles.refreshButton}
-        />
-      </View>
+        <ToolbarControls style={styles.toolbarActions}>
+          <ToolbarButton
+            label={t("workspace.repositoryGraph.refresh")}
+            compact={isCompact}
+            disabled={query.isFetching}
+            onPress={refresh}
+            testID="repository-graph-refresh"
+          >
+            {query.isFetching ? (
+              <ThemedLoadingSpinner
+                size={paneContentToolbarIconSize(isCompact)}
+                uniProps={extraMutedIconColorMapping}
+              />
+            ) : (
+              <ThemedRotateCw
+                size={paneContentToolbarIconSize(isCompact)}
+                uniProps={extraMutedIconColorMapping}
+              />
+            )}
+          </ToolbarButton>
+        </ToolbarControls>
+      </PaneContentToolbar>
       <RepositoryGraphContent
         commits={commits}
         rows={rows}
@@ -868,12 +888,11 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    height: "auto",
     paddingVertical: theme.spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
   },
-  refreshButton: { width: 32, paddingHorizontal: 0 },
+  toolbarActions: { marginLeft: "auto" },
   commitList: { flex: 1 },
   listContent: { paddingVertical: theme.spacing[2] },
   row: {
