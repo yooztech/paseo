@@ -60,12 +60,14 @@ export const CheckoutRepositoryGraphGetCommitDetailsRequestSchema = z.object({
 export const CheckoutRepositoryGraphMutateRefRequestSchema = z.object({
   type: z.literal("checkout.repository_graph.mutate_ref.request"),
   cwd: z.string(),
-  action: z.enum(["rename", "delete"]),
+  action: z.enum(["rename", "delete", "create"]),
   refKind: z.enum(["head", "remote", "tag"]),
   name: z.string(),
   newName: z.string().optional(),
+  targetSha: z.string().optional(),
   force: z.boolean().optional(),
   deleteOnRemote: z.boolean().optional(),
+  pushToRemote: z.boolean().optional(),
   requestId: z.string(),
 });
 
@@ -95,7 +97,7 @@ export const CheckoutRepositoryGraphMutateRefResponseSchema = z.object({
   type: z.literal("checkout.repository_graph.mutate_ref.response"),
   payload: z.object({
     cwd: z.string(),
-    action: z.enum(["rename", "delete"]),
+    action: z.enum(["rename", "delete", "create"]),
     refKind: z.enum(["head", "remote", "tag"]),
     name: z.string(),
     success: z.boolean(),

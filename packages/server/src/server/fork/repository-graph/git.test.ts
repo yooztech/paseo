@@ -283,4 +283,49 @@ describe("mutateRepositoryGraphRef", () => {
     );
     expect(git(["ls-remote", "--heads", "origin", "feature/remote"], repoDir)).toBe("");
   });
+
+  it("creates a tag on a commit without pushing when remote push is disabled", async () => {
+    const repoDir = initRepo();
+    const targetSha = git(["rev-parse", "HEAD"], repoDir);
+
+    await mutateRepositoryGraphRef({
+      cwd: repoDir,
+      action: "create",
+      refKind: "tag",
+      name: "local-only",
+      targetSha,
+      pushToRemote: false,
+    });
+
+    expect(git(["rev-parse", "refs/tags/local-only"], repoDir)).toBe(targetSha);
+  });
+
+  it("pushes a created tag to origin and deletes it locally and remotely", async () => {
+    const repoDir = initRepo();
+    const remoteDir = join(tempDirs[0] ?? "", "tags-remote.git");
+    git(["init", "--bare", remoteDir], repoDir);
+    git(["remote", "add", "origin", remoteDir], repoDir);
+    const targetSha = git(["rev-parse", "HEAD"], repoDir);
+
+    await mutateRepositoryGraphRef({
+      cwd: repoDir,
+      action: "create",
+      refKind: "tag",
+      name: "v2",
+      targetSha,
+      pushToRemote: true,
+    });
+    expect(git(["ls-remote", "--tags", "origin", "v2"], repoDir)).toContain(targetSha);
+
+    await mutateRepositoryGraphRef({
+      cwd: repoDir,
+      action: "delete",
+      refKind: "tag",
+      name: "v2",
+      deleteOnRemote: true,
+    });
+
+    expect(() => git(["rev-parse", "--verify", "refs/tags/v2"], repoDir)).toThrow();
+    expect(git(["ls-remote", "--tags", "origin", "v2"], repoDir)).toBe("");
+  });
 });

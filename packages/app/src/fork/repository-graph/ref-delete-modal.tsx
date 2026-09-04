@@ -11,7 +11,7 @@ interface RefDeleteModalProps {
   visible: boolean;
   name: string;
   kind: "head" | "remote" | "tag";
-  hasUpstream: boolean;
+  canDeleteOnRemote: boolean;
   onClose: () => void;
   onSubmit: (options: { force: boolean; deleteOnRemote: boolean }) => Promise<void>;
 }
@@ -55,7 +55,7 @@ export function RefDeleteModal({
   visible,
   name,
   kind,
-  hasUpstream,
+  canDeleteOnRemote,
   onClose,
   onSubmit,
 }: RefDeleteModalProps) {
@@ -117,11 +117,15 @@ export function RefDeleteModal({
             testID="ref-delete-force"
           />
         ) : null}
-        {kind === "head" && hasUpstream ? (
+        {canDeleteOnRemote ? (
           <DeleteOption
             checked={deleteOnRemote}
             disabled={isPending}
-            label={t("workspace.repositoryGraph.actions.deleteOnRemote")}
+            label={t(
+              kind === "tag"
+                ? "workspace.repositoryGraph.actions.deleteTagOnRemote"
+                : "workspace.repositoryGraph.actions.deleteOnRemote",
+            )}
             onPress={toggleRemote}
             testID="ref-delete-remote"
           />

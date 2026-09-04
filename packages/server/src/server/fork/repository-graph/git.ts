@@ -137,15 +137,34 @@ async function deleteRemoteBranch(cwd: string, name: string): Promise<void> {
 
 export interface RepositoryGraphRefMutation {
   cwd: string;
-  action: "rename" | "delete";
+  action: "rename" | "delete" | "create";
   refKind: "head" | "remote" | "tag";
   name: string;
   newName?: string;
+  targetSha?: string;
   force?: boolean;
   deleteOnRemote?: boolean;
+  pushToRemote?: boolean;
 }
 
 export async function mutateRepositoryGraphRef(input: RepositoryGraphRefMutation): Promise<void> {
+  if (input.action === "create") {
+    if (input.refKind !== "tag" || !input.targetSha) {
+      throw new Error("Creating a tag requires a target commit");
+    }
+    await runGitCommand(["tag", "--", input.name, input.targetSha], { cwd: input.cwd });
+    if (!input.pushToRemote) {
+      return;
+    }
+    try {
+      await runGitCommand(["push", "origin", "--", `refs/tags/${input.name}`], { cwd: input.cwd });
+    } catch (error) {
+      await runGitCommand(["tag", "-d", "--", input.name], { cwd: input.cwd });
+      throw error;
+    }
+    return;
+  }
+
   if (input.action === "rename") {
     if (!input.newName) {
       throw new Error("A new reference name is required");
@@ -175,6 +194,11 @@ export async function mutateRepositoryGraphRef(input: RepositoryGraphRefMutation
     return;
   }
   if (input.refKind === "tag") {
+    if (input.deleteOnRemote) {
+      await runGitCommand(["push", "origin", "--delete", "--", `refs/tags/${input.name}`], {
+        cwd: input.cwd,
+      });
+    }
     await runGitCommand(["tag", "-d", "--", input.name], { cwd: input.cwd });
     return;
   }

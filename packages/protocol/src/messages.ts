@@ -3499,6 +3499,8 @@ export const ServerInfoStatusPayloadSchema = z
         repositoryGraph: z.boolean().optional(),
         repositoryGraphCommitDetails: z.boolean().optional(),
         repositoryGraphRefActions: z.boolean().optional(),
+        // COMPAT(repositoryGraphTagActions): added in v0.7.3, remove after 2027-03-04.
+        repositoryGraphTagActions: z.boolean().optional(),
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: z.boolean().optional(),
         // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.

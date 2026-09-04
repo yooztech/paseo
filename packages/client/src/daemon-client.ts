@@ -788,12 +788,14 @@ export interface RenameBranchInput {
 }
 export interface RepositoryGraphRefMutationInput {
   cwd: string;
-  action: "rename" | "delete";
+  action: "rename" | "delete" | "create";
   refKind: "head" | "remote" | "tag";
   name: string;
   newName?: string;
+  targetSha?: string;
   force?: boolean;
   deleteOnRemote?: boolean;
+  pushToRemote?: boolean;
   requestId?: string;
 }
 export interface RenameTerminalInput {
@@ -3957,8 +3959,10 @@ export class DaemonClient {
             refKind: input.refKind,
             name: input.name,
             newName: input.newName,
+            targetSha: input.targetSha,
             force: input.force,
             deleteOnRemote: input.deleteOnRemote,
+            pushToRemote: input.pushToRemote,
           },
           timeout: 60000,
         },
