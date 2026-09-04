@@ -3162,75 +3162,79 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       let result: WorkspaceGitFetchResult | null = null;
       const eventsBeforeFetchSnapshot: FileChange[] = [];
       try {
-        result = await this.deps.runGitFetch(
-          target.cwd,
-          {
-            onRefSnapshot: (phase) => {
-              const events = target.bufferedFetchMetadataEvents.splice(0);
-              if (phase === "before") {
-                eventsBeforeFetchSnapshot.push(...events);
-              }
+        try {
+          result = await this.deps.runGitFetch(
+            target.cwd,
+            {
+              onRefSnapshot: (phase) => {
+                const events = target.bufferedFetchMetadataEvents.splice(0);
+                if (phase === "before") {
+                  eventsBeforeFetchSnapshot.push(...events);
+                }
+              },
             },
-          },
-          createRunGitCommand("background-fetch"),
-        );
-      } catch (error) {
-        this.logger.warn(
-          { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-          "Background git fetch failed",
-        );
-      } finally {
-        target.fetchInFlight = false;
-      }
-      this.flushFetchMetadataEvents(target, eventsBeforeFetchSnapshot);
-      if (!result || result.changes === null) {
-        target.recentFetchRemoteRefChanges.clear();
-        target.knownRemoteRefs = null;
-        this.flushBufferedFetchMetadataEvents(target);
-        if (result) {
+            createRunGitCommand("background-fetch"),
+          );
+        } catch (error) {
           this.logger.warn(
-            { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-            "Background git fetch ref classification failed; using structural refresh",
+            { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+            "Background git fetch failed",
           );
         }
-        this.scheduleRepoMetadataRefresh(target, "repo-fetch-unclassified", false);
-        return;
+        this.flushFetchMetadataEvents(target, eventsBeforeFetchSnapshot);
+        if (!result || result.changes === null) {
+          target.recentFetchRemoteRefChanges.clear();
+          target.knownRemoteRefs = null;
+          this.flushBufferedFetchMetadataEvents(target);
+          if (result) {
+            this.logger.warn(
+              { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+              "Background git fetch ref classification failed; using structural refresh",
+            );
+          }
+          this.scheduleRepoMetadataRefresh(target, "repo-fetch-unclassified", false);
+          return;
+        }
+        if (result.error) {
+          this.logger.warn(
+            { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+            "Background git fetch completed with errors after changing refs",
+          );
+        }
+        const expiresAtMs = this.deps.now().getTime() + FETCH_METADATA_ECHO_TTL_MS;
+        const remoteRefShapeChanged =
+          target.knownRemoteRefs !== null &&
+          result.remoteRefs !== undefined &&
+          !setsEqual(target.knownRemoteRefs, result.remoteRefs);
+        if (result.remoteRefs) {
+          target.knownRemoteRefs = new Set(result.remoteRefs);
+        }
+        target.recentFetchRemoteRefChanges.clear();
+        for (const change of result.changes) {
+          target.recentFetchRemoteRefChanges.set(change.ref, { change, expiresAtMs });
+        }
+        this.flushBufferedFetchMetadataEvents(target);
+        if (
+          result.nonRemoteRefsChanged === true ||
+          remoteRefShapeChanged ||
+          result.changes.some((change) => change.kind !== "moved")
+        ) {
+          this.scheduleRepoMetadataRefresh(target, "repo-fetch-ref-shape", false);
+          return;
+        }
+        if (result.changes.length === 0) {
+          return;
+        }
+        const refreshes = new Map<string, RepoMetadataWorkspaceRefresh>();
+        for (const change of result.changes) {
+          this.routeRemoteBranchRef(target, change.ref, refreshes, { narrow: true });
+        }
+        this.scheduleRepoMetadataRefresh(target, "repo-fetch", false, refreshes);
+      } finally {
+        // Keep the flag set until classification/refresh scheduling completes: tests and
+        // callers treat fetchInFlightCount === 0 as "fetch fully settled" (upstream #4171).
+        target.fetchInFlight = false;
       }
-      if (result.error) {
-        this.logger.warn(
-          { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-          "Background git fetch completed with errors after changing refs",
-        );
-      }
-      const expiresAtMs = this.deps.now().getTime() + FETCH_METADATA_ECHO_TTL_MS;
-      const remoteRefShapeChanged =
-        target.knownRemoteRefs !== null &&
-        result.remoteRefs !== undefined &&
-        !setsEqual(target.knownRemoteRefs, result.remoteRefs);
-      if (result.remoteRefs) {
-        target.knownRemoteRefs = new Set(result.remoteRefs);
-      }
-      target.recentFetchRemoteRefChanges.clear();
-      for (const change of result.changes) {
-        target.recentFetchRemoteRefChanges.set(change.ref, { change, expiresAtMs });
-      }
-      this.flushBufferedFetchMetadataEvents(target);
-      if (
-        result.nonRemoteRefsChanged === true ||
-        remoteRefShapeChanged ||
-        result.changes.some((change) => change.kind !== "moved")
-      ) {
-        this.scheduleRepoMetadataRefresh(target, "repo-fetch-ref-shape", false);
-        return;
-      }
-      if (result.changes.length === 0) {
-        return;
-      }
-      const refreshes = new Map<string, RepoMetadataWorkspaceRefresh>();
-      for (const change of result.changes) {
-        this.routeRemoteBranchRef(target, change.ref, refreshes, { narrow: true });
-      }
-      this.scheduleRepoMetadataRefresh(target, "repo-fetch", false, refreshes);
     })().finally(() => {
       target.fetchPromise = null;
     });
