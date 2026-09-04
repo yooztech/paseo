@@ -3499,6 +3499,8 @@ export const ServerInfoStatusPayloadSchema = z
         repositoryGraph: z.boolean().optional(),
         repositoryGraphCommitDetails: z.boolean().optional(),
         repositoryGraphRefActions: z.boolean().optional(),
+        // COMPAT(repositoryGraphTagActions): added in v0.7.3, remove after 2027-03-04.
+        repositoryGraphTagActions: z.boolean().optional(),
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: z.boolean().optional(),
         // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.
@@ -5024,8 +5026,6 @@ const CheckoutPrStatusPayloadSchema = z.object({
   // githubFeaturesEnabled normalization after 2027-01-17 once the supported
   // daemon floor is >= v0.2.0.
   authState: ForgeAuthStateSchema,
-  // COMPAT(pullRequestStatusSettling): added in v0.2.6, remove after 2027-02-10.
-  pullRequestStatusSettling: z.boolean().optional(),
   // COMPAT(forge): added in v0.2.0-beta.1. Remove the GitHub default after
   // 2027-01-17 once the supported daemon floor is >= v0.2.0.
   forge: z.string().optional().default("github"),

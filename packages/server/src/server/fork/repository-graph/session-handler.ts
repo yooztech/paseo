@@ -53,12 +53,26 @@ export class RepositoryGraphForkSessionHandler {
   }
 
   async handleMutateRef(msg: CheckoutRepositoryGraphMutateRefRequest): Promise<void> {
-    const { cwd, action, refKind, name, newName, force, deleteOnRemote, requestId } = msg;
+    const {
+      cwd,
+      action,
+      refKind,
+      name,
+      newName,
+      targetSha,
+      force,
+      deleteOnRemote,
+      pushToRemote,
+      requestId,
+    } = msg;
     let mutationError: unknown = null;
     try {
       assertSafeGitRef(name, refKind === "tag" ? "tag" : "branch");
       if (newName) {
         assertSafeGitRef(newName, refKind === "tag" ? "tag" : "branch");
+      }
+      if (targetSha) {
+        assertSafeGitRef(targetSha, "commit");
       }
       await mutateRepositoryGraphRef({
         cwd: expandTilde(cwd),
@@ -66,8 +80,10 @@ export class RepositoryGraphForkSessionHandler {
         refKind,
         name,
         newName,
+        targetSha,
         force,
         deleteOnRemote,
+        pushToRemote,
       });
     } catch (error) {
       mutationError = error;

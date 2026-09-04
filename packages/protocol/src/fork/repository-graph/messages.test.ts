@@ -65,6 +65,16 @@ describe("checkout.repository_graph.get_history schemas", () => {
       }).features,
     ).toEqual({});
   });
+
+  test("keeps tag actions capability optional", () => {
+    expect(
+      ServerInfoStatusPayloadSchema.parse({
+        status: "server_info",
+        serverId: "srv_test",
+        features: { repositoryGraphTagActions: true },
+      }).features,
+    ).toEqual({ repositoryGraphTagActions: true });
+  });
 });
 
 test("accepts repository graph ref mutation messages", () => {
@@ -95,6 +105,21 @@ test("accepts repository graph ref mutation messages", () => {
   expect(SessionInboundMessageSchema.parse(request)).toEqual(request);
   expect(CheckoutRepositoryGraphMutateRefResponseSchema.parse(response)).toEqual(response);
   expect(SessionOutboundMessageSchema.parse(response)).toEqual(response);
+});
+
+test("accepts repository graph tag creation messages", () => {
+  const request = {
+    type: "checkout.repository_graph.mutate_ref.request" as const,
+    cwd: "/repo",
+    action: "create" as const,
+    refKind: "tag" as const,
+    name: "v1.0.0",
+    targetSha: "abc123",
+    pushToRemote: true,
+    requestId: "request-create-tag",
+  };
+  expect(CheckoutRepositoryGraphMutateRefRequestSchema.parse(request)).toEqual(request);
+  expect(SessionInboundMessageSchema.parse(request)).toEqual(request);
 });
 
 test("accepts repository graph commit details messages", () => {

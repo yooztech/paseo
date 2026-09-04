@@ -1,5 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
 import type { IncomingMessage, Server as HTTPServer } from "http";
+import type { Duplex } from "node:stream";
 import { join } from "path";
 import { hostname as getHostname } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -57,7 +58,7 @@ import {
   type PushNotificationSender,
 } from "./push/index.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
-import type { ServiceProxySubsystem } from "./service-proxy.js";
+import { isServiceProxyUpgradeRequest, type ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
@@ -258,8 +259,6 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     scheduleRefreshForCwd: () => {},
     onWorkspaceStateMayHaveChanged: () => {},
     invalidateForge: () => {},
-    setPullRequestStatusSettling: () => {},
-    refreshCreatedPullRequestCiStatus: async () => {},
     getMetrics: () => ({
       workspaceTargetCount: 0,
       workspaceListenerCount: 0,
@@ -805,7 +804,7 @@ export class VoiceAssistantWebSocketServer {
   ): WebSocketServer {
     const password = auth?.password;
     const wss = new WebSocketServer({
-      server,
+      noServer: true,
       path: "/ws",
       handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
       verifyClient: ({ req }, callback) => {
@@ -817,6 +816,16 @@ export class VoiceAssistantWebSocketServer {
         );
       },
     });
+    const handleUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+      if (isServiceProxyUpgradeRequest(req)) {
+        return;
+      }
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    };
+    server.on("upgrade", handleUpgrade);
+    wss.once("close", () => server.off("upgrade", handleUpgrade));
     wss.on("connection", (ws, request) => {
       void this.attachAuthenticatedSocket(ws, request, password);
     });
@@ -1739,6 +1748,7 @@ export class VoiceAssistantWebSocketServer {
         repositoryGraph: true,
         repositoryGraphCommitDetails: true,
         repositoryGraphRefActions: true,
+        repositoryGraphTagActions: true,
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: true,
         // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.

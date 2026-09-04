@@ -1,5 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
-import { FlatList, Pressable, ScrollView, Text, View, type ListRenderItemInfo } from "react-native";
+import {
+  FlatList,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  type ListRenderItem,
+  type ListRenderItemInfo,
+} from "react-native";
 import {
   ChevronRight,
   Copy,
@@ -20,6 +28,8 @@ import type {
 import { DiffStat } from "@/components/diff-stat";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
+import { Button } from "@/components/ui/button";
+import { SearchField } from "@/components/ui/search-field";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -43,7 +53,10 @@ import { useRepositoryGraphCommitDetails } from "./use-commit-details";
 import { useRepositoryGraphHistory } from "./use-history";
 import { useRepositoryGraphRefMutation } from "./use-ref-mutation";
 import { RefDeleteModal } from "./ref-delete-modal";
+import { matchesRepositoryGraphSearch } from "./filter";
+import { TagCreateModal } from "./tag-create-modal";
 
+const EMPTY_COMMITS: RepositoryGraphCommit[] = [];
 const ROW_HEIGHT = 52;
 const LANE_WIDTH = 14;
 const LANE_PADDING = 10;
@@ -61,13 +74,13 @@ const GRAPH_COLORS = [
   "#6f24d6",
   "#bd8f00",
 ];
-const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedFile = withUnistyles(File);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedTrash = withUnistyles(Trash2);
 const ThemedCopy = withUnistyles(Copy);
+const ThemedTag = withUnistyles(Tag);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
@@ -268,50 +281,78 @@ function CommitRow({
   selected,
   onPress,
   actionsEnabled,
+  tagActionsEnabled,
   onRenameRef,
   onDeleteRef,
   onCopyRef,
+  onCreateTag,
 }: {
   row: RepositoryGraphRowLayout;
   laneCount: number;
   selected: boolean;
   onPress: () => void;
   actionsEnabled: boolean;
+  tagActionsEnabled: boolean;
   onRenameRef: (refInfo: GraphRef) => void;
   onDeleteRef: (refInfo: GraphRef) => void;
   onCopyRef: (refInfo: GraphRef) => void;
+  onCreateTag: (sha: string) => void;
 }) {
+  const { t } = useTranslation();
+  const openCreateTag = useCallback(
+    () => onCreateTag(row.commit.sha),
+    [onCreateTag, row.commit.sha],
+  );
+  const createTagLeading = useMemo(
+    () => <ThemedTag size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
+  const rowContent = (
+    <Pressable
+      style={interactiveRowStyle}
+      testID={`repository-graph-commit-${row.commit.shortSha}`}
+      onPress={onPress}
+    >
+      <GraphCell row={row} laneCount={laneCount} />
+      <View style={styles.commitBody}>
+        <View style={styles.subjectLine}>
+          <RefBadges
+            refs={row.commit.refs}
+            color={GRAPH_COLORS[row.color % GRAPH_COLORS.length] ?? GRAPH_COLORS[0]}
+            actionsEnabled={actionsEnabled}
+            onRename={onRenameRef}
+            onDelete={onDeleteRef}
+            onCopy={onCopyRef}
+          />
+          <Text style={styles.subject} numberOfLines={1}>
+            {row.commit.subject}
+          </Text>
+        </View>
+        <View style={styles.metaLine}>
+          <Text style={styles.author} numberOfLines={1}>
+            {row.commit.authorName}
+          </Text>
+          <Text style={styles.date}>{formatTimeAgo(new Date(row.commit.authorDate))}</Text>
+          <Text style={styles.sha}>{row.commit.shortSha}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+
   return (
     <View style={selected && styles.rowSelected}>
-      <Pressable
-        style={interactiveRowStyle}
-        testID={`repository-graph-commit-${row.commit.shortSha}`}
-        onPress={onPress}
-      >
-        <GraphCell row={row} laneCount={laneCount} />
-        <View style={styles.commitBody}>
-          <View style={styles.subjectLine}>
-            <RefBadges
-              refs={row.commit.refs}
-              color={GRAPH_COLORS[row.color % GRAPH_COLORS.length] ?? GRAPH_COLORS[0]}
-              actionsEnabled={actionsEnabled}
-              onRename={onRenameRef}
-              onDelete={onDeleteRef}
-              onCopy={onCopyRef}
-            />
-            <Text style={styles.subject} numberOfLines={1}>
-              {row.commit.subject}
-            </Text>
-          </View>
-          <View style={styles.metaLine}>
-            <Text style={styles.author} numberOfLines={1}>
-              {row.commit.authorName}
-            </Text>
-            <Text style={styles.date}>{formatTimeAgo(new Date(row.commit.authorDate))}</Text>
-            <Text style={styles.sha}>{row.commit.shortSha}</Text>
-          </View>
-        </View>
-      </Pressable>
+      {tagActionsEnabled ? (
+        <ContextMenu>
+          <ContextMenuTrigger>{rowContent}</ContextMenuTrigger>
+          <ContextMenuContent align="start" width={230} sheetTitle={row.commit.shortSha}>
+            <ContextMenuItem leading={createTagLeading} onSelect={openCreateTag}>
+              {t("workspace.repositoryGraph.actions.createTag")}
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      ) : (
+        rowContent
+      )}
     </View>
   );
 }
@@ -457,9 +498,11 @@ function CommitGraphItem({
   openWorkspaceTab,
   replaceWorkspaceTab,
   actionsEnabled,
+  tagActionsEnabled,
   onRenameRef,
   onDeleteRef,
   onCopyRef,
+  onCreateTag,
 }: {
   item: RepositoryGraphRowLayout;
   laneCount: number;
@@ -475,9 +518,11 @@ function CommitGraphItem({
     target: WorkspaceTabTarget,
   ) => string | null;
   actionsEnabled: boolean;
+  tagActionsEnabled: boolean;
   onRenameRef: (refInfo: GraphRef) => void;
   onDeleteRef: (refInfo: GraphRef) => void;
   onCopyRef: (refInfo: GraphRef) => void;
+  onCreateTag: (sha: string) => void;
 }) {
   const selected = item.commit.sha === selectedSha;
   const handlePress = useCallback(
@@ -524,9 +569,11 @@ function CommitGraphItem({
         selected={selected}
         onPress={handlePress}
         actionsEnabled={actionsEnabled}
+        tagActionsEnabled={tagActionsEnabled}
         onRenameRef={onRenameRef}
         onDeleteRef={onDeleteRef}
         onCopyRef={onCopyRef}
+        onCreateTag={onCreateTag}
       />
       {selected ? (
         <CommitDetails
@@ -549,6 +596,56 @@ function State({ message, loading = false }: { message: string; loading?: boolea
   );
 }
 
+interface RepositoryGraphContentProps {
+  commits: RepositoryGraphCommit[];
+  rows: RepositoryGraphRowLayout[];
+  isLoading: boolean;
+  hasError: boolean;
+  hasMore: boolean;
+  renderItem: ListRenderItem<RepositoryGraphRowLayout>;
+  keyExtractor: (row: RepositoryGraphRowLayout) => string;
+}
+
+function RepositoryGraphContent({
+  commits,
+  rows,
+  isLoading,
+  hasError,
+  hasMore,
+  renderItem,
+  keyExtractor,
+}: RepositoryGraphContentProps) {
+  const { t } = useTranslation();
+  if (isLoading && commits.length === 0) {
+    return <State message={t("workspace.repositoryGraph.loading")} loading />;
+  }
+  if (hasError) {
+    return <State message={t("workspace.repositoryGraph.loadError")} />;
+  }
+  if (commits.length === 0) {
+    return <State message={t("workspace.repositoryGraph.empty")} />;
+  }
+  if (rows.length === 0) {
+    return <State message={t("workspace.repositoryGraph.noSearchResults")} />;
+  }
+  return (
+    <>
+      <FlatList
+        style={styles.commitList}
+        data={rows}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        contentContainerStyle={styles.listContent}
+        testID="repository-graph-list"
+      />
+      {hasMore ? (
+        <Text style={styles.limitText}>
+          {t("workspace.repositoryGraph.limit", { count: commits.length })}
+        </Text>
+      ) : null}
+    </>
+  );
+}
 export function RepositoryGraphPane({
   serverId,
   workspaceId,
@@ -562,11 +659,16 @@ export function RepositoryGraphPane({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const [search, setSearch] = useState("");
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<GraphRef | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<GraphRef | null>(null);
+  const [tagTarget, setTagTarget] = useState<string | null>(null);
   const refActionsSupported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.repositoryGraphRefActions === true,
+  );
+  const tagActionsSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.repositoryGraphTagActions === true,
   );
   const refMutation = useRepositoryGraphRefMutation(serverId, cwd);
   const openWorkspaceTab = useWorkspaceLayoutStore((state) => state.openTab);
@@ -576,16 +678,19 @@ export function RepositoryGraphPane({
     [cwd, serverId, workspaceId],
   );
   const query = useRepositoryGraphHistory({ serverId, cwd, enabled });
-  const rows = useMemo(
-    () => layoutRepositoryGraph(query.data?.commits ?? []),
-    [query.data?.commits],
+  const commits = query.data?.commits ?? EMPTY_COMMITS;
+  const filteredCommits = useMemo(
+    () => commits.filter((commit) => matchesRepositoryGraphSearch(commit, search)),
+    [commits, search],
   );
+  const rows = useMemo(() => layoutRepositoryGraph(filteredCommits), [filteredCommits]);
   const laneCount = useMemo(
     () => rows.reduce((maximum, row) => Math.max(maximum, row.laneCount), 1),
     [rows],
   );
   const handleOpenRename = useCallback((refInfo: GraphRef) => setRenameTarget(refInfo), []);
   const handleOpenDelete = useCallback((refInfo: GraphRef) => setDeleteTarget(refInfo), []);
+  const handleOpenCreateTag = useCallback((sha: string) => setTagTarget(sha), []);
   const handleCopyRef = useCallback(
     (refInfo: GraphRef) => {
       void copyToClipboard(refInfo.name)
@@ -603,6 +708,7 @@ export function RepositoryGraphPane({
   );
   const closeRename = useCallback(() => setRenameTarget(null), []);
   const closeDelete = useCallback(() => setDeleteTarget(null), []);
+  const closeCreateTag = useCallback(() => setTagTarget(null), []);
   const submitRename = useCallback(
     async (newName: string) => {
       if (!renameTarget) return;
@@ -629,6 +735,20 @@ export function RepositoryGraphPane({
     },
     [deleteTarget, refMutation, t, toast],
   );
+  const submitCreateTag = useCallback(
+    async (options: { name: string; pushToRemote: boolean }) => {
+      if (!tagTarget) return;
+      await refMutation.mutateAsync({
+        action: "create",
+        refKind: "tag",
+        name: options.name,
+        targetSha: tagTarget,
+        pushToRemote: options.pushToRemote,
+      });
+      toast.show(t("workspace.repositoryGraph.actions.created"), { variant: "success" });
+    },
+    [refMutation, t, tagTarget, toast],
+  );
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<RepositoryGraphRowLayout>) => (
       <CommitGraphItem
@@ -642,28 +762,32 @@ export function RepositoryGraphPane({
         openWorkspaceTab={openWorkspaceTab}
         replaceWorkspaceTab={replaceWorkspaceTab}
         actionsEnabled={refActionsSupported}
+        tagActionsEnabled={tagActionsSupported}
         onRenameRef={handleOpenRename}
         onDeleteRef={handleOpenDelete}
         onCopyRef={handleCopyRef}
+        onCreateTag={handleOpenCreateTag}
       />
     ),
     [
       cwd,
+      handleCopyRef,
+      handleOpenCreateTag,
+      handleOpenDelete,
+      handleOpenRename,
       laneCount,
       openWorkspaceTab,
       persistenceKey,
-      replaceWorkspaceTab,
       refActionsSupported,
-      handleOpenRename,
-      handleOpenDelete,
-      handleCopyRef,
+      replaceWorkspaceTab,
       selectedSha,
       serverId,
+      tagActionsSupported,
     ],
   );
   const keyExtractor = useCallback((row: RepositoryGraphRowLayout) => row.commit.sha, []);
   const refetch = query.refetch;
-  const handleRetry = useCallback(() => {
+  const refresh = useCallback(() => {
     void refetch();
   }, [refetch]);
 
@@ -673,39 +797,44 @@ export function RepositoryGraphPane({
   if (!query.isConnected) {
     return <State message={t("workspace.terminal.hostDisconnected")} />;
   }
-  if (query.isLoading && rows.length === 0) {
-    return <State message={t("workspace.repositoryGraph.loading")} loading />;
-  }
-  if (query.error) {
-    return (
-      <View style={styles.state}>
-        <Text style={styles.errorText}>{t("workspace.repositoryGraph.loadError")}</Text>
-        <Pressable style={styles.retryButton} onPress={handleRetry}>
-          <ThemedRotateCw size={14} uniProps={foregroundColorMapping} />
-          <Text style={styles.retryText}>{t("workspace.repositoryGraph.retry")}</Text>
-        </Pressable>
-      </View>
-    );
-  }
-  if (rows.length === 0) {
-    return <State message={t("workspace.repositoryGraph.empty")} />;
-  }
+
+  const hasHistoryError = Boolean(query.error);
+
+  const canDeleteOnRemote =
+    deleteTarget?.kind === "tag"
+      ? tagActionsSupported
+      : deleteTarget?.kind === "head" && Boolean(deleteTarget.upstream);
   return (
     <View style={styles.list}>
-      <FlatList
-        data={rows}
+      <View style={styles.toolbar}>
+        <SearchField
+          value={search}
+          onChangeText={setSearch}
+          placeholder={t("workspace.repositoryGraph.searchPlaceholder")}
+          clearAccessibilityLabel={t("workspace.repositoryGraph.clearSearch")}
+          testID="repository-graph-search"
+          clearTestID="repository-graph-search-clear"
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={RotateCw}
+          loading={query.isFetching}
+          onPress={refresh}
+          accessibilityLabel={t("workspace.repositoryGraph.refresh")}
+          testID="repository-graph-refresh"
+          style={styles.refreshButton}
+        />
+      </View>
+      <RepositoryGraphContent
+        commits={commits}
+        rows={rows}
+        isLoading={query.isLoading}
+        hasError={hasHistoryError}
+        hasMore={query.data?.hasMore === true}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
-        testID="repository-graph-list"
       />
-      {query.data?.hasMore ? (
-        <View>
-          <Text style={styles.limitText}>
-            {t("workspace.repositoryGraph.limit", { count: rows.length })}
-          </Text>
-        </View>
-      ) : null}
       <AdaptiveRenameModal
         visible={renameTarget !== null}
         title={
@@ -722,16 +851,30 @@ export function RepositoryGraphPane({
         visible={deleteTarget !== null}
         name={deleteTarget?.name ?? ""}
         kind={deleteTarget?.kind ?? "head"}
-        hasUpstream={Boolean(deleteTarget?.upstream)}
+        canDeleteOnRemote={canDeleteOnRemote}
         onClose={closeDelete}
         onSubmit={submitDelete}
       />
+      {tagTarget ? (
+        <TagCreateModal key={tagTarget} onClose={closeCreateTag} onSubmit={submitCreateTag} />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
   list: { flex: 1 },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  refreshButton: { width: 32, paddingHorizontal: 0 },
+  commitList: { flex: 1 },
   listContent: { paddingVertical: theme.spacing[2] },
   row: {
     height: ROW_HEIGHT,
@@ -797,14 +940,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
-  errorText: { color: theme.colors.destructive, fontSize: theme.fontSize.sm, textAlign: "center" },
-  retryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    padding: theme.spacing[2],
-  },
-  retryText: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   limitText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,

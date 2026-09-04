@@ -90,6 +90,11 @@ const HOP_BY_HOP_HEADERS = new Set([
   "te",
   "trailer",
 ]);
+const serviceProxyUpgradeRequests = new WeakSet<IncomingMessage>();
+
+export function isServiceProxyUpgradeRequest(req: IncomingMessage): boolean {
+  return serviceProxyUpgradeRequests.has(req);
+}
 
 function normalizeHostHeader(host: string): string {
   return host.trim().toLowerCase().replace(/:\d+$/, "");
@@ -792,6 +797,7 @@ export function createScriptProxyUpgradeHandler({
       }
       return;
     }
+    serviceProxyUpgradeRequests.add(req);
     proxyUpgradeRequest({ req, socket, head, route: classification.route, logger });
   };
 }

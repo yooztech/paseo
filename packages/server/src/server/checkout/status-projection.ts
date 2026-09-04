@@ -122,7 +122,6 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
     githubFeaturesEnabled: snapshot.forge.featuresEnabled,
     authState: snapshot.forge.authState,
     ...(forge ? { forge } : {}),
-    pullRequestStatusSettling: snapshot.forge.pullRequestStatusSettling,
     error: snapshot.forge.error
       ? {
           code: "UNKNOWN",

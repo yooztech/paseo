@@ -23,6 +23,11 @@ const wsModuleMock = vi.hoisted(() => {
       return this;
     }
 
+    once(event: string, handler: (...args: unknown[]) => void) {
+      this.handlers.set(event, handler);
+      return this;
+    }
+
     close() {
       // no-op
     }
@@ -105,7 +110,7 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
   };
 
   const server = new VoiceAssistantWebSocketServer(
-    createStub<HTTPServer>({}),
+    createStub<HTTPServer>({ on: vi.fn(), off: vi.fn() }),
     createStub<pino.Logger>(createLogger()),
     "srv-test",
     createStub<AgentManager>(agentManager),
