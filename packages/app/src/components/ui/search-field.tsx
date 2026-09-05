@@ -25,6 +25,8 @@ export interface SearchFieldProps {
   /** Falls back to `placeholder`, which already names the field. */
   accessibilityLabel?: string;
   clearAccessibilityLabel: string;
+  /** Toolbar density fits the 36px pane header without extra vertical chrome. */
+  density?: "default" | "toolbar";
   testID?: string;
   clearTestID?: string;
 }
@@ -42,9 +44,11 @@ export function SearchField({
   placeholder,
   accessibilityLabel,
   clearAccessibilityLabel,
+  density = "default",
   testID,
   clearTestID,
 }: SearchFieldProps): ReactElement {
+  const isToolbarDensity = density === "toolbar";
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<EditingTextInputHandle>(null);
   const handleFocus = useCallback(() => setIsFocused(true), []);
@@ -55,7 +59,14 @@ export function SearchField({
   }, [onChangeText]);
 
   return (
-    <View style={[styles.field, isFocused && styles.fieldFocused]}>
+    <View
+      style={[
+        styles.field,
+        isToolbarDensity && styles.fieldToolbar,
+        isFocused && styles.fieldFocused,
+        isFocused && isToolbarDensity && styles.fieldToolbarFocused,
+      ]}
+    >
       <ThemedSearch size={14} uniProps={mutedColorMapping} />
       <ThemedTextInput
         testID={testID}
@@ -69,7 +80,7 @@ export function SearchField({
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"
-        style={styles.input}
+        style={isToolbarDensity ? styles.inputToolbar : styles.input}
       />
       {value.length > 0 ? (
         <Pressable
@@ -107,6 +118,13 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
     backgroundColor: theme.colors.surface2,
   },
+  fieldToolbar: {
+    paddingVertical: theme.spacing[1],
+    backgroundColor: theme.colors.surface0,
+  },
+  fieldToolbarFocused: {
+    backgroundColor: theme.colors.surface1,
+  },
   input: {
     flex: 1,
     minWidth: 0,
@@ -115,6 +133,15 @@ const styles = StyleSheet.create((theme) => ({
     // The browser's focus ring would sit inside the field's own focus border.
     // `outlineWidth` is typed on ViewStyle since RN 0.81 and is a no-op on
     // native, so this needs neither a cast nor a platform branch.
+    outlineWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+  },
+  inputToolbar: {
+    flex: 1,
+    minWidth: 0,
+    padding: 0,
+    height: 18,
     outlineWidth: 0,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,

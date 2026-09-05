@@ -32,6 +32,7 @@ import { SearchField } from "@/components/ui/search-field";
 import {
   PaneContentToolbar,
   paneContentToolbarIconSize,
+  paneContentToolbarTrailingPadding,
   ToolbarButton,
   ToolbarControls,
 } from "@/components/ui/pane-content-toolbar";
@@ -815,12 +816,16 @@ export function RepositoryGraphPane({
       : deleteTarget?.kind === "head" && Boolean(deleteTarget.upstream);
   return (
     <View style={styles.list}>
-      <PaneContentToolbar style={styles.toolbar} testID="repository-graph-toolbar">
+      <PaneContentToolbar
+        style={[styles.toolbar, { paddingRight: paneContentToolbarTrailingPadding(isCompact) }]}
+        testID="repository-graph-toolbar"
+      >
         <SearchField
           value={search}
           onChangeText={setSearch}
           placeholder={t("workspace.repositoryGraph.searchPlaceholder")}
           clearAccessibilityLabel={t("workspace.repositoryGraph.clearSearch")}
+          density="toolbar"
           testID="repository-graph-search"
           clearTestID="repository-graph-search-clear"
         />
@@ -888,9 +893,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    height: "auto",
-    paddingVertical: theme.spacing[2],
+    paddingLeft: theme.spacing[3],
   },
   toolbarActions: { marginLeft: "auto" },
   commitList: { flex: 1 },
