@@ -640,7 +640,7 @@ export class ServiceProxyRouteRegistry {
       return { type: "known-service-miss" };
     }
     for (const baseHostname of this.publicBaseHostnames) {
-      if (hostname === baseHostname || hostname.endsWith(`.${baseHostname}`)) {
+      if (hostname.endsWith(`.${baseHostname}`)) {
         return { type: "known-service-miss" };
       }
     }

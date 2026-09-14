@@ -103,6 +103,24 @@ describe("daemon bearer auth", () => {
     }
   });
 
+  test("serves file downloads on the service proxy public base host", async () => {
+    const daemonHandle = await createTestPaseoDaemon({
+      serviceProxy: {
+        publicBaseUrl: "https://services.example.com",
+        standaloneListen: null,
+      },
+    });
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemonHandle.port}/api/files/download`, {
+        headers: { Host: "services.example.com" },
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error: "Missing download token" });
+    } finally {
+      await daemonHandle.close();
+    }
+  });
+
   test("bypasses bearer auth for preflight and liveness endpoints", async () => {
     const daemonHandle = await createTestPaseoDaemon({
       auth: { password: CORRECT_PASSWORD_HASH },

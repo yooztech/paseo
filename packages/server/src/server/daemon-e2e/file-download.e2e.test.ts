@@ -16,7 +16,12 @@ describe("daemon E2E", () => {
   let ctx: DaemonTestContext;
 
   beforeEach(async () => {
-    ctx = await createDaemonTestContext();
+    ctx = await createDaemonTestContext({
+      serviceProxy: {
+        publicBaseUrl: "https://services.example.com",
+        standaloneListen: null,
+      },
+    });
   });
 
   afterEach(async () => {
@@ -24,11 +29,11 @@ describe("daemon E2E", () => {
   }, 60000);
 
   describe("file download tokens", () => {
-    test("issues token over WS and downloads via HTTP", async () => {
+    test("downloads a WebP file through the service proxy public base host", async () => {
       const cwd = tmpCwd();
-      const filePath = path.join(cwd, "download.txt");
-      const fileContents = "download test payload";
-      writeFileSync(filePath, fileContents, "utf-8");
+      const filePath = path.join(cwd, "download.webp");
+      const fileContents = Buffer.from("RIFF\x04\x00\x00\x00WEBP");
+      writeFileSync(filePath, fileContents);
 
       const agent = await ctx.client.createAgent({
         provider: "codex",
@@ -40,23 +45,25 @@ describe("daemon E2E", () => {
 
       expect(agent.id).toBeTruthy();
 
-      const tokenResponse = await ctx.client.requestDownloadToken(cwd, "download.txt");
+      const tokenResponse = await ctx.client.requestDownloadToken(cwd, "download.webp");
 
       expect(tokenResponse.error).toBeNull();
       expect(tokenResponse.token).toBeTruthy();
-      expect(tokenResponse.fileName).toBe("download.txt");
+      expect(tokenResponse.fileName).toBe("download.webp");
+      expect(tokenResponse.mimeType).toBe("image/webp");
 
       const response = await fetch(
         `http://127.0.0.1:${ctx.daemon.port}/api/files/download?token=${tokenResponse.token}`,
+        { headers: { Host: "services.example.com" } },
       );
 
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe(tokenResponse.mimeType);
       const disposition = response.headers.get("content-disposition") ?? "";
-      expect(disposition).toContain("download.txt");
+      expect(disposition).toContain("download.webp");
 
-      const body = await response.text();
-      expect(body).toBe(fileContents);
+      const body = Buffer.from(await response.arrayBuffer());
+      expect(body).toEqual(fileContents);
 
       rmSync(cwd, { recursive: true, force: true });
     }, 60000);

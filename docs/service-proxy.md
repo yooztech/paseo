@@ -59,6 +59,8 @@ Add a `serviceProxy` block under `daemon` in `~/.paseo/config.json`:
 | `listen`        | No       | Starts a separate service-only listener at this address. If omitted, services are still reachable on the daemon listener via localhost hosts. |
 | `publicBaseUrl` | No       | Adds public service host aliases and public service links. If omitted, links use localhost addresses only.                                    |
 
+The bare `publicBaseUrl` hostname remains the daemon host. Service aliases use subdomains of it; an unregistered subdomain returns 404 instead of falling through to daemon APIs.
+
 `enabled` is accepted for old configs but no longer enables a mode. `enabled: false` suppresses optional `listen`/`publicBaseUrl` layers only; localhost service proxying remains always enabled.
 
 ## DNS and reverse proxy setup
