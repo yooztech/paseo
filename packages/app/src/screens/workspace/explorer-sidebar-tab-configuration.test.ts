@@ -38,6 +38,7 @@ function createFilesConfigurationHarness() {
     label: "Files",
     disabled: false,
     panelKind: "files",
+    toggleTarget: { kind: "files" },
     launch,
   };
 

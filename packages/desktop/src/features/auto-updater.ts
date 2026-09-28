@@ -8,6 +8,7 @@ import { autoUpdater } from "electron-updater";
 import {
   createAppUpdateService,
   type AppUpdateCheckResult,
+  type AppUpdateInstallRequest,
   type AppUpdateInstallResult,
   type AppUpdateRuntime,
   type AppUpdateRuntimeConfiguration,
@@ -44,12 +45,56 @@ export function resolveElectronUpdateChannel(
 
 let cachedStagingUserIdPromise: Promise<string> | null = null;
 
-export function isMissingUpdateManifestError(error: unknown): boolean {
+const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
+
+interface AppUpdateLogSink {
+  info(message: string, details: object): void;
+}
+
+interface AppUpdateCheckLogDetails {
+  currentVersion: string;
+  releaseChannel: AppReleaseChannel;
+  intent: AppUpdateCheckIntent;
+}
+
+interface AppUpdateCheckCompletedLogDetails extends AppUpdateCheckLogDetails {
+  targetVersion: string;
+  hasUpdate: boolean;
+  readyToInstall: boolean;
+  errorMessage: string | null;
+}
+
+export function createAppUpdateLifecycleLogger(logger: AppUpdateLogSink) {
+  return {
+    checkStarted(details: AppUpdateCheckLogDetails): void {
+      logger.info("[auto-updater] check started", details);
+    },
+    checkCompleted(details: AppUpdateCheckCompletedLogDetails): void {
+      logger.info("[auto-updater] check completed", details);
+    },
+    updateAvailable(targetVersion: string): void {
+      logger.info("[auto-updater] update available", { targetVersion });
+    },
+    updateDownloaded(targetVersion: string): void {
+      logger.info("[auto-updater] update downloaded", { targetVersion });
+    },
+    downloadRequested(targetVersion: string): void {
+      logger.info("[auto-updater] download requested", { targetVersion });
+    },
+    quitAndInstallRequested(details: AppUpdateInstallRequest): void {
+      logger.info("[auto-updater] quitAndInstall requested", details);
+    },
+  };
+}
+
+const updateLifecycleLog = createAppUpdateLifecycleLogger(log);
+
+function isUpdateChannelNotPublished(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    error.code === "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"
+    error.code === UPDATE_CHANNEL_NOT_PUBLISHED_CODE
   );
 }
 
@@ -152,19 +197,21 @@ export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     };
 
     autoUpdater.on("update-available", (info) => {
-      log.info("[auto-updater] update-available", { version: info.version });
-      input.onUpdateAvailable(info as RuntimeUpdateInfo);
+      const updateInfo = info as RuntimeUpdateInfo;
+      updateLifecycleLog.updateAvailable(updateInfo.version);
+      input.onUpdateAvailable(updateInfo);
     });
     autoUpdater.on("update-downloaded", (info) => {
-      log.info("[auto-updater] update-downloaded", { version: info.version });
-      input.onUpdateDownloaded(info as RuntimeUpdateInfo);
+      const updateInfo = info as RuntimeUpdateInfo;
+      updateLifecycleLog.updateDownloaded(updateInfo.version);
+      input.onUpdateDownloaded(updateInfo);
     });
     autoUpdater.on("update-not-available", () => {
       log.info("[auto-updater] update-not-available");
       input.onUpdateNotAvailable();
     });
     autoUpdater.on("error", (error) => {
-      if (isMissingUpdateManifestError(error)) {
+      if (isUpdateChannelNotPublished(error)) {
         log.info("[auto-updater] update-not-available", { reason: "manifest-not-found" });
         input.onUpdateNotAvailable();
         return;
@@ -180,7 +227,7 @@ export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     try {
       result = await autoUpdater.checkForUpdates();
     } catch (error) {
-      if (isMissingUpdateManifestError(error)) {
+      if (isUpdateChannelNotPublished(error)) {
         log.info("[auto-updater] check-for-updates.done", {
           result: null,
           reason: "manifest-not-found",
@@ -204,13 +251,18 @@ export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     };
   }
 
-  downloadUpdate(): Promise<unknown> {
-    log.info("[auto-updater] download-update.requested");
+  downloadUpdate(targetVersion: string): Promise<unknown> {
+    updateLifecycleLog.downloadRequested(targetVersion);
     return autoUpdater.downloadUpdate();
   }
 
-  quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void {
+  quitAndInstall({ targetVersion, isSilent, isForceRunAfter }: AppUpdateInstallRequest): void {
     autoUpdater.autoRunAppAfterInstall = isForceRunAfter;
+    updateLifecycleLog.quitAndInstallRequested({
+      targetVersion,
+      isSilent,
+      isForceRunAfter,
+    });
     autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
   }
 }
@@ -244,7 +296,22 @@ export async function checkForAppUpdate({
   releaseChannel: AppReleaseChannel;
   intent: AppUpdateCheckIntent;
 }): Promise<AppUpdateCheckResult> {
-  return appUpdateService.checkForAppUpdate({ currentVersion, releaseChannel, intent });
+  updateLifecycleLog.checkStarted({ currentVersion, releaseChannel, intent });
+  const result = await appUpdateService.checkForAppUpdate({
+    currentVersion,
+    releaseChannel,
+    intent,
+  });
+  updateLifecycleLog.checkCompleted({
+    currentVersion,
+    targetVersion: result.latestVersion,
+    releaseChannel,
+    intent,
+    hasUpdate: result.hasUpdate,
+    readyToInstall: result.readyToInstall,
+    errorMessage: result.errorMessage,
+  });
+  return result;
 }
 
 export async function downloadAndInstallUpdate(

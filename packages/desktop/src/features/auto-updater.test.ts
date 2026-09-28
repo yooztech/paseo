@@ -41,9 +41,9 @@ vi.mock("electron-updater", () => ({
 import {
   bucketFromStagingUserId,
   ElectronAppUpdateRuntime,
-  isMissingUpdateManifestError,
   resolveElectronUpdateChannel,
   checkForAppUpdate,
+  createAppUpdateLifecycleLogger,
   resolveStagingUserId,
   rolloutManifestSchema,
   shouldAdmitToRollout,
@@ -54,17 +54,7 @@ function updaterError(code: string): Error {
   return Object.assign(new Error(code), { code });
 }
 
-describe("isMissingUpdateManifestError", () => {
-  it("matches only electron-updater's missing channel manifest error", () => {
-    expect(isMissingUpdateManifestError(updaterError("ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"))).toBe(
-      true,
-    );
-    expect(isMissingUpdateManifestError(updaterError("ERR_UPDATER_INVALID_UPDATE_INFO"))).toBe(
-      false,
-    );
-    expect(isMissingUpdateManifestError(new Error("404"))).toBe(false);
-  });
-
+describe("missing update channel", () => {
   it("makes a missing manifest an unavailable update result", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(
       updaterError("ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"),
@@ -142,6 +132,50 @@ describe("checkForAppUpdate", () => {
     expect(result.errorMessage).toBe("network down");
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it("logs the update handoff with current and selected target versions", () => {
+    const info = vi.fn();
+    const lifecycleLog = createAppUpdateLifecycleLogger({ info });
+
+    lifecycleLog.checkStarted({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    lifecycleLog.checkCompleted({
+      currentVersion: "1.2.3",
+      targetVersion: "1.2.5",
+      releaseChannel: "stable",
+      intent: "manual",
+      hasUpdate: true,
+      readyToInstall: true,
+      errorMessage: null,
+    });
+    lifecycleLog.updateDownloaded("1.2.4");
+    lifecycleLog.downloadRequested("1.2.5");
+    lifecycleLog.quitAndInstallRequested({
+      targetVersion: "1.2.5",
+      isSilent: false,
+      isForceRunAfter: true,
+    });
+
+    expect(info).toHaveBeenCalledWith("[auto-updater] check started", {
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    expect(info).toHaveBeenCalledWith("[auto-updater] update downloaded", {
+      targetVersion: "1.2.4",
+    });
+    expect(info).toHaveBeenCalledWith("[auto-updater] download requested", {
+      targetVersion: "1.2.5",
+    });
+    expect(info).toHaveBeenCalledWith("[auto-updater] quitAndInstall requested", {
+      targetVersion: "1.2.5",
+      isSilent: false,
+      isForceRunAfter: true,
+    });
   });
 });
 

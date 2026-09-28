@@ -47,6 +47,36 @@ commit the prepared inputs locally and run the release command. Its branch and
 tag push is the one remote release batch and starts CI for the complete release
 commit.
 
+## Release branch discipline
+
+While you finalize a release on `main`, use a temporary `next` branch for work intended for the following
+release. This applies to both beta and stable releases.
+
+- Create each new `next` from freshly fetched `origin/main`. Reuse it while active.
+- "This goes to next" means create the PR against `next` or retarget an existing
+  PR, and keep that destination through delivery.
+- Keep `next` current by merging `origin/main` into it as release fixes land.
+  Avoid rebasing this shared branch because agents and open PRs depend on its history.
+- After the release ships, bring `next` up to date and open a `next` → `main` PR.
+  Pass CI and merge without squashing away the individual PR commits needed for
+  the changelog. Retarget remaining PRs based on `next` to `main` and delete the integrated
+  `next`. Create it fresh when needed again.
+
+**Setup still needed:** CI, Docker, and Nix PR checks currently target only `main`,
+and GitHub permits only squash merges. Enable checks and required-check protection
+for `next`, CI on its pushes, and merge commits for the integration PR. Handle PR
+base changes (`edited` events) so retargeting runs checks against the new base;
+GitHub's default PR events do not cover this. Deployment triggers stay unchanged.
+
+### Hotfix from a release tag
+
+If `main` contains changes you do not want to release, branch from the affected
+release tag and cherry-pick only the required fixes. Run CI on that branch, then
+use the normal release flow with it as the explicit source, choosing a new patch
+or beta version. Ensure the fixes and changelog also reach `main` and any active
+`next`, preserving newer development and version changes there. This is a
+short-lived hotfix branch, not another maintained release track.
+
 ## ACP catalog updates
 
 ACP catalog work enters a release through an explicit user request:
@@ -64,7 +94,7 @@ release push as the changelog and version commit.
 
 Upstream maintains two npm release paths:
 
-1. **Direct stable release**: you are ready to ship the current `main` commit to everyone immediately.
+1. **Direct stable release**: you are ready to ship the resolved release source to everyone immediately (default `origin/main`).
 2. **Beta flow**: release candidates on the `beta` channel. Each beta carries its own changelog entry, publishes npm only on the explicit `beta` dist-tag, and stays behind the Stable/Beta switch on `/download`.
 
 The fork has separate daemon, desktop, and iOS release channels. They do not
@@ -167,6 +197,7 @@ npm run release:promote          # Promote X.Y.Z-beta.N to stable X.Y.Z
 - Betas publish npm packages and desktop assets for testing. They do not trigger the fork's iOS TestFlight workflow.
 - `release:promote` creates a fresh stable tag like `v0.1.41`; the final release never reuses the beta tag
 - Desktop assets now come from the Electron package at `packages/desktop`
+- Require the Linux artifact CI checks with both restricted and usable user namespaces to pass before publication; see [packaged desktop smoke](testing.md#packaged-desktop-smoke). Keep the installed-package and AppImage checks together.
 - Beta releases use Electron's `beta` update channel. Users on the stable channel only receive stable releases; users on the beta channel receive beta releases and the final stable release when it is published.
 - **Each beta carries its own changelog entry.** `Release Notes Sync` mirrors the matching `## X.Y.Z-beta.N` entry into that prerelease body. Promotion collapses every beta entry for the version into one final stable entry. See the Changelog policy section.
 
@@ -217,16 +248,22 @@ that number.
 
 ## Desktop release publication
 
-The Release is created from the pre-created publication tag when the source tag
-is pushed. The macOS and Windows jobs upload installers and packages as they
-complete, then `finalize-release` merges the platform manifests, stamps
-`rolloutHours: 0`, and uploads them. Linux publication is disabled in this fork.
-
-While a channel manifest is not yet available, the desktop updater treats its 404 as no update. Other updater failures remain visible. Once the manifest is uploaded, all users can update immediately on their next check.
+The workflow creates a draft Release from the pre-created publication tag when
+the source tag is pushed. The macOS and Windows jobs upload installers and
+packages, then `finalize-release` merges and stamps their manifests with
+`rolloutHours: 0` before publishing the Release. Linux publication is disabled
+in this fork. A failed build leaves the Release as a draft; updater clients see
+the previous published release until finalization. There is no staged rollout.
+Other updater failures remain visible once the manifests are published.
 
 `Release Notes Sync` uses the source tag, reads the base `X.Y.Z` changelog entry,
 and creates or updates the publication Release. A missing base changelog entry
 fails the workflow.
+
+Keep the macOS install floor in `packages/desktop/electron-builder.yml` and the
+update floor in `scripts/merge-mac-manifest.mjs` aligned. The former uses the
+macOS version (13); the latter uses the Darwin kernel version (22). Existing
+clients read the manifest guard before downloading an update.
 
 There is no staged rollout or rollback. `allowDowngrade = false`; ship a superseding hotfix for a bad release.
 
@@ -353,7 +390,7 @@ The GitHub Release body is populated automatically by the `Release Notes Sync` w
 - The default download target only moves when you publish the final stable release tag like `v0.1.41`.
 - The public `/changelog` page renders `CHANGELOG.md` as-is, so the in-flight `-beta.N` entry shows there once it lands on `main` — that's intended, it's where beta users check what's coming. Only the **default download target** stays pinned to the latest stable; the download links read GitHub's releases API, not the changelog, so a `-beta.N` heading on top never affects them.
 - The download page's "What's new" link deep-links the **minor group** anchor (`/changelog#release-0.3`), not the exact entry: promotion collapses the beta entries into one stable entry, so the minor group remains the durable target. A version with no entry in the bundled changelog — a tag whose changelog commit hasn't redeployed the site yet — links the plain `/changelog` instead of a dead anchor.
-- The website itself is deployed by `Deploy Website` (Cloudflare Workers), which redeploys on `release: published` for non-prerelease releases and on pushes to `main` that touch `CHANGELOG.md` or `packages/website/**`.
+- The website itself is deployed by `Deploy Website` (Cloudflare Workers), which redeploys on the `release: published` event emitted when a stable draft is published and on pushes to `main` that touch `CHANGELOG.md` or `packages/website/**`. Its job condition excludes beta prereleases.
 
 ## Fixing a failed release build
 
@@ -377,7 +414,11 @@ you want to build. Reusing the same tag name is expected: move it with
 `git tag -f ...` and push it with `--force` so the workflow rebuilds the commit
 you actually want.
 
-Prefer a tag push over `workflow_dispatch` when rebuilding desktop release assets. Use Docker workflow dispatch only when explicitly publishing a container image.
+A failed desktop build leaves the GitHub Release as a draft. `finalize-release`
+uploads available manifests before it fails; a later single-platform retry reuses
+those manifests and publishes the draft after the complete manifest set is ready.
+Prefer a tag push over `workflow_dispatch` when rebuilding desktop release assets.
+Use Docker workflow dispatch only when explicitly publishing a container image.
 
 The retry tag patterns below still work and remain the supported way to rebuild specific release targets:
 
@@ -400,6 +441,22 @@ This ensures the checkout ref matches the actual code on `main` with the fix inc
 - `desktop-vX.Y.Z` rebuilds desktop for all desktop platforms only
 - `desktop-macos-vX.Y.Z`, `desktop-linux-vX.Y.Z`, and `desktop-windows-vX.Y.Z` rebuild only that desktop platform
 
+If you decide to publish a release without working desktop builds, inspect its
+assets first, then publish it manually:
+
+```bash
+RELEASE_LOOKUP=$(node scripts/github-release.mjs --repo getpaseo/paseo --tag vX.Y.Z)
+gh release view "$RELEASE_LOOKUP" --json isDraft,isPrerelease,assets
+gh release edit "$RELEASE_LOOKUP" --tag vX.Y.Z --draft=false
+
+# Keep a beta marked as a prerelease:
+RELEASE_LOOKUP=$(node scripts/github-release.mjs --repo getpaseo/paseo --tag vX.Y.Z-beta.N)
+gh release edit "$RELEASE_LOOKUP" --tag vX.Y.Z-beta.N --draft=false --prerelease
+```
+
+This bypasses the updater-manifest guarantee. Use it only when the release is
+intentionally unavailable to desktop updater clients.
+
 ## Notes
 
 - `version:all:*` bumps root + syncs workspace versions and `@getpaseo/*` dependency versions
@@ -420,6 +477,8 @@ Release notes depend on the changelog heading format. The heading **must** be st
 ```
 
 No prefix (`v`), no extra text. `Release Notes Sync` matches the `## X.Y.Z` (or `## X.Y.Z-beta.N`) line for the pushed tag to extract the version. A malformed heading breaks the release-notes sync for that tag.
+
+`CHANGELOG.md` on `main` is also what the app's **What's new** sheet fetches and renders, so the file is a shipped product surface, not just a release input. `##` starts a release and `###` starts a section; the app reads section titles from the document, so renaming or adding one needs no app change. Everything under a section is rendered as Markdown: prose, lists, links, inline code, fenced code, block quotes, tables, and images. Raw HTML does not render — the shared Markdown parser runs with `html: false`, so a `<video>`, `<iframe>` or `<embed>` tag reaches the reader as visible markup. Keep media out of the changelog, or link to it. A GitHub callout renders as a block quote with its `[!NOTE]` marker still in the text. A release entry is what a user reads on a phone the moment they are offered the update — write it for them.
 
 ## Changelog policy
 

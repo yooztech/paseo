@@ -69,7 +69,7 @@ export { formatOmpVersionSupport, resolveOmpDiagnosticPaths } from "./provider-c
 import { OmpSubagentCardTracker, type OmpSubagentCardScheduler } from "./subagent-card-tracker.js";
 import { shouldDisplayOmpCustomMessage } from "./custom-message.js";
 import { getUserMessageText } from "./message-history.js";
-import { mapOmpSystemNoticeToToolCall } from "./system-notice.js";
+import { mapOmpSystemNoticeToNotification } from "./system-notice.js";
 import { materializeProviderImage } from "../provider-image-output.js";
 import { OmpCliRuntime } from "./cli-runtime.js";
 import { listOmpImportableSessions, readOmpImportSessionConfig } from "./session-descriptor.js";
@@ -524,6 +524,11 @@ function latestOmpErrorMessage(messages: OmpAgentMessage[]): string | null {
     return null;
   }
   return formatOmpErrorMessage(latestAssistant);
+}
+
+function isOmpAbortedTerminalResponse(messages: OmpAgentMessage[]): boolean {
+  const latestAssistant = messages.findLast((message) => message.role === "assistant");
+  return latestAssistant?.stopReason?.toLowerCase() === "aborted";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -2019,7 +2024,7 @@ export class OmpAgentSession implements AgentSession {
         if (text) {
           const item =
             mapOmpAdvisorMessageToToolCall(event.message, text) ??
-            mapOmpSystemNoticeToToolCall(text);
+            mapOmpSystemNoticeToNotification(text);
           this.emit({
             type: "timeline",
             provider: this.provider,
@@ -2027,9 +2032,6 @@ export class OmpAgentSession implements AgentSession {
             item: item ?? { type: "assistant_message", text },
           });
         }
-      }
-      if (!this.activeTurnHasUserMessage) {
-        this.completeTurn(turnId, []);
       }
       return;
     }
@@ -2133,6 +2135,19 @@ export class OmpAgentSession implements AgentSession {
     this.activeTurnStarted = false;
     this.activeTurnHasUserMessage = false;
     this.clearNoTurnBuffers();
+    // OMP reports a stopped turn as a terminal response carrying its interrupt
+    // text as an error. That is the user's own Stop, not a failed turn.
+    if (isOmpAbortedTerminalResponse(messages)) {
+      this.usagePoller.stopTurn();
+      this.terminalizeActiveWork();
+      this.emit({
+        type: "turn_canceled",
+        provider: this.provider,
+        turnId,
+        reason: "interrupted",
+      });
+      return;
+    }
     const errorMessage = latestOmpErrorMessage(messages);
     if (typeof errorMessage === "string" && errorMessage.length > 0) {
       this.usagePoller.stopTurn();
@@ -2161,6 +2176,10 @@ export class OmpAgentSession implements AgentSession {
       try {
         const state = await this.runtimeSession.getState();
         this.state = state;
+        if (this.closed || !this.activeTurnStarted || this.currentTurnIdForEvent() !== turnId) {
+          // An interrupt settled this turn while the state check was in flight.
+          return;
+        }
         if (!state.isStreaming && !state.isCompacting) {
           this.completeTurn(turnId, messages);
           return;

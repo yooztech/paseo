@@ -5,6 +5,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import Animated from "react-native-reanimated";
 import { SortableInlineList } from "@/components/sortable-inline-list";
+import { EXPLORER_TAB_RAIL_INSET } from "@/components/explorer-sidebar-layout";
 import type {
   DraggableListDragHandleProps,
   DraggableRenderItemInfo,
@@ -37,7 +38,6 @@ import {
 import type { WorkspaceDesktopTabRowItem } from "@/screens/workspace/workspace-desktop-tabs-row";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { useWorkspaceTabLaunchCatalog } from "@/workspace-tabs/launcher";
-import { panelSupportsHost } from "@/panels/panel-manifest";
 import type { PanelIconProps } from "@/panels/panel-registry";
 import { panelTargetSupportsHost } from "@/plugins/workspace-panels/locations";
 import type { Theme } from "@/styles/theme";
@@ -283,10 +283,7 @@ export function ExplorerSidebarTabRail({
     host: "explorer",
   });
   const singletonConfigurationItems = useMemo(
-    () =>
-      (groups.find((group) => group.id === "tabs")?.items ?? []).filter(
-        (item) => !panelSupportsHost(item.panelKind, "main"),
-      ),
+    () => groups.flatMap((group) => group.items).filter((item) => item.toggleTarget !== null),
     [groups],
   );
   const configurationEntries = useMemo(
@@ -443,7 +440,7 @@ const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: EXPLORER_TAB_RAIL_INSET,
   },
   trailingAccessory: {
     marginRight: 4,
