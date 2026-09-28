@@ -58,7 +58,7 @@ export function createForkReleaseMetadata(channel, version, forkNumber) {
   return {
     channel,
     sourceTag,
-    publicationTag: sourceTag,
+    publicationTag: versionTag,
     changelogVersion: version,
     version: `${version}-fork.${forkNumber}`,
     forkNumber,
@@ -96,26 +96,38 @@ function preflight(channel) {
   );
 }
 
-function publish(metadata) {
-  const tags = [...new Set([metadata.sourceTag, metadata.publicationTag])];
-  const head = capture("git", ["rev-parse", "HEAD"]);
-  const createdTags = [];
-  for (const tag of tags) {
-    if (capture("git", ["tag", "--list", tag])) {
-      const existingCommit = capture("git", ["rev-parse", `${tag}^{commit}`]);
-      if (existingCommit !== head) {
-        throw new Error(`Release tag ${tag} already points to ${existingCommit}, not ${head}.`);
-      }
-      continue;
+export function publish(metadata, { captureGit = capture, runGit = run } = {}) {
+  const { sourceTag, publicationTag } = metadata;
+  const head = captureGit("git", ["rev-parse", "HEAD"]);
+  if (sourceTag !== publicationTag) {
+    if (!captureGit("git", ["tag", "--list", publicationTag])) {
+      throw new Error(
+        `Canonical release tag ${publicationTag} must already exist at HEAD before publishing ${sourceTag}. Release the daemon channel first.`,
+      );
     }
-    run("git", ["tag", tag]);
-    createdTags.push(tag);
+    const publicationCommit = captureGit("git", ["rev-parse", `${publicationTag}^{commit}`]);
+    if (publicationCommit !== head) {
+      throw new Error(
+        `Canonical release tag ${publicationTag} points to ${publicationCommit}, not HEAD (${head}). Use a new fork release number for this commit or resolve the conflicting tag before publishing ${sourceTag}.`,
+      );
+    }
+  }
+
+  let createdTag = false;
+  if (captureGit("git", ["tag", "--list", sourceTag])) {
+    const existingCommit = captureGit("git", ["rev-parse", `${sourceTag}^{commit}`]);
+    if (existingCommit !== head) {
+      throw new Error(`Release tag ${sourceTag} already points to ${existingCommit}, not ${head}.`);
+    }
+  } else {
+    runGit("git", ["tag", sourceTag]);
+    createdTag = true;
   }
 
   try {
-    run("git", ["push", "--atomic", "origin", ...tags]);
+    runGit("git", ["push", "--atomic", "origin", sourceTag]);
   } catch (error) {
-    for (const tag of createdTags) run("git", ["tag", "--delete", tag]);
+    if (createdTag) runGit("git", ["tag", "--delete", sourceTag]);
     throw error;
   }
 }

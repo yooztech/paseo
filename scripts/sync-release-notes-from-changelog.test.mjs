@@ -233,10 +233,7 @@ test("uses the base changelog section for fork desktop publication", () => {
   withTempChangelog(() => {
     let syncedNotes = "";
     const execFileSync = (_command, args) => {
-      if (
-        args[0] === "api" &&
-        args[1] === "repos/yooztech/paseo/releases/tags/desktop-v0.2.5-fork.8"
-      ) {
+      if (args[0] === "api" && args[1] === "repos/yooztech/paseo/releases/tags/v0.2.5-fork.8") {
         return JSON.stringify({ id: 8 });
       }
       if (args[0] === "api" && args[1] === "-X") {

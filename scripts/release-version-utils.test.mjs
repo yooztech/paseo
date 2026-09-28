@@ -53,7 +53,7 @@ test("emits beta release info from tags", () => {
 test("emits fork release info from desktop tags", () => {
   assert.deepEqual(getReleaseInfoFromSourceTag("desktop-macos-v0.2.5-fork.1"), {
     sourceTag: "desktop-macos-v0.2.5-fork.1",
-    publicationTag: "desktop-macos-v0.2.5-fork.1",
+    publicationTag: "v0.2.5-fork.1",
     changelogVersion: "0.2.5",
     releaseTag: "v0.2.5-fork.1",
     version: "0.2.5-fork.1",
@@ -71,7 +71,7 @@ test("emits fork release info from desktop tags", () => {
 test("normalizes current and historical app release tags", () => {
   assert.deepEqual(getReleaseInfoFromSourceTag("app-v0.2.5-fork.3"), {
     sourceTag: "app-v0.2.5-fork.3",
-    publicationTag: "app-v0.2.5-fork.3",
+    publicationTag: "v0.2.5-fork.3",
     changelogVersion: "0.2.5",
     releaseTag: "v0.2.5-fork.3",
     version: "0.2.5-fork.3",
@@ -84,12 +84,8 @@ test("normalizes current and historical app release tags", () => {
     releaseChannel: "fork",
     isSmokeTag: false,
   });
-  assert.equal(
-    getReleaseInfoFromSourceTag("v0.2.5-fork.2-app").publicationTag,
-    "v0.2.5-fork.2-app",
-  );
+  assert.equal(getReleaseInfoFromSourceTag("v0.2.5-fork.2-app").publicationTag, "v0.2.5-fork.2");
 });
-
 test("rejects unsupported prerelease versions", () => {
   assert.throws(() => parseReleaseVersion("0.1.60-canary.1"), /Expected prerelease versions/);
 });
