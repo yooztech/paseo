@@ -218,6 +218,9 @@ are stale, run `npm run build:server`.
   (`manual`) from blocking jobs (`manual` plus `action_required`). A failed
   allowed-failure job carries the `warning` trait, and `canceling` remains active
   until GitLab reports a terminal status.
+- For a GitLab branch CI view, associate tag-triggered pipelines with the
+  branch's resolved tip SHA. Project-wide tag lists include pipelines from
+  unrelated branches; if the tip cannot be resolved, show only branch-ref CI.
 - GitHub PR polling owns one account-wide GraphQL budget. Coordinate retained
   targets per host, batch their reads, and stop until GitHub's reset time when
   the reserve is exhausted. Never add a per-target GitHub request to the poll

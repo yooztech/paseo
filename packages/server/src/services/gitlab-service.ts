@@ -1421,11 +1421,8 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
       branch: string;
     }): Promise<PipelineDetails | null> {
       try {
-        // Branch push pipelines (`--ref <branch>`) miss tag-triggered release CI
-        // after teams stop pushing branch pipelines. Also collect:
-        // - `--scope tags` (latest pipeline per tag ref)
-        // - `--sha <tip>` (any source for the branch tip, including tag/web)
-        // then pick the highest pipeline id across those sets.
+        // The branch ref covers push pipelines; the branch tip SHA also finds
+        // tag and web pipelines for that commit without including unrelated tags.
         const tipSha = await resolveBranchTipSha(input.cwd, input.branch);
         const listQueries: string[][] = [
           [
@@ -1433,20 +1430,6 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
             "list",
             "--ref",
             input.branch,
-            "--order",
-            "id",
-            "--sort",
-            "desc",
-            "--per-page",
-            "30",
-            "-F",
-            "json",
-          ],
-          [
-            "ci",
-            "list",
-            "--scope",
-            "tags",
             "--order",
             "id",
             "--sort",
