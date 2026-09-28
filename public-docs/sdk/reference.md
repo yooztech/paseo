@@ -132,7 +132,7 @@ See [events](./events.md#follow-provider-catalog-changes) for explicit event obs
 | `archive(workspaceOrId)` | `PaseoWorkspaceArchiveResult` | Archives without first creating a handle.                                                      |
 | `subscribe(handler)`     | Unsubscribe function          | Local listener for this API instance. Requires an owned `list({ subscribe: {} })` observation. |
 
-A workspace handle exposes `id`, `projectId`, `directory`, `name`, `status`, `current()`, `refresh()`, `archive()`, and `subscribe()`. Use `workspace.agents.create(options)` to create an agent without repeating the workspace ID or directory.
+A workspace handle exposes `id`, `projectId`, `directory`, `name`, `status`, `current()`, `refresh()`, `setTitle(title)`, `archive()`, and `subscribe()`. Pass `null` to `setTitle` to restore the derived workspace name. Use `workspace.agents.create(options)` to create an agent without repeating the workspace ID or directory.
 
 ## `client.terminals`
 
