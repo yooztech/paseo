@@ -161,6 +161,48 @@ describe("commit diff tab identity", () => {
   });
 });
 
+describe("plugin panel tab identity", () => {
+  it("normalizes the plugin and agent context", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "plugin",
+        pluginId: " review ",
+        panelId: " details ",
+        context: "agent",
+        agentId: " agent-1 ",
+      }),
+    ).toEqual({
+      kind: "plugin",
+      pluginId: "review",
+      panelId: "details",
+      context: "agent",
+      agentId: "agent-1",
+    });
+  });
+
+  it("keeps workspace and different agent panels distinct", () => {
+    const workspace = {
+      kind: "plugin" as const,
+      pluginId: "review",
+      panelId: "details",
+      context: "workspace" as const,
+    };
+    const agent = {
+      kind: "plugin" as const,
+      pluginId: "review",
+      panelId: "details",
+      context: "agent" as const,
+      agentId: "agent-1",
+    };
+    expect(buildDeterministicWorkspaceTabId(workspace)).not.toBe(
+      buildDeterministicWorkspaceTabId(agent),
+    );
+    expect(buildDeterministicWorkspaceTabId(agent)).not.toBe(
+      buildDeterministicWorkspaceTabId({ ...agent, agentId: "agent-2" }),
+    );
+  });
+});
+
 describe("fork singleton tab identity", () => {
   it("does not equate repository graph and branch CI targets", () => {
     expect(workspaceTabTargetsEqual({ kind: "repository_graph" }, { kind: "branch_ci" })).toBe(

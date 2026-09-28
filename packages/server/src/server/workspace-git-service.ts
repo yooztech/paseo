@@ -457,6 +457,7 @@ interface RepoGitTarget {
   intervalId: NodeJS.Timeout | null;
   fetchInFlight: boolean;
   fetchPromise: Promise<void> | null;
+  explicitFetchPromise: Promise<void> | null;
   bufferedFetchMetadataEvents: FileChange[];
   recentFetchRemoteRefChanges: Map<
     string,
@@ -608,6 +609,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
   private readonly workspaceTargets = new Map<string, WorkspaceGitTarget>();
   private readonly repoTargets = new Map<string, RepoGitTarget>();
+  private readonly coldFetches = new Map<string, Promise<void>>();
   private readonly workingTreeWatchTargets = new Map<string, WorkingTreeWatchTarget>();
   private readonly workingTreeWatchSetups = new Map<string, Promise<WorkingTreeWatchTarget>>();
   private readonly workingTreeWatchResolutions = new Map<string, Promise<WorkingTreeWatchTarget>>();
@@ -968,13 +970,41 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.scheduleWorkspaceObservationSetup(target);
   }
 
-  requestFetch(cwd: string): Promise<void> {
-    const target = this.workspaceTargets.get(resolve(cwd));
-    if (!target?.repoGitRoot) {
-      return Promise.resolve();
+  async requestFetch(cwd: string): Promise<void> {
+    this.assertNotDisposed();
+    cwd = resolve(cwd);
+    const workspace = this.ensureWorkspaceTarget(cwd);
+    if (workspace.observationSetupPromise) {
+      await workspace.observationSetupPromise;
     }
-    const repoTarget = this.repoTargets.get(target.repoGitRoot);
-    return repoTarget ? this.runRepoFetch(repoTarget) : Promise.resolve();
+    const facts = await this.getFactsForObservation(workspace);
+    if (!facts.isGit || !facts.absoluteGitDir) {
+      return;
+    }
+    const repoGitRoot =
+      facts.gitCommonDir ?? (await this.resolveWorkspaceGitRefsRoot(facts.absoluteGitDir));
+    const pending = this.coldFetches.get(repoGitRoot);
+    if (pending) {
+      return pending;
+    }
+    if (facts.remoteUrl === null && !(await this.deps.hasOriginRemote(cwd))) {
+      return;
+    }
+    const existing = this.repoTargets.get(repoGitRoot);
+    if (existing) {
+      return this.runExplicitRepoFetch(existing);
+    }
+    const startedWhileProbing = this.coldFetches.get(repoGitRoot);
+    if (startedWhileProbing) {
+      return startedWhileProbing;
+    }
+    // Cold reads do not subscribe to metadata or start background polling.
+    const transient = this.createRepoTarget(repoGitRoot, cwd);
+    const fetch = this.runExplicitRepoFetch(transient).finally(() => {
+      this.coldFetches.delete(repoGitRoot);
+    });
+    this.coldFetches.set(repoGitRoot, fetch);
+    return fetch;
   }
 
   async requestWorkingTreeWatch(
@@ -2139,6 +2169,49 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     return gitDir;
   }
 
+  private createRepoTarget(repoGitRoot: string, cwd: string): RepoGitTarget {
+    return {
+      repoGitRoot,
+      cwd,
+      workspaceKeys: new Set(),
+      subscription: null,
+      fallbackPolling: false,
+      fallbackPollTimer: null,
+      fallbackPollQuietTickCount: 0,
+      recovery: { attemptCount: 0, timer: null, establishedAt: null },
+      intervalId: null,
+      fetchInFlight: false,
+      fetchPromise: null,
+      explicitFetchPromise: null,
+      bufferedFetchMetadataEvents: [],
+      recentFetchRemoteRefChanges: new Map(),
+      knownRemoteRefs: null,
+      closed: false,
+    };
+  }
+
+  private runExplicitRepoFetch(target: RepoGitTarget): Promise<void> {
+    if (target.explicitFetchPromise) {
+      return target.explicitFetchPromise;
+    }
+    const inFlight = target.fetchPromise;
+    const fetch = (async () => {
+      // A background fetch already in flight cannot promise post-request state.
+      // Concurrent manual requests share exactly one follow-up fetch.
+      if (inFlight) {
+        await inFlight;
+      }
+      await this.runRepoFetch(target, true);
+    })();
+    target.explicitFetchPromise = fetch;
+    void fetch
+      .finally(() => {
+        target.explicitFetchPromise = null;
+      })
+      .catch(() => {});
+    return fetch;
+  }
+
   private async ensureRepoTarget(workspaceTarget: WorkspaceGitTarget): Promise<void> {
     const repoGitRoot = workspaceTarget.repoGitRoot;
     if (!repoGitRoot || !this.isActiveObservedWorkspaceTarget(workspaceTarget)) {
@@ -2151,23 +2224,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       return;
     }
 
-    const repoTarget: RepoGitTarget = {
-      repoGitRoot,
-      cwd: workspaceTarget.cwd,
-      workspaceKeys: new Set([workspaceTarget.cwd]),
-      subscription: null,
-      fallbackPolling: false,
-      fallbackPollTimer: null,
-      fallbackPollQuietTickCount: 0,
-      recovery: { attemptCount: 0, timer: null, establishedAt: null },
-      intervalId: null,
-      fetchInFlight: false,
-      fetchPromise: null,
-      bufferedFetchMetadataEvents: [],
-      recentFetchRemoteRefChanges: new Map(),
-      knownRemoteRefs: null,
-      closed: false,
-    };
+    const repoTarget = this.createRepoTarget(repoGitRoot, workspaceTarget.cwd);
+    repoTarget.workspaceKeys.add(workspaceTarget.cwd);
     this.repoTargets.set(repoGitRoot, repoTarget);
     await this.startRepoMetadataObservation(repoTarget);
     if (repoTarget.closed || this.repoTargets.get(repoGitRoot) !== repoTarget) {
@@ -3535,11 +3593,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
   }
 
-  private async runRepoFetch(target: RepoGitTarget): Promise<void> {
+  private async runRepoFetch(target: RepoGitTarget, explicit = false): Promise<void> {
     if (target.fetchPromise) {
       return target.fetchPromise;
     }
 
+    let fetchError: unknown = null;
     target.fetchPromise = (async () => {
       target.fetchInFlight = true;
       this.logger.debug(
@@ -3568,6 +3627,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
             { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
             "Background git fetch failed",
           );
+          fetchError = error;
+        }
+        if (result?.error) {
+          fetchError = result.error;
         }
         this.flushFetchMetadataEvents(target, eventsBeforeFetchSnapshot);
         if (!result || result.changes === null) {
@@ -3623,9 +3686,16 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         // callers treat fetchInFlightCount === 0 as "fetch fully settled" (upstream #4171).
         target.fetchInFlight = false;
       }
-    })().finally(() => {
-      target.fetchPromise = null;
-    });
+    })()
+      .then(() => {
+        if (explicit && fetchError) {
+          throw fetchError;
+        }
+        return undefined;
+      })
+      .finally(() => {
+        target.fetchPromise = null;
+      });
 
     return target.fetchPromise;
   }

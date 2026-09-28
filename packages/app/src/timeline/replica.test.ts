@@ -212,6 +212,7 @@ describe("viewed timeline persistence", () => {
 
     expect(pending).toMatchObject({ range: null, hasOlder: false });
     expect(pending).toMatchObject({ items: [{ text: "cached" }, { text: "live" }] });
+    expect(pending?.items.map((entry) => entry.id)).toEqual(["cached", expect.any(String)]);
     durable = pending;
     first.dispose();
     useSessionStore.getState().clearSession(SERVER_ID);

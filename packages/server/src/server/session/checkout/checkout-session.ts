@@ -180,6 +180,9 @@ export class CheckoutSession {
         await this.gitMutation.notifyGitMutation(cwd, "repository-graph-ref");
         await this.host.emitWorkspaceUpdateForCwd(cwd);
       },
+      (error, cwd) => {
+        this.logger.warn({ err: error, cwd }, "Repository graph ref changed but refresh failed");
+      },
     );
   }
 
