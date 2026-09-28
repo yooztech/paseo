@@ -1,4 +1,4 @@
-import { resolveDaemonVersion } from "../daemon-version.js";
+import { resolveDaemonVersion } from "../fork/daemon-version.js";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

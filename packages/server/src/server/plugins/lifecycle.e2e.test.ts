@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { expect, onTestFinished, test } from "vitest";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
-import { resolveDaemonVersion } from "../daemon-version.js";
+import { resolveDaemonVersion } from "../fork/daemon-version.js";
 
 test("a plugin transforms workspace creation once across receipt replays and observes its committed lifecycle", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "paseo-lifecycle-"));

@@ -1,4 +1,4 @@
-import { resolveDaemonVersion } from "./daemon-version.js";
+import { resolveDaemonVersion } from "./fork/daemon-version.js";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";

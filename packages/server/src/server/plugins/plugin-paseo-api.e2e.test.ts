@@ -1,5 +1,5 @@
 import { EventEmitter, once } from "node:events";
-import { resolveDaemonVersion } from "../daemon-version.js";
+import { resolveDaemonVersion } from "../fork/daemon-version.js";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
