@@ -817,7 +817,10 @@ export function RepositoryGraphPane({
   return (
     <View style={styles.list}>
       <PaneContentToolbar
-        style={[styles.toolbar, { paddingRight: paneContentToolbarTrailingPadding(isCompact) }]}
+        style={[
+          styles.toolbar,
+          { paddingRight: paneContentToolbarTrailingPadding(isCompact, "glyph") },
+        ]}
         testID="repository-graph-toolbar"
       >
         <SearchField

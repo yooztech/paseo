@@ -976,108 +976,33 @@ describe("createGitLabService", () => {
     },
   );
 
-  it("fetches the newest pipeline across branch refs and tag scope", async () => {
+  it("does not select an unrelated tag pipeline for a branch without a resolved tip", async () => {
     const { service, calls } = makeService((args) => {
       if (args[0] === "ci" && args[1] === "list" && args.includes("--ref")) {
         return ok(
           JSON.stringify([
-            {
-              id: 3031,
-              status: "success",
-              ref: "master",
-              sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            },
+            { id: 3031, ref: "master", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
           ]),
         );
       }
       if (args[0] === "ci" && args[1] === "list" && args.includes("--scope")) {
         return ok(
           JSON.stringify([
-            {
-              id: 3103,
-              status: "failed",
-              ref: "v1.2.3",
-              tag: true,
-              sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            },
-            {
-              id: 3090,
-              status: "success",
-              ref: "v1.2.2",
-              tag: true,
-              sha: "cccccccccccccccccccccccccccccccccccccccc",
-            },
+            { id: 3103, ref: "v1.2.3", tag: true, sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
           ]),
         );
       }
       if (args[0] === "ci" && args[1] === "get") {
-        return ok(
-          JSON.stringify({
-            ...PIPELINE_WITH_JOBS,
-            id: 3103,
-            status: "failed",
-            ref: "v1.2.3",
-            sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          }),
-        );
+        return ok(JSON.stringify({ ...PIPELINE_WITH_JOBS, id: Number(args[3]) }));
       }
       throw new Error(`unexpected call: ${args.join(" ")}`);
     });
 
-    const pipeline = await service.getBranchPipeline?.({
-      cwd: "/repo",
-      branch: "master",
-    });
+    const pipeline = await service.getBranchPipeline?.({ cwd: "/repo", branch: "master" });
 
-    const listCalls = calls.filter((args) => args[0] === "ci" && args[1] === "list");
-    expect(listCalls).toHaveLength(2);
-    expect(listCalls).toEqual(
-      expect.arrayContaining([
-        [
-          "ci",
-          "list",
-          "--ref",
-          "master",
-          "--order",
-          "id",
-          "--sort",
-          "desc",
-          "--per-page",
-          "30",
-          "-F",
-          "json",
-        ],
-        [
-          "ci",
-          "list",
-          "--scope",
-          "tags",
-          "--order",
-          "id",
-          "--sort",
-          "desc",
-          "--per-page",
-          "30",
-          "-F",
-          "json",
-        ],
-      ]),
-    );
-    expect(calls.find((args) => args[0] === "ci" && args[1] === "get")).toEqual([
-      "ci",
-      "get",
-      "--pipeline-id",
-      "3103",
-      "--with-job-details",
-      "-F",
-      "json",
-    ]);
-    expect(pipeline).toMatchObject({
-      id: 3103,
-      status: "failed",
-      rawStatus: "failed",
-      ref: "v1.2.3",
-    });
+    expect(pipeline?.id).toBe(3031);
+    expect(calls.filter((args) => args[0] === "ci" && args[1] === "list")).toHaveLength(1);
+    expect(calls.some((args) => args.includes("--scope"))).toBe(false);
   });
 
   it("also considers tip-sha pipelines when resolving branch tip", async () => {
@@ -1086,9 +1011,6 @@ describe("createGitLabService", () => {
       (args) => {
         if (args[0] === "ci" && args[1] === "list" && args.includes("--ref")) {
           return ok(JSON.stringify([{ id: 3031, status: "success", ref: "master" }]));
-        }
-        if (args[0] === "ci" && args[1] === "list" && args.includes("--scope")) {
-          return ok(JSON.stringify([]));
         }
         if (args[0] === "ci" && args[1] === "list" && args.includes("--sha")) {
           return ok(
@@ -1111,6 +1033,7 @@ describe("createGitLabService", () => {
     });
 
     expect(calls.some((args) => args.includes("--sha") && args.includes(tipSha))).toBe(true);
+    expect(calls.some((args) => args.includes("--scope"))).toBe(false);
     expect(pipeline?.id).toBe(3103);
   });
 
@@ -1120,7 +1043,7 @@ describe("createGitLabService", () => {
     await expect(
       service.getBranchPipeline?.({ cwd: "/repo", branch: "feat/missing" }),
     ).resolves.toBeNull();
-    expect(calls.filter((args) => args[1] === "list")).toHaveLength(2);
+    expect(calls.filter((args) => args[1] === "list")).toHaveLength(1);
   });
 
   it("returns null when list-by-ref reports no pipeline text error", async () => {

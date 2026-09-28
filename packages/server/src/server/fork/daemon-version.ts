@@ -6,13 +6,13 @@ import {
   resolveDaemonVersion as resolveUpstreamDaemonVersion,
 } from "../daemon-version.js";
 export { DaemonVersionResolutionError };
-const RELEASE_TAG_PATTERN = /^v(?<version>\d+\.\d+\.\d+(?:-(?:beta|fork)\.\d+)?)$/;
+const RELEASE_TAG_PATTERN = /^v(?<version>\d+\.\d+\.\d+(?:-beta\.\d+)?-fork\.\d+)$/;
 
 function resolveCheckoutVersion(moduleUrl: string): string | null {
   try {
     const tag = execFileSync(
       "git",
-      ["describe", "--tags", "--match", "v[0-9]*", "--abbrev=0", "HEAD"],
+      ["describe", "--tags", "--match", "v[0-9]*-fork.*", "--abbrev=0", "HEAD"],
       {
         cwd: path.dirname(fileURLToPath(moduleUrl)),
         encoding: "utf8",
@@ -26,10 +26,8 @@ function resolveCheckoutVersion(moduleUrl: string): string | null {
 }
 
 export function resolveDaemonVersion(moduleUrl: string = import.meta.url): string {
+  const packageVersion = resolveUpstreamDaemonVersion(moduleUrl);
   const checkoutVersion = resolveCheckoutVersion(moduleUrl);
-  if (checkoutVersion) {
-    return checkoutVersion;
-  }
-
-  return resolveUpstreamDaemonVersion(moduleUrl);
+  // A previous fork release tag must not override the version of a newly upgraded checkout.
+  return checkoutVersion?.startsWith(`${packageVersion}-fork.`) ? checkoutVersion : packageVersion;
 }

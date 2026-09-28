@@ -49,4 +49,44 @@ describe("resolveDaemonVersion", () => {
     const moduleUrl = pathToFileURL(path.join(nestedDir, "index.js")).href;
     expect(resolveDaemonVersion(moduleUrl)).toBe("9.8.7-fork.4");
   });
+  it("uses the package version after upgrading past the last fork release", () => {
+    const root = createTempDir();
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "@getpaseo/server", version: "0.9.2" }),
+      "utf8",
+    );
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["add", "package.json"], { cwd: root });
+    execFileSync(
+      "git",
+      ["-c", "user.name=Paseo Test", "-c", "user.email=test@paseo.local", "commit", "-qm", "test"],
+      { cwd: root },
+    );
+    execFileSync("git", ["tag", "v0.7.2-fork.8"], { cwd: root });
+
+    expect(resolveDaemonVersion(pathToFileURL(path.join(root, "index.js")).href)).toBe("0.9.2");
+  });
+
+  it("prefers the matching fork release over an upstream tag at HEAD", () => {
+    const root = createTempDir();
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "@getpaseo/server", version: "0.9.2" }),
+      "utf8",
+    );
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["add", "package.json"], { cwd: root });
+    execFileSync(
+      "git",
+      ["-c", "user.name=Paseo Test", "-c", "user.email=test@paseo.local", "commit", "-qm", "test"],
+      { cwd: root },
+    );
+    execFileSync("git", ["tag", "v0.9.2-fork.1"], { cwd: root });
+    execFileSync("git", ["tag", "v0.9.2"], { cwd: root });
+
+    expect(resolveDaemonVersion(pathToFileURL(path.join(root, "index.js")).href)).toBe(
+      "0.9.2-fork.1",
+    );
+  });
 });

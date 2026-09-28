@@ -2,7 +2,6 @@ import { basename } from "node:path";
 
 import { createRealpathAwarePathMatcher } from "../../../utils/path.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
-import { writePaseoWorktreeMetadata } from "../../../utils/worktree-metadata.js";
 import {
   createWorktree,
   isPaseoOwnedWorktreeCwd,
@@ -190,17 +189,12 @@ export function createWorkspaceRecoveryService(deps: {
       const result = await createWorktree({
         cwd: sourceRepoRoot,
         worktreeSlug: basename(previousWorktreePath),
-        source: { kind: "checkout-branch", branchName: branch },
+        source: { kind: "restore", branchName: branch, baseRef: workspace.baseBranch },
         runSetup: false,
         paseoHome: deps.paseoHome,
         worktreesRoot: deps.worktreesRoot,
       });
       recreatedWorktreePath = result.worktreePath;
-      if (workspace.baseBranch) {
-        writePaseoWorktreeMetadata(recreatedWorktreePath, {
-          baseRefName: workspace.baseBranch,
-        });
-      }
     } catch (error) {
       throw toWorktreeRequestError(error);
     }

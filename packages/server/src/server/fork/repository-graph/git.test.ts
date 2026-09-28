@@ -3,11 +3,13 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import {
   getRepositoryGraphCommitDetails,
   getRepositoryGraphHistory,
   mutateRepositoryGraphRef,
 } from "./git.js";
+import { RepositoryGraphForkSessionHandler } from "./session-handler.js";
 
 const tempDirs: string[] = [];
 
@@ -327,5 +329,97 @@ describe("mutateRepositoryGraphRef", () => {
 
     expect(() => git(["rev-parse", "--verify", "refs/tags/v2"], repoDir)).toThrow();
     expect(git(["ls-remote", "--tags", "origin", "v2"], repoDir)).toBe("");
+  });
+});
+
+describe("RepositoryGraphForkSessionHandler.handleMutateRef", () => {
+  it("reports a successful ref change once even when refresh fails", async () => {
+    const repoDir = initRepo();
+    git(["branch", "feature"], repoDir);
+    const responses: SessionOutboundMessage[] = [];
+    let refreshCount = 0;
+    const refreshErrors: Array<{ error: unknown; cwd: string }> = [];
+    const handler = new RepositoryGraphForkSessionHandler(
+      (message) => responses.push(message),
+      async () => {
+        refreshCount++;
+        throw new Error("refresh failed");
+      },
+      (error, cwd) => refreshErrors.push({ error, cwd }),
+    );
+
+    await handler.handleMutateRef({
+      type: "checkout.repository_graph.mutate_ref.request",
+      cwd: repoDir,
+      action: "rename",
+      refKind: "head",
+      name: "feature",
+      newName: "renamed-feature",
+      requestId: "rename-ref",
+    });
+
+    expect(git(["branch", "--format=%(refname:short)"], repoDir).split("\n")).toContain(
+      "renamed-feature",
+    );
+    expect(refreshCount).toBe(1);
+    expect(refreshErrors).toEqual([{ error: new Error("refresh failed"), cwd: repoDir }]);
+    expect(responses).toEqual([
+      {
+        type: "checkout.repository_graph.mutate_ref.response",
+        payload: {
+          cwd: repoDir,
+          action: "rename",
+          refKind: "head",
+          name: "feature",
+          success: true,
+          error: null,
+          requestId: "rename-ref",
+        },
+      },
+    ]);
+  });
+
+  it("reports a genuine Git failure once without attempting refresh", async () => {
+    const repoDir = initRepo();
+    const responses: SessionOutboundMessage[] = [];
+    let refreshCount = 0;
+    const refreshErrors: Array<{ error: unknown; cwd: string }> = [];
+    const handler = new RepositoryGraphForkSessionHandler(
+      (message) => responses.push(message),
+      async () => {
+        refreshCount++;
+        throw new Error("refresh failed");
+      },
+      (error, cwd) => refreshErrors.push({ error, cwd }),
+    );
+
+    await handler.handleMutateRef({
+      type: "checkout.repository_graph.mutate_ref.request",
+      cwd: repoDir,
+      action: "rename",
+      refKind: "head",
+      name: "missing-branch",
+      newName: "renamed-feature",
+      requestId: "failed-rename",
+    });
+
+    expect(refreshCount).toBe(0);
+    expect(refreshErrors).toEqual([]);
+    expect(responses).toHaveLength(1);
+    expect(responses[0]).toMatchObject({
+      type: "checkout.repository_graph.mutate_ref.response",
+      payload: {
+        cwd: repoDir,
+        action: "rename",
+        refKind: "head",
+        name: "missing-branch",
+        success: false,
+        error: { code: "UNKNOWN", message: expect.stringContaining("missing-branch") },
+        requestId: "failed-rename",
+      },
+    });
+    expect(git(["branch", "--format=%(refname:short)"], repoDir).split("\n")).not.toContain(
+      "renamed-feature",
+    );
   });
 });

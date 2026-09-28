@@ -17,6 +17,7 @@ export class RepositoryGraphForkSessionHandler {
   constructor(
     private readonly emit: (message: SessionOutboundMessage) => void,
     private readonly onMutation: (cwd: string) => Promise<void>,
+    private readonly onRefreshError: (error: unknown, cwd: string) => void,
   ) {}
 
   async handleHistory(msg: CheckoutRepositoryGraphGetHistoryRequest): Promise<void> {
@@ -65,7 +66,6 @@ export class RepositoryGraphForkSessionHandler {
       pushToRemote,
       requestId,
     } = msg;
-    let mutationError: unknown = null;
     try {
       assertSafeGitRef(name, refKind === "tag" ? "tag" : "branch");
       if (newName) {
@@ -86,33 +86,34 @@ export class RepositoryGraphForkSessionHandler {
         pushToRemote,
       });
     } catch (error) {
-      mutationError = error;
+      this.emit({
+        type: "checkout.repository_graph.mutate_ref.response",
+        payload: {
+          cwd,
+          action,
+          refKind,
+          name,
+          success: false,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+      return;
     }
 
     try {
       await this.onMutation(cwd);
     } catch (error) {
-      mutationError ??= error;
+      try {
+        this.onRefreshError(error, cwd);
+      } catch {
+        // Logging failures must not change the result of an already-applied Git mutation.
+      }
     }
 
-    if (!mutationError) {
-      this.emit({
-        type: "checkout.repository_graph.mutate_ref.response",
-        payload: { cwd, action, refKind, name, success: true, error: null, requestId },
-      });
-      return;
-    }
     this.emit({
       type: "checkout.repository_graph.mutate_ref.response",
-      payload: {
-        cwd,
-        action,
-        refKind,
-        name,
-        success: false,
-        error: toCheckoutError(mutationError),
-        requestId,
-      },
+      payload: { cwd, action, refKind, name, success: true, error: null, requestId },
     });
   }
 }
