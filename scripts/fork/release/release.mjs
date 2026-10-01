@@ -97,37 +97,63 @@ function preflight(channel) {
 }
 
 export function publish(metadata, { captureGit = capture, runGit = run } = {}) {
-  const { sourceTag, publicationTag } = metadata;
+  const tags = [...new Set([metadata.sourceTag, metadata.publicationTag])];
   const head = captureGit("git", ["rev-parse", "HEAD"]);
-  if (sourceTag !== publicationTag) {
-    if (!captureGit("git", ["tag", "--list", publicationTag])) {
-      throw new Error(
-        `Canonical release tag ${publicationTag} must already exist at HEAD before publishing ${sourceTag}. Release the daemon channel first.`,
-      );
+  const remoteRefs = tags.flatMap((tag) => [`refs/tags/${tag}`, `refs/tags/${tag}^{}`]);
+  const remoteOutput = captureGit("git", ["ls-remote", "--tags", "origin", ...remoteRefs]);
+  const remoteTags = new Map(
+    remoteOutput
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [object, ref] = line.split("\t");
+        return [ref, object];
+      }),
+  );
+  const missingLocal = [];
+  const missingRemote = [];
+
+  // Validate every ref before creating either tag or updating the remote.
+  for (const tag of tags) {
+    const local = captureGit("git", ["tag", "--list", tag]);
+    if (local) {
+      const commit = captureGit("git", ["rev-parse", `${tag}^{commit}`]);
+      if (commit !== head) {
+        throw new Error(`Release tag ${tag} already points to ${commit}, not HEAD (${head}).`);
+      }
+    } else {
+      missingLocal.push(tag);
     }
-    const publicationCommit = captureGit("git", ["rev-parse", `${publicationTag}^{commit}`]);
-    if (publicationCommit !== head) {
-      throw new Error(
-        `Canonical release tag ${publicationTag} points to ${publicationCommit}, not HEAD (${head}). Use a new fork release number for this commit or resolve the conflicting tag before publishing ${sourceTag}.`,
-      );
+
+    const remoteRef = `refs/tags/${tag}`;
+    if (remoteTags.has(remoteRef)) {
+      const commit = remoteTags.get(`${remoteRef}^{}`) ?? remoteTags.get(remoteRef);
+      if (commit !== head) {
+        throw new Error(
+          `Remote release tag ${tag} already points to ${commit}, not HEAD (${head}).`,
+        );
+      }
+    } else {
+      missingRemote.push(tag);
     }
   }
 
-  let createdTag = false;
-  if (captureGit("git", ["tag", "--list", sourceTag])) {
-    const existingCommit = captureGit("git", ["rev-parse", `${sourceTag}^{commit}`]);
-    if (existingCommit !== head) {
-      throw new Error(`Release tag ${sourceTag} already points to ${existingCommit}, not ${head}.`);
-    }
-  } else {
-    runGit("git", ["tag", sourceTag]);
-    createdTag = true;
-  }
-
+  const created = [];
   try {
-    runGit("git", ["push", "--atomic", "origin", sourceTag]);
+    for (const tag of missingLocal) {
+      runGit("git", ["tag", tag]);
+      created.push(tag);
+    }
+    if (missingRemote.length) {
+      runGit("git", [
+        "push",
+        "--atomic",
+        "origin",
+        ...missingRemote.map((tag) => `refs/tags/${tag}:refs/tags/${tag}`),
+      ]);
+    }
   } catch (error) {
-    if (createdTag) runGit("git", ["tag", "--delete", sourceTag]);
+    for (const tag of created) runGit("git", ["tag", "--delete", tag]);
     throw error;
   }
 }

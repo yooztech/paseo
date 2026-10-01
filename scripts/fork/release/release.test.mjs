@@ -11,33 +11,6 @@ import {
   publish,
 } from "./release.mjs";
 
-test("creates channel-specific fork release metadata", () => {
-  assert.deepEqual(createForkReleaseMetadata("daemon", "0.2.5", 8), {
-    channel: "daemon",
-    sourceTag: "v0.2.5-fork.8",
-    publicationTag: "v0.2.5-fork.8",
-    changelogVersion: "0.2.5",
-    version: "0.2.5-fork.8",
-    forkNumber: 8,
-  });
-  assert.deepEqual(createForkReleaseMetadata("desktop", "0.2.5", 9), {
-    channel: "desktop",
-    sourceTag: "desktop-v0.2.5-fork.9",
-    publicationTag: "v0.2.5-fork.9",
-    changelogVersion: "0.2.5",
-    version: "0.2.5-fork.9",
-    forkNumber: 9,
-  });
-  assert.deepEqual(createForkReleaseMetadata("app", "0.2.5", 10), {
-    channel: "app",
-    sourceTag: "app-v0.2.5-fork.10",
-    publicationTag: "v0.2.5-fork.10",
-    changelogVersion: "0.2.5",
-    version: "0.2.5-fork.10",
-    forkNumber: 10,
-  });
-});
-
 test("allocates after all current channel tags and the historical app format", () => {
   const tags = [
     "v0.2.5-fork.2",
@@ -106,38 +79,122 @@ function withGitRepo(fn) {
   }
 }
 
-test("desktop and app push only their source tags when canonical tag is at HEAD", () => {
-  for (const channel of ["desktop", "app"]) {
+test("desktop or app can publish first and subsequent channels reuse canonical HEAD", () => {
+  for (const first of ["desktop", "app"]) {
     withGitRepo(({ git, remoteTags, commands }) => {
-      const metadata = createForkReleaseMetadata(channel, "0.2.5", 8);
-      git("tag", metadata.publicationTag);
-
-      publish(metadata, commands);
-
-      assert.equal(git("rev-parse", `${metadata.sourceTag}^{commit}`), git("rev-parse", "HEAD"));
-      assert.deepEqual(remoteTags(), [metadata.sourceTag]);
+      const second = first === "desktop" ? "app" : "desktop";
+      const channels = [first, second, "daemon"];
+      const head = git("rev-parse", "HEAD");
+      for (const channel of channels) {
+        const metadata = createForkReleaseMetadata(channel, "0.2.5", 8);
+        publish(metadata, commands);
+        assert.equal(git("rev-parse", `${metadata.sourceTag}^{commit}`), head);
+        assert.equal(git("rev-parse", `${metadata.publicationTag}^{commit}`), head);
+        assert.deepEqual(
+          remoteTags(),
+          [
+            ...new Set(
+              channels.slice(0, channels.indexOf(channel) + 1).flatMap((name) => {
+                const release = createForkReleaseMetadata(name, "0.2.5", 8);
+                return [release.sourceTag, release.publicationTag];
+              }),
+            ),
+          ].sort(),
+        );
+      }
+      publish(createForkReleaseMetadata(first, "0.2.5", 8), commands);
+      assert.deepEqual(remoteTags(), [
+        "app-v0.2.5-fork.8",
+        "desktop-v0.2.5-fork.8",
+        "v0.2.5-fork.8",
+      ]);
     });
   }
 });
 
-test("desktop and app reject missing or mismatched canonical tags without creating source tags", () => {
-  for (const channel of ["desktop", "app"]) {
-    withGitRepo(({ git, remoteTags, commands }) => {
-      const metadata = createForkReleaseMetadata(channel, "0.2.5", 8);
-      assert.throws(
-        () => publish(metadata, commands),
-        /must already exist at HEAD.*daemon channel first/,
-      );
-      assert.equal(git("tag", "--list", metadata.sourceTag), "");
-      assert.deepEqual(remoteTags(), []);
-
-      git("tag", metadata.publicationTag);
-      git("commit", "--quiet", "--allow-empty", "-m", "later commit");
-      assert.throws(() => publish(metadata, commands), /not HEAD.*new fork release number/);
-      assert.equal(git("tag", "--list", metadata.sourceTag), "");
-      assert.deepEqual(remoteTags(), []);
-    });
+test("conflicting local source or canonical tag cannot be moved or deleted", () => {
+  for (const channel of ["desktop", "app", "daemon"]) {
+    for (const conflict of ["sourceTag", "publicationTag"]) {
+      withGitRepo(({ git, remoteTags, commands }) => {
+        const metadata = createForkReleaseMetadata(channel, "0.2.5", 8);
+        const original = git("rev-parse", "HEAD");
+        git("tag", metadata[conflict]);
+        git("commit", "--quiet", "--allow-empty", "-m", "next commit");
+        assert.throws(() => publish(metadata, commands), /already points to .*not HEAD/);
+        assert.equal(git("rev-parse", `${metadata[conflict]}^{commit}`), original);
+        assert.deepEqual(git("tag", "--list").split("\n"), [metadata[conflict]]);
+        assert.deepEqual(remoteTags(), []);
+      });
+    }
   }
+});
+
+test("conflicting remote source or canonical tag prevents any local or remote changes", () => {
+  for (const channel of ["desktop", "app", "daemon"]) {
+    for (const conflict of ["sourceTag", "publicationTag"]) {
+      withGitRepo(({ git, remoteTags, commands }) => {
+        const metadata = createForkReleaseMetadata(channel, "0.2.5", 8);
+        const original = git("rev-parse", "HEAD");
+        git("tag", metadata[conflict]);
+        git("push", "origin", metadata[conflict]);
+        git("tag", "--delete", metadata[conflict]);
+        git("commit", "--quiet", "--allow-empty", "-m", "next commit");
+        assert.throws(() => publish(metadata, commands), /Remote release tag .*not HEAD/);
+        assert.equal(git("tag", "--list"), "");
+        assert.deepEqual(remoteTags(), [metadata[conflict]]);
+        assert.equal(
+          git("ls-remote", "origin", `refs/tags/${metadata[conflict]}`).split("\t")[0],
+          original,
+        );
+      });
+    }
+  }
+});
+
+test("atomic remote rejection leaves no partial canonical push or new local tags", () => {
+  withGitRepo(({ git, remoteTags, commands }) => {
+    const metadata = createForkReleaseMetadata("desktop", "0.2.5", 8);
+    const original = git("rev-parse", "HEAD");
+    git("commit", "--quiet", "--allow-empty", "-m", "next commit");
+    const racingCommands = {
+      ...commands,
+      runGit(command, args) {
+        if (args[0] === "push") {
+          assert.equal(args[1], "--atomic");
+          git("tag", "--force", metadata.sourceTag, original);
+          git("push", "origin", metadata.sourceTag);
+          git("tag", "--force", metadata.sourceTag, "HEAD");
+        }
+        commands.runGit(command, args);
+      },
+    };
+    assert.throws(() => publish(metadata, racingCommands));
+    assert.equal(git("tag", "--list"), "");
+    assert.deepEqual(remoteTags(), [metadata.sourceTag]);
+    assert.equal(
+      git("ls-remote", "origin", `refs/tags/${metadata.sourceTag}`).split("\t")[0],
+      original,
+    );
+  });
+});
+
+test("failed push preserves a preexisting local canonical tag", () => {
+  withGitRepo(({ git, remoteTags, commands }) => {
+    const metadata = createForkReleaseMetadata("app", "0.2.5", 8);
+    const head = git("rev-parse", "HEAD");
+    git("tag", metadata.publicationTag);
+    const failingCommands = {
+      ...commands,
+      runGit(command, args) {
+        if (args[0] === "push") throw new Error("push rejected");
+        commands.runGit(command, args);
+      },
+    };
+    assert.throws(() => publish(metadata, failingCommands), /push rejected/);
+    assert.equal(git("rev-parse", `${metadata.publicationTag}^{commit}`), head);
+    assert.equal(git("tag", "--list", metadata.sourceTag), "");
+    assert.deepEqual(remoteTags(), []);
+  });
 });
 
 test("daemon publish creates and pushes its canonical source tag", () => {
