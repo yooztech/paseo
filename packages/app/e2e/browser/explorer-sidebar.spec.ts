@@ -45,4 +45,35 @@ test.describe("Explorer sidebar", () => {
       await workspace.cleanup();
     }
   });
+  test("restores Files from the visible Explorer menu after the tab is closed", async ({
+    page,
+  }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "explorer-sidebar-restore-files-" });
+
+    try {
+      await gotoWorkspace(page, workspace.workspaceId);
+      await waitForWorkspaceTabsVisible(page);
+      const explorer = await ensureExplorerSidebar(page);
+      const menuButton = explorer.getByTestId("explorer-sidebar-configuration-menu-trigger");
+      const menu = page.getByTestId("explorer-sidebar-configuration-dropdown");
+
+      await expect(menuButton).toBeVisible();
+      await menuButton.click();
+      await menu.getByText("Files", { exact: true }).click();
+      await expect(explorer.getByTestId("explorer-sidebar-tab-files")).toHaveCount(0);
+
+      await page.getByTestId("workspace-explorer-toggle").first().click();
+      await expect(explorerSidebar(page)).toHaveCount(0);
+      await ensureExplorerSidebar(page);
+      await expect(explorer.getByTestId("explorer-sidebar-tab-files")).toHaveCount(0);
+
+      await menuButton.click();
+      await menu.getByText("Files", { exact: true }).click();
+      await expect(
+        explorer.getByTestId("explorer-sidebar-tab-rail").getByText("Files", { exact: true }),
+      ).toBeVisible();
+    } finally {
+      await workspace.cleanup();
+    }
+  });
 });

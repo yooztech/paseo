@@ -15,6 +15,15 @@ This is an npm workspace monorepo:
 - `packages/desktop` — Electron desktop wrapper
 - `packages/website` — Marketing site (paseo.sh)
 
+## Fork Markdown policy
+
+This fork must not create, edit, or delete Markdown files, including `docs/`, `README.md`, and
+`CHANGELOG.md`, regardless of the kind of project change. This rule overrides all Markdown-writing
+and documentation-update instructions below. The upstream Markdown files describe upstream Paseo;
+they do not describe or establish the behavior of this fork. Check the fork's code, tests, and history
+for fork-specific facts.
+Only an explicit user request to change this policy in `AGENTS.md` permits editing this rule file.
+
 ## Docs
 
 `docs/` is the source of truth for system-level and process-level knowledge. **"The docs", "check the docs", or "check the X docs" always mean this directory — not the web.** Look here before fetching anything online; the docs capture gotchas and conventions you cannot derive from the code or external sources.

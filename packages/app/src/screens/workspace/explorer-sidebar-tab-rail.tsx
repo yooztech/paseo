@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { Text, View } from "react-native";
-import { ArrowLeftToLine, Plus, X } from "lucide-react-native";
+import { ArrowLeftToLine, Ellipsis, Plus, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import Animated from "react-native-reanimated";
@@ -17,6 +17,8 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { DropdownMenu, DropdownMenuContent } from "@/components/ui/dropdown-menu";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { titlebarDragSurfaceStyle } from "@/components/desktop/titlebar-drag-region";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
@@ -47,6 +49,7 @@ const TAB_GAP = 4;
 const TAB_DROP_INDICATOR_WIDTH = 4;
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const configurationMenuTriggerStyle = { WebkitAppRegion: "no-drag" } as const;
 
 interface ExplorerSidebarTabRailProps {
   paneId: string;
@@ -211,6 +214,7 @@ function CatalogIcon({
 const ThemedCatalogIcon = withUnistyles(CatalogIcon);
 const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedPlus = withUnistyles(Plus);
+const ThemedEllipsis = withUnistyles(Ellipsis);
 const ThemedX = withUnistyles(X);
 
 function ExplorerSidebarConfigurationItem({
@@ -252,6 +256,40 @@ function catalogItemMatchesTab(item: WorkspaceTabLaunchItem, tab: WorkspaceTabDe
   return item.toggleTarget !== null && workspaceTabTargetsEqual(item.toggleTarget, tab.target);
 }
 
+function ExplorerSidebarConfigurationMenuItems({
+  items,
+  tabs,
+  paneId,
+  onCloseTab,
+  onCreateNewTab,
+}: {
+  items: WorkspaceTabLaunchItem[];
+  tabs: WorkspaceDesktopTabRowItem[];
+  paneId: string;
+  onCloseTab: (tabId: string) => Promise<void> | void;
+  onCreateNewTab: () => void;
+}) {
+  const { t } = useTranslation();
+  const newTabLeading = useMemo(() => <ThemedPlus size={14} uniProps={mutedColorMapping} />, []);
+  return (
+    <>
+      <ContextMenuItem leading={newTabLeading} onSelect={onCreateNewTab}>
+        {t("workspace.tabs.actions.newTab")}
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      {items.map((item) => (
+        <ExplorerSidebarConfigurationItem
+          key={item.id}
+          item={item}
+          paneId={paneId}
+          tab={tabs.find(({ tab }) => catalogItemMatchesTab(item, tab))?.tab ?? null}
+          onCloseTab={onCloseTab}
+        />
+      ))}
+    </>
+  );
+}
+
 export function ExplorerSidebarTabRail({
   paneId,
   tabs,
@@ -277,7 +315,6 @@ export function ExplorerSidebarTabRail({
     () => groups.flatMap((group) => group.items).filter((item) => item.toggleTarget !== null),
     [groups],
   );
-  const newTabLeading = useMemo(() => <ThemedPlus size={14} uniProps={mutedColorMapping} />, []);
   const handleDragEnd = useCallback(
     (nextTabs: WorkspaceDesktopTabRowItem[]) => onReorderTabs(nextTabs.map((item) => item.tab)),
     [onReorderTabs],
@@ -367,24 +404,43 @@ export function ExplorerSidebarTabRail({
             rightStyle={scrollBoundary.rightShadeStyle}
           />
         </View>
+        <DropdownMenu>
+          <ToolbarButton
+            kind="menu"
+            label={t("workspace.git.actions.moreActions")}
+            testID="explorer-sidebar-configuration-menu-trigger"
+            style={configurationMenuTriggerStyle as never}
+          >
+            <ThemedEllipsis size={14} uniProps={mutedColorMapping} />
+          </ToolbarButton>
+          <DropdownMenuContent
+            side="bottom"
+            align="end"
+            offset={4}
+            width={200}
+            testID="explorer-sidebar-configuration-dropdown"
+          >
+            <ExplorerSidebarConfigurationMenuItems
+              items={singletonConfigurationItems}
+              tabs={tabs}
+              paneId={paneId}
+              onCloseTab={onCloseTab}
+              onCreateNewTab={onCreateNewTab}
+            />
+          </DropdownMenuContent>
+        </DropdownMenu>
         {trailingAccessory ? (
           <View style={styles.trailingAccessory}>{trailingAccessory}</View>
         ) : null}
       </ContextMenuTrigger>
       <ContextMenuContent align="start" minWidth={200} testID="explorer-sidebar-tab-configuration">
-        <ContextMenuItem leading={newTabLeading} onSelect={onCreateNewTab}>
-          {t("workspace.tabs.actions.newTab")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        {singletonConfigurationItems.map((item) => (
-          <ExplorerSidebarConfigurationItem
-            key={item.id}
-            item={item}
-            paneId={paneId}
-            tab={tabs.find(({ tab }) => catalogItemMatchesTab(item, tab))?.tab ?? null}
-            onCloseTab={onCloseTab}
-          />
-        ))}
+        <ExplorerSidebarConfigurationMenuItems
+          items={singletonConfigurationItems}
+          tabs={tabs}
+          paneId={paneId}
+          onCloseTab={onCloseTab}
+          onCreateNewTab={onCreateNewTab}
+        />
       </ContextMenuContent>
     </ContextMenu>
   );
