@@ -2,7 +2,7 @@
 
 Paseo is a mobile app for monitoring and controlling your local AI coding agents from anywhere. Your dev environment, in your pocket. Connects directly to your actual development environment — your code stays on your machine.
 
-**Supported agents:** Claude Code, Codex, GitHub Copilot, OpenCode, and Pi.
+**Supported agents:** Claude Code, Codex, GitHub Copilot, OpenCode, Pi, Antigravity, and Muse Code.
 
 ## Repository map
 
@@ -14,15 +14,6 @@ This is an npm workspace monorepo:
 - `packages/relay` — E2E encrypted relay for remote access
 - `packages/desktop` — Electron desktop wrapper
 - `packages/website` — Marketing site (paseo.sh)
-
-## Fork Markdown policy
-
-This fork must not create, edit, or delete Markdown files, including `docs/`, `README.md`, and
-`CHANGELOG.md`, regardless of the kind of project change. This rule overrides all Markdown-writing
-and documentation-update instructions below. The upstream Markdown files describe upstream Paseo;
-they do not describe or establish the behavior of this fork. Check the fork's code, tests, and history
-for fork-specific facts.
-Only an explicit user request to change this policy in `AGENTS.md` permits editing this rule file.
 
 ## Docs
 
