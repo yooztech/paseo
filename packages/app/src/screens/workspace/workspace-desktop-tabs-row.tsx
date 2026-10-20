@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import Animated from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import { SortableInlineList } from "@/components/sortable-inline-list";
@@ -533,6 +534,8 @@ function sameWidths(left: number[], right: number[]): boolean {
 export interface WorkspaceDesktopTabsRowProps {
   host?: PaneHost;
   launchPurpose?: WorkspaceTabLaunchPurpose;
+  /** Fork Explorer: keep resize geometry out of the shared Unistyles registry. */
+  inlineTabGeometry?: boolean;
   paneId?: string;
   isFocused?: boolean;
   ownsKeyboardShortcuts?: boolean;
@@ -743,6 +746,7 @@ function TabChip({
   isDragging,
   isFocused,
   resolvedTabWidth,
+  inlineTabGeometry = false,
   showLabel,
   showCloseButton,
   isCloseHovered,
@@ -762,6 +766,7 @@ function TabChip({
   isDragging: boolean;
   isFocused: boolean;
   resolvedTabWidth: number;
+  inlineTabGeometry?: boolean;
   showLabel: boolean;
   showCloseButton: boolean;
   isCloseHovered: boolean;
@@ -810,13 +815,27 @@ function TabChip({
       isActive && !isFocused && styles.tabActiveUnfocused,
       !isActive && isHovered && styles.tabHovered,
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
-      {
-        minWidth: resolvedTabWidth,
-        width: resolvedTabWidth,
-        maxWidth: resolvedTabWidth,
-      },
+      inlineTabGeometry
+        ? inlineUnistylesStyle({
+            minWidth: resolvedTabWidth,
+            width: resolvedTabWidth,
+            maxWidth: resolvedTabWidth,
+          })
+        : {
+            minWidth: resolvedTabWidth,
+            width: resolvedTabWidth,
+            maxWidth: resolvedTabWidth,
+          },
     ],
-    [isActive, isActiveFocused, isDragging, isFocused, isHovered, resolvedTabWidth],
+    [
+      inlineTabGeometry,
+      isActive,
+      isActiveFocused,
+      isDragging,
+      isFocused,
+      isHovered,
+      resolvedTabWidth,
+    ],
   );
 
   const handleTabPointerEnter = useCallback(() => {
@@ -1030,6 +1049,7 @@ export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
 
 function ResolvedWorkspaceDesktopTabsRow({
   host = "main",
+  inlineTabGeometry,
   launchPurpose = "primary",
   paneId,
   isFocused = false,
@@ -1313,6 +1333,7 @@ function ResolvedWorkspaceDesktopTabsRow({
           onCloseTabsToRight={onCloseTabsToRight}
           onCloseOtherTabs={onCloseOtherTabs}
           resolvedTabWidth={resolvedTabWidth}
+          inlineTabGeometry={inlineTabGeometry}
           showLabel={showLabel}
           showCloseButton={shouldShowCloseButton}
           setHoveredCloseTabKey={setHoveredCloseTabKey}
@@ -1327,6 +1348,7 @@ function ResolvedWorkspaceDesktopTabsRow({
     },
     [
       activeDragTabId,
+      inlineTabGeometry,
       isFocused,
       layout.closeButtonPolicy,
       layout.items,
@@ -1472,6 +1494,7 @@ function ResolvedDesktopTabChip({
   onCloseTabsToRight,
   onCloseOtherTabs,
   resolvedTabWidth,
+  inlineTabGeometry,
   showLabel,
   showCloseButton,
   setHoveredCloseTabKey,
@@ -1498,6 +1521,7 @@ function ResolvedDesktopTabChip({
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   resolvedTabWidth: number;
+  inlineTabGeometry?: boolean;
   showLabel: boolean;
   showCloseButton: boolean;
   setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
@@ -1569,6 +1593,7 @@ function ResolvedDesktopTabChip({
         isDragging={isDragging}
         isFocused={isFocused}
         resolvedTabWidth={resolvedTabWidth}
+        inlineTabGeometry={inlineTabGeometry}
         showLabel={showLabel}
         showCloseButton={showCloseButton}
         isCloseHovered={item.isCloseHovered}
