@@ -129,6 +129,7 @@ export function ExplorerSidebarDock({
             <View style={styles.tabRow}>
               <WorkspaceDesktopTabsRow
                 host="explorer"
+                inlineTabGeometry
                 launchPurpose="supporting"
                 isFocused={isWorkspaceFocused}
                 ownsKeyboardShortcuts={false}
