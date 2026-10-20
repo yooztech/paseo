@@ -272,6 +272,7 @@ function buildDefaultTestServiceDeps() {
     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutSnapshotFacts(cwd)),
     getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
       ...current,
+      hasChangesFromBase: current.hasChangesFromBase ?? null,
       upstreamStatus: facts.upstreamStatus,
     })),
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
@@ -872,6 +873,7 @@ describe("WorkspaceGitServiceImpl", () => {
     }));
     const getCheckoutRefDerivedState = vi.fn(async (_cwd, facts, current) => ({
       ...current,
+      hasChangesFromBase: current.hasChangesFromBase ?? null,
       upstreamStatus: facts.upstreamStatus,
     }));
     const resolveAbsoluteGitDir = vi.fn(async () => join(REPO_CWD, ".git"));

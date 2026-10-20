@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
 import { CheckSquare2, Square } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import type { Theme } from "@/styles/theme";
 
 interface RefDeleteModalProps {
@@ -20,6 +21,10 @@ const ThemedSquare = withUnistyles(Square);
 const ThemedCheckSquare = withUnistyles(CheckSquare2);
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
+const optionStyle = ({ pressed }: PressableStateCallbackType) => [
+  styles.option,
+  pressed && styles.optionPressed,
+];
 
 function DeleteOption({
   checked,
@@ -37,8 +42,9 @@ function DeleteOption({
   const Icon = checked ? ThemedCheckSquare : ThemedSquare;
   const accessibilityState = useMemo(() => ({ checked, disabled }), [checked, disabled]);
   return (
-    <Pressable
-      style={styles.option}
+    <PressHighlight
+      style={optionStyle}
+      highlightStyle={styles.optionPressed}
       disabled={disabled}
       onPress={onPress}
       accessibilityRole="checkbox"
@@ -47,7 +53,7 @@ function DeleteOption({
     >
       <Icon size={18} uniProps={checked ? accentColorMapping : mutedColorMapping} />
       <Text style={[styles.optionText, disabled && styles.optionTextDisabled]}>{label}</Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -165,6 +171,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
   },
+  optionPressed: { backgroundColor: theme.colors.surface1 },
   optionText: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   optionTextDisabled: { color: theme.colors.foregroundMuted },
   error: { color: theme.colors.destructive, fontSize: theme.fontSize.sm },

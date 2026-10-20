@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ExternalLink, RotateCw } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -9,6 +9,8 @@ import type {
   CheckoutPipelineStage,
 } from "@getpaseo/protocol/messages";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { PressHighlight } from "@/components/ui/press-highlight";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { getForgePresentation } from "@/git/forge";
@@ -95,15 +97,14 @@ export function BranchCiPane({
             <View />
           )}
           {refreshSupported ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
+            <ToolbarButton
+              label={
                 isRefreshing
                   ? t("workspace.git.diff.refreshing")
                   : t("workspace.git.diff.refreshState", { brand: forgePresentation.brandLabel })
               }
               testID="branch-ci-refresh"
-              style={refreshButtonStyle}
+              style={styles.refreshButton}
               hitSlop={8}
               onPress={handleRefresh}
               disabled={isRefreshing}
@@ -118,7 +119,7 @@ export function BranchCiPane({
                   <ThemedRotateCw size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
                 )}
               </View>
-            </Pressable>
+            </ToolbarButton>
           ) : null}
         </View>
         <Section
@@ -168,9 +169,10 @@ export function BranchCiPane({
           ) : null}
           {!isLoading && pipeline ? (
             <>
-              <Pressable
+              <PressHighlight
                 onPress={handleOpenPipeline}
                 style={rowPressableStyle}
+                highlightStyle={styles.hoverable}
                 disabled={!pipeline.url}
                 testID="branch-ci-pipeline-link"
               >
@@ -191,7 +193,7 @@ export function BranchCiPane({
                     <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
                   </View>
                 ) : null}
-              </Pressable>
+              </PressHighlight>
               {pipeline.stages.length === 0 ? (
                 <Text style={sectionKitStyles.emptyText}>{t("workspace.git.pr.empty.noJobs")}</Text>
               ) : (
@@ -238,7 +240,12 @@ function PipelineJobRow({ job }: { job: CheckoutPipelineJob }) {
       ? formatDuration(job.durationSeconds * 1000)
       : "";
   return (
-    <Pressable onPress={handlePress} style={jobRowPressableStyle} disabled={!job.url}>
+    <PressHighlight
+      onPress={handlePress}
+      style={jobRowPressableStyle}
+      highlightStyle={styles.hoverable}
+      disabled={!job.url}
+    >
       <CheckPresentationIcon
         presentation={classifyCheck({ status: mapPipelineStatus(job.status) })}
         size={12}
@@ -254,7 +261,7 @@ function PipelineJobRow({ job }: { job: CheckoutPipelineJob }) {
       <View style={sectionKitStyles.checkTrailing}>
         {duration ? <Text style={sectionKitStyles.checkDuration}>{duration}</Text> : null}
       </View>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -269,19 +276,18 @@ function countPipelineJobs(jobs: CheckoutPipelineJob[]) {
   return counts;
 }
 
-function rowPressableStyle({ hovered }: { hovered?: boolean }) {
-  return [sectionKitStyles.checkRow, Boolean(hovered) && styles.hoverable];
-}
-
-function jobRowPressableStyle({ hovered }: { hovered?: boolean }) {
-  return [styles.pipelineJobRow, Boolean(hovered) && styles.hoverable];
-}
-
-function refreshButtonStyle({
+function rowPressableStyle({
   hovered = false,
-  pressed = false,
+  pressed,
 }: PressableStateCallbackType & { hovered?: boolean }) {
-  return [styles.refreshButton, (hovered || pressed) && styles.refreshButtonHovered];
+  return [sectionKitStyles.checkRow, (hovered || pressed) && styles.hoverable];
+}
+
+function jobRowPressableStyle({
+  hovered = false,
+  pressed,
+}: PressableStateCallbackType & { hovered?: boolean }) {
+  return [styles.pipelineJobRow, (hovered || pressed) && styles.hoverable];
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -312,9 +318,6 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
-  },
-  refreshButtonHovered: {
-    backgroundColor: theme.colors.surface2,
   },
   refreshIcon: {
     width: ICON_SIZE.md,

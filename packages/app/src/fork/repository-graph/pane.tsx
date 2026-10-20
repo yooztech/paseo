@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
-  Pressable,
   ScrollView,
   Text,
   View,
@@ -27,6 +26,7 @@ import type {
 } from "@getpaseo/protocol/messages";
 import { DiffStat } from "@/components/diff-stat";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { SearchField } from "@/components/ui/search-field";
 import {
@@ -317,8 +317,9 @@ function CommitRow({
     [],
   );
   const rowContent = (
-    <Pressable
+    <PressHighlight
       style={interactiveRowStyle}
+      highlightStyle={styles.rowHovered}
       testID={`repository-graph-commit-${row.commit.shortSha}`}
       onPress={onPress}
     >
@@ -345,7 +346,7 @@ function CommitRow({
           <Text style={styles.sha}>{row.commit.shortSha}</Text>
         </View>
       </View>
-    </Pressable>
+    </PressHighlight>
   );
 
   return (
@@ -375,8 +376,9 @@ function ChangedFileRow({
 }) {
   const handlePress = useCallback(() => onOpenFile(file.path), [file.path, onOpenFile]);
   return (
-    <Pressable
+    <PressHighlight
       style={interactiveFileRowStyle}
+      highlightStyle={styles.fileRowHovered}
       testID={`repository-graph-file-${file.path}`}
       onPress={handlePress}
     >
@@ -387,7 +389,7 @@ function ChangedFileRow({
       <DiffStat additions={file.additions} deletions={file.deletions} />
       <Text style={styles.fileStatus}>{file.status?.charAt(0).toUpperCase() ?? "M"}</Text>
       <ThemedChevronRight size={13} uniProps={foregroundMutedColorMapping} />
-    </Pressable>
+    </PressHighlight>
   );
 }
 
