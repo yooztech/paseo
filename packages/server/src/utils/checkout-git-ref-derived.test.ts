@@ -65,6 +65,7 @@ function seedFeatureCheckout(): {
       upstreamStatus: {
         ref: "refs/remotes/origin/main",
         aheadBehind: { ahead: 0, behind: 0 },
+        hasChanges: false,
       },
       pullRequestLookupTarget: { headRef: "feature" },
     },
@@ -107,6 +108,7 @@ function seedMainCheckout(): {
       upstreamStatus: {
         ref: "refs/remotes/origin/main",
         aheadBehind: { ahead: 1, behind: 0 },
+        hasChanges: true,
       },
       pullRequestLookupTarget: { headRef: "main" },
     },
@@ -119,16 +121,18 @@ test("one comparison refresh updates a shared base and upstream ref", async () =
   const result = await getCheckoutRefDerivedState(
     cwd,
     facts,
-    { aheadBehind: { ahead: 0, behind: 0 }, diffStat: null },
+    { aheadBehind: { ahead: 0, behind: 0 }, hasChangesFromBase: false, diffStat: null },
     new Set(["origin/main"]),
   );
   await waitForGitCommandMetricsIdle({ quietMs: 50, timeoutMs: 5_000 });
   const metrics = stopGitCommandMetrics();
 
-  expect(result.aheadBehind).toEqual({ ahead: 1, behind: 0, hasChanges: true });
+  expect(result.aheadBehind).toEqual({ ahead: 1, behind: 0 });
+  expect(result.hasChangesFromBase).toBe(true);
   expect(result.upstreamStatus).toEqual({
     ref: "refs/remotes/origin/main",
     aheadBehind: { ahead: 1, behind: 0 },
+    hasChanges: true,
   });
   expect(result.diffStat).toEqual({ additions: 1, deletions: 0 });
   expect(metrics.submissions.map((command) => command.args[0]).sort()).toEqual([
@@ -147,16 +151,18 @@ test("an upstream move refreshes the main checkout shortstat", async () => {
   const result = await getCheckoutRefDerivedState(
     cwd,
     facts,
-    { aheadBehind: null, diffStat: { additions: 1, deletions: 0 } },
+    { aheadBehind: null, hasChangesFromBase: null, diffStat: { additions: 1, deletions: 0 } },
     new Set(["origin/main"]),
   );
 
   expect(result).toEqual({
     aheadBehind: null,
+    hasChangesFromBase: null,
     diffStat: null,
     upstreamStatus: {
       ref: "refs/remotes/origin/main",
       aheadBehind: { ahead: 0, behind: 0 },
+      hasChanges: false,
     },
   });
 });
@@ -179,8 +185,42 @@ test("an origin move refreshes an untracked main checkout shortstat", async () =
     await getCheckoutRefDerivedState(
       seeded.cwd,
       facts,
-      { aheadBehind: null, diffStat: { additions: 1, deletions: 0 } },
+      { aheadBehind: null, hasChangesFromBase: null, diffStat: { additions: 1, deletions: 0 } },
       new Set(["origin/main"]),
     ),
-  ).toEqual({ aheadBehind: null, diffStat: null, upstreamStatus: null });
+  ).toEqual({ aheadBehind: null, hasChangesFromBase: null, diffStat: null, upstreamStatus: null });
+});
+
+test("shared ref refresh keeps commit counts separate from identical trees", async () => {
+  const { cwd, facts } = seedFeatureCheckout();
+  git(cwd, ["update-ref", "refs/remotes/origin/main", git(cwd, ["rev-parse", "HEAD"])]);
+  git(cwd, ["commit", "--allow-empty", "-m", "same tree, new history"]);
+
+  const result = await getCheckoutRefDerivedState(
+    cwd,
+    facts,
+    { aheadBehind: { ahead: 1, behind: 0 }, hasChangesFromBase: true, diffStat: null },
+    new Set(["origin/main"]),
+  );
+
+  expect(result.aheadBehind).toEqual({ ahead: 1, behind: 0 });
+  expect(result.hasChangesFromBase).toBe(false);
+  expect(result.upstreamStatus).toEqual({
+    ref: "refs/remotes/origin/main",
+    aheadBehind: { ahead: 1, behind: 0 },
+    hasChanges: false,
+  });
+});
+
+test("unrelated ref moves preserve the current base tree comparison", async () => {
+  const { cwd, facts } = seedFeatureCheckout();
+  const current = {
+    aheadBehind: { ahead: 2, behind: 1 },
+    hasChangesFromBase: false,
+    diffStat: null,
+  };
+
+  expect(
+    await getCheckoutRefDerivedState(cwd, facts, current, new Set(["origin/unrelated"])),
+  ).toEqual({ ...current, upstreamStatus: facts.upstreamStatus });
 });

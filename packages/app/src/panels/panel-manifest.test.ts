@@ -18,6 +18,23 @@ describe("panel manifest", () => {
     expect(panelSupportsHost("setup", "explorer")).toBe(false);
   });
 
+  it("supports the sheet exactly for kinds with a compact sheet rule", () => {
+    expect(panelSupportsHost("file", "sheet")).toBe(true);
+    expect(panelSupportsHost("agent", "sheet")).toBe(true);
+    expect(panelSupportsHost("provider_subagent", "sheet")).toBe(true);
+    expect(panelSupportsHost("terminal", "sheet")).toBe(false);
+    expect(panelSupportsHost("plugin", "sheet")).toBe(false);
+  });
+
+  it.each(["repository_graph", "branch_ci", "repository_graph_file_diff"] as const)(
+    "keeps %s in the tab strip on compact layouts",
+    (kind) => {
+      expect(panelSupportsHost(kind, "main")).toBe(true);
+      expect(panelSupportsHost(kind, "explorer")).toBe(true);
+      expect(panelSupportsHost(kind, "sheet")).toBe(false);
+    },
+  );
+
   it("lets navigation tabs hide their close button without losing their close action", () => {
     expect(getPanelManifest("files").showCloseButton).toBe(false);
     expect(getPanelManifest("changes_tree").showCloseButton).toBe(false);
