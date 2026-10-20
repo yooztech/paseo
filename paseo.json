@@ -1,4 +1,9 @@
 {
+  "metadataGeneration": {
+    "commitMessage": {
+      "instructions": "必须使用 Conventional Commits 格式：<type>[可选的 (scope)][破坏性变更时的 !]: <简体中文描述>，不得省略类型前缀。根据实际改动选择英文 type：feat、fix、docs、style、refactor、perf、test、build、ci、chore 或 revert；仅在范围明确时添加 scope，并保留其原文。描述简洁、准确，使用祈使语气，不加句末句号。代码标识符、文件名和专有名词保留原文。必要时添加简体中文正文解释原因与影响；若存在破坏性变更，添加 BREAKING CHANGE: 页脚说明不兼容之处及迁移方式，不得虚构。"
+    }
+  },
   "worktree": {
     "setup": [
       "npm ci",
