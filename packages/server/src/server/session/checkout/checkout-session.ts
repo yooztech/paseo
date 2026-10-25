@@ -1387,8 +1387,11 @@ export class CheckoutSession {
     const { cwd, requestId } = msg;
     try {
       const { service } = await this.requireForgeService(cwd);
-      const snapshot = this.workspaceGitService.peekSnapshot(cwd);
-      const branch = msg.branch?.trim() || snapshot?.git.currentBranch || null;
+      const branch =
+        msg.branch?.trim() ||
+        (await this.workspaceGitService.getSnapshot(cwd, { includeForge: false })).git
+          .currentBranch ||
+        null;
       if (!branch) {
         throw new Error("Branch pipeline request requires a branch name");
       }

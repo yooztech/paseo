@@ -72,11 +72,61 @@ function mergeablePullRequest(
 }
 
 describe("fork git action policy", () => {
-  it("removes the upstream archive action", () => {
-    const actions = buildForkGitActions(createInput());
+  it("keeps Archive secondary instead of promoting it for an owned worktree", () => {
+    const input = createInput();
+    const actions = buildForkGitActions(input);
 
     expect(actions.primary).toBeNull();
-    expect(actions.secondary.map((action) => action.id)).not.toContain("archive-workspace");
+    const archive = actions.secondary.filter((action) => action.id === "archive-workspace");
+    expect(archive).toHaveLength(1);
+    expect(archive[0]?.handler).toBe(input.runtime["archive-workspace"].handler);
+  });
+
+  it("keeps Archive available for directory workspaces", () => {
+    const actions = buildForkGitActions(createInput({ isPaseoOwnedWorktree: false }));
+
+    expect(actions.primary).toBeNull();
+    expect(actions.secondary.at(-1)?.id).toBe("archive-workspace");
+  });
+
+  it.each([
+    { aheadOfOrigin: 0, behindOfOrigin: 1, expectedPrimary: "pull" },
+    { aheadOfOrigin: 1, behindOfOrigin: 0, expectedPrimary: "push" },
+  ])("preserves Archive after a promoted $expectedPrimary", (scenario) => {
+    const actions = buildForkGitActions(
+      createInput({
+        hasRemote: true,
+        isPaseoOwnedWorktree: false,
+        aheadOfOrigin: scenario.aheadOfOrigin,
+        behindOfOrigin: scenario.behindOfOrigin,
+        shouldPromoteArchive: true,
+      }),
+    );
+
+    expect(actions.primary?.id).toBe(scenario.expectedPrimary);
+    expect(actions.secondary.map((action) => action.id)).toEqual([
+      "pull",
+      "push",
+      "pull-and-push",
+      "archive-workspace",
+    ]);
+  });
+
+  it("preserves Archive runtime availability", () => {
+    const input = createInput();
+    input.runtime["archive-workspace"] = {
+      ...input.runtime["archive-workspace"],
+      disabled: true,
+      status: "pending",
+    };
+
+    const actions = buildForkGitActions(input);
+
+    expect(actions.secondary.find((action) => action.id === "archive-workspace")).toMatchObject({
+      disabled: true,
+      status: "pending",
+      handler: input.runtime["archive-workspace"].handler,
+    });
   });
 
   it("uses content difference instead of commit ancestry", () => {

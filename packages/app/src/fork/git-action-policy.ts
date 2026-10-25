@@ -42,11 +42,15 @@ function preferDirectMergeAction(actions: GitActions, input: ForkBuildGitActions
   };
 }
 
-function removeArchiveAction(actions: GitActions): GitActions {
+function demoteArchiveAction(actions: GitActions): GitActions {
+  if (actions.primary?.id !== "archive-workspace") {
+    return actions;
+  }
+
   return {
-    primary: actions.primary?.id === "archive-workspace" ? null : actions.primary,
-    secondary: actions.secondary.filter((action) => action.id !== "archive-workspace"),
-    menu: actions.menu.filter((action) => action.id !== "archive-workspace"),
+    ...actions,
+    primary: null,
+    secondary: [...actions.secondary, actions.primary],
   };
 }
 
@@ -61,5 +65,5 @@ export function buildForkGitActions(input: ForkBuildGitActionsInput): GitActions
     shouldPromoteArchive: false,
   });
 
-  return removeArchiveAction(preferDirectMergeAction(upstreamActions, input));
+  return demoteArchiveAction(preferDirectMergeAction(upstreamActions, input));
 }
