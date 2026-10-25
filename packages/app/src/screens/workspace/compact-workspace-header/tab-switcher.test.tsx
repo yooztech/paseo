@@ -27,6 +27,9 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock("lucide-react-native", () => ({ SquarePen: () => null, SquareTerminal: () => null }));
 vi.mock("@/components/ui/button", () => ({ Button: () => null }));
 vi.mock("@/components/ui/icon-button-chrome", () => ({ useIconButtonChromeStyle: () => ({}) }));
+vi.mock("@/file-panels", () => ({
+  useFilePanelOpenWithMenu: () => ({ trigger: null, pages: [] }),
+}));
 vi.mock("@/screens/workspace/workspace-tab-menu", () => ({
   buildWorkspaceTabMenuEntries: () => [],
 }));

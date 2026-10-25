@@ -3,6 +3,11 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test, expect, type Page } from "../support/fixtures";
 import { getServerId } from "../support/helpers/server-id";
+import {
+  archiveWorkspaceFromDaemon,
+  connectNewWorkspaceDaemonClient,
+  createWorktreeViaDaemon,
+} from "../support/helpers/new-workspace";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { createTempGitRepo, resolveTempRoot } from "../support/helpers/workspace";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
@@ -33,7 +38,9 @@ async function registerWorkspace(repoPath: string): Promise<string> {
   cleanupTasks.push(async () => {
     await client.close().catch(() => undefined);
   });
-  const created = await client.createWorkspace({ source: { kind: "directory", path: repoPath } });
+  const created = await client.createWorkspace({
+    source: { kind: "directory", path: repoPath },
+  });
   if (!created.workspace) {
     throw new Error(created.error ?? `Failed to create workspace ${repoPath}`);
   }
@@ -49,7 +56,9 @@ async function openCompactActionsMenu(page: Page, workspaceId: string) {
   await expect(changesTab).toBeVisible({ timeout: 30_000 });
   await changesTab.click();
   const explorer = page.getByTestId("workspace-explorer-sidebar").filter({ visible: true });
-  await expect(explorer.getByTestId("changes-header")).toBeVisible({ timeout: 30_000 });
+  await expect(explorer.getByTestId("changes-header")).toBeVisible({
+    timeout: 30_000,
+  });
 
   const trigger = explorer.getByTestId("changes-actions-menu-trigger");
   await expect(trigger).toBeVisible({ timeout: 30_000 });
@@ -70,13 +79,27 @@ test("compact git actions menu lists a promoted Pull once", async ({ page }) => 
   cleanupTasks.push(async () => {
     execFileSync("rm", ["-rf", other]);
   });
-  execFileSync("git", ["clone", path.join(repoPath, "remote.git"), other], { stdio: "ignore" });
-  execFileSync("git", ["config", "user.email", "e2e@paseo.test"], { cwd: other, stdio: "ignore" });
-  execFileSync("git", ["config", "user.name", "Paseo E2E"], { cwd: other, stdio: "ignore" });
+  execFileSync("git", ["clone", path.join(repoPath, "remote.git"), other], {
+    stdio: "ignore",
+  });
+  execFileSync("git", ["config", "user.email", "e2e@paseo.test"], {
+    cwd: other,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["config", "user.name", "Paseo E2E"], {
+    cwd: other,
+    stdio: "ignore",
+  });
   await writeFile(path.join(other, "src/incoming.ts"), "export const incoming = 1;\n");
   execFileSync("git", ["add", "--all"], { cwd: other, stdio: "ignore" });
-  execFileSync("git", ["commit", "-m", "Incoming commit"], { cwd: other, stdio: "ignore" });
-  execFileSync("git", ["push", "origin", "main"], { cwd: other, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "Incoming commit"], {
+    cwd: other,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["push", "origin", "main"], {
+    cwd: other,
+    stdio: "ignore",
+  });
   execFileSync("git", ["fetch", "origin"], { cwd: repoPath, stdio: "ignore" });
 
   const workspaceId = await registerWorkspace(repoPath);
@@ -101,7 +124,10 @@ test("compact git actions menu lists a promoted Push once", async ({ page }) => 
   // Commit so the clean checkout is ahead of origin and Push is the promoted action.
   await writeFile(path.join(repoPath, "src/mine.ts"), "export const mine = 1;\n");
   execFileSync("git", ["add", "--all"], { cwd: repoPath, stdio: "ignore" });
-  execFileSync("git", ["commit", "-m", "Local commit"], { cwd: repoPath, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "Local commit"], {
+    cwd: repoPath,
+    stdio: "ignore",
+  });
 
   const menu = await openCompactActionsMenu(page, workspaceId);
 
@@ -112,4 +138,40 @@ test("compact git actions menu lists a promoted Push once", async ({ page }) => 
     "Pull and push",
     "Archive workspace",
   ]);
+});
+
+test("compact git actions menu preserves the risky worktree archive confirmation", async ({
+  page,
+}) => {
+  const repo = await createTempGitRepo("compact-menu-archive-");
+  cleanupTasks.push(repo.cleanup);
+  const client = await connectNewWorkspaceDaemonClient();
+  cleanupTasks.push(async () => {
+    await client.close().catch(() => undefined);
+  });
+  const worktree = await createWorktreeViaDaemon(client, {
+    cwd: repo.path,
+    slug: "compact-archive",
+  });
+  cleanupTasks.unshift(async () => {
+    await archiveWorkspaceFromDaemon(client, worktree.workspaceDirectory);
+  });
+  await writeFile(path.join(worktree.workspaceDirectory, "dirty.txt"), "keep this worktree\n");
+
+  const menu = await openCompactActionsMenu(page, worktree.workspaceId);
+  const archive = menu.getByTestId("workspace-archive-action");
+  await expect(archive).toBeEnabled();
+  let warningMessage: string | undefined;
+  page.once("dialog", async (dialog) => {
+    warningMessage = dialog.message();
+    await dialog.dismiss();
+  });
+  await archive.click();
+
+  expect(warningMessage).toContain(`Archive "${worktree.workspaceName}"?`);
+  expect(warningMessage).toContain("Uncommitted changes");
+  await expect(page).toHaveURL(
+    new RegExp(buildHostWorkspaceRoute(getServerId(), worktree.workspaceId) + "$"),
+  );
+  await expect(page.getByTestId("changes-header").filter({ visible: true })).toBeVisible();
 });
