@@ -57,6 +57,8 @@ import type {
   CheckoutCommit,
   RepositoryGraphCommit,
   RepositoryGraphCommitDetails,
+  RepositoryGraphCheckout,
+  RepositoryGraphCheckoutTarget,
   ParsedDiffFile,
   CheckoutCommitResponse,
   CheckoutMergeResponse,
@@ -4601,7 +4603,11 @@ export class DaemonClient {
     cwd: string,
     limit?: number,
     requestId?: string,
-  ): Promise<{ commits: RepositoryGraphCommit[]; hasMore: boolean }> {
+  ): Promise<{
+    commits: RepositoryGraphCommit[];
+    hasMore: boolean;
+    checkout?: RepositoryGraphCheckout;
+  }> {
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.get_history.response">(
         {
@@ -4617,7 +4623,7 @@ export class DaemonClient {
     if (payload.error) {
       throw new Error(payload.error.message);
     }
-    return { commits: payload.commits, hasMore: payload.hasMore };
+    return { commits: payload.commits, hasMore: payload.hasMore, checkout: payload.checkout };
   }
 
   async getRepositoryGraphCommitDetails(
@@ -4668,6 +4674,29 @@ export class DaemonClient {
       );
     if (payload.error) {
       throw new Error(payload.error.message);
+    }
+  }
+
+  async checkoutRepositoryGraph(input: {
+    cwd: string;
+    target: RepositoryGraphCheckoutTarget;
+  }): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.checkout.response">(
+        {
+          message: {
+            type: "checkout.repository_graph.checkout.request",
+            cwd: input.cwd,
+            target: input.target,
+          },
+          timeout: 60000,
+        },
+      );
+    if (payload.error) {
+      throw new Error(payload.error.message);
+    }
+    if (!payload.success) {
+      throw new Error("Repository graph checkout failed");
     }
   }
 

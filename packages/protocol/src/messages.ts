@@ -102,6 +102,10 @@ import {
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
 // FORK(repository-graph): register fork-only schemas in the central wire unions.
 import {
+  CheckoutRepositoryGraphCheckoutRequestSchema,
+  CheckoutRepositoryGraphCheckoutResponseSchema,
+  type RepositoryGraphCheckout,
+  type RepositoryGraphCheckoutTarget,
   CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
   CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
   CheckoutRepositoryGraphGetHistoryRequestSchema,
@@ -111,8 +115,15 @@ import {
   type RepositoryGraphCommit,
   type RepositoryGraphCommitDetails,
 } from "./fork/repository-graph/messages.js";
-export type { RepositoryGraphCommit, RepositoryGraphCommitDetails };
+export type {
+  RepositoryGraphCommit,
+  RepositoryGraphCommitDetails,
+  RepositoryGraphCheckout,
+  RepositoryGraphCheckoutTarget,
+};
 export {
+  CheckoutRepositoryGraphCheckoutRequestSchema,
+  CheckoutRepositoryGraphCheckoutResponseSchema,
   CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
   CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
   CheckoutRepositoryGraphGetHistoryRequestSchema,
@@ -3390,6 +3401,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutRepositoryGraphGetHistoryRequestSchema,
   CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
   CheckoutRepositoryGraphMutateRefRequestSchema,
+  CheckoutRepositoryGraphCheckoutRequestSchema,
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
   CheckoutGithubGetCheckDetailsRequestSchema,
@@ -3799,6 +3811,7 @@ export const ServerInfoStatusPayloadSchema = z
         repositoryGraph: z.boolean().optional(),
         repositoryGraphCommitDetails: z.boolean().optional(),
         repositoryGraphRefActions: z.boolean().optional(),
+        repositoryGraphCheckout: z.boolean().optional(),
         // COMPAT(repositoryGraphTagActions): added in v0.7.3, remove after 2027-03-04.
         repositoryGraphTagActions: z.boolean().optional(),
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
@@ -5932,7 +5945,6 @@ export const PullRequestTimelineResponseSchema = z.object({
       // daemon floor is >= v0.2.0.
       authState: ForgeAuthStateSchema,
     })
-    .optional()
     .prefault({}),
 });
 
@@ -7145,6 +7157,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutRepositoryGraphGetHistoryResponseSchema,
   CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
   CheckoutRepositoryGraphMutateRefResponseSchema,
+  CheckoutRepositoryGraphCheckoutResponseSchema,
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
   CheckoutGithubGetCheckDetailsResponseSchema,
@@ -7527,6 +7540,12 @@ export type CheckoutRepositoryGraphMutateRefRequest = z.infer<
 >;
 export type CheckoutRepositoryGraphMutateRefResponse = z.infer<
   typeof CheckoutRepositoryGraphMutateRefResponseSchema
+>;
+export type CheckoutRepositoryGraphCheckoutRequest = z.infer<
+  typeof CheckoutRepositoryGraphCheckoutRequestSchema
+>;
+export type CheckoutRepositoryGraphCheckoutResponse = z.infer<
+  typeof CheckoutRepositoryGraphCheckoutResponseSchema
 >;
 export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
 export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;

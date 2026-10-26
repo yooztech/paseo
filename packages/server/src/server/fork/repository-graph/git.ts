@@ -1,6 +1,8 @@
 import type {
   RepositoryGraphCommit,
   RepositoryGraphCommitDetails,
+  RepositoryGraphCheckout,
+  RepositoryGraphCheckoutTarget,
 } from "@getpaseo/protocol/messages";
 import { repositoryGraphGitPrimitives } from "../../../utils/checkout-git.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
@@ -79,23 +81,23 @@ export async function getRepositoryGraphHistory({
 }: {
   cwd: string;
   limit?: number;
-}): Promise<{ commits: RepositoryGraphCommit[]; hasMore: boolean }> {
+}): Promise<{
+  commits: RepositoryGraphCommit[];
+  hasMore: boolean;
+  checkout: RepositoryGraphCheckout;
+}> {
   const boundedLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
-  const [logResult, refsResult] = await Promise.all([
-    runGitCommand(
-      [
-        "log",
-        `--max-count=${boundedLimit + 1}`,
-        `--format=${LOG_FORMAT}`,
-        "--date-order",
-        "--branches",
-        "--tags",
-        "--remotes",
-        "HEAD",
-        "--",
-      ],
-      { cwd, envOverlay: READ_ONLY_GIT_ENV },
-    ),
+  const [headResult, branchResult, refsResult] = await Promise.all([
+    runGitCommand(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      acceptExitCodes: [0, 1],
+    }),
+    runGitCommand(["symbolic-ref", "--quiet", "HEAD"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      acceptExitCodes: [0, 1],
+    }),
     runGitCommand(
       [
         "for-each-ref",
@@ -107,11 +109,66 @@ export async function getRepositoryGraphHistory({
       { cwd, envOverlay: READ_ONLY_GIT_ENV },
     ),
   ]);
-  if (logResult.truncated || refsResult.truncated) {
+  if (refsResult.truncated || headResult.truncated || branchResult.truncated) {
+    throw new Error("Repository graph exceeded the git output limit");
+  }
+  const checkout: RepositoryGraphCheckout = {
+    headSha: headResult.stdout.trim() || null,
+    currentBranch: branchResult.stdout.trim().replace(/^refs\/heads\//, "") || null,
+    localBranches: refsResult.stdout.split("\n").flatMap((line) => {
+      const name = line.split(FIELD_SEPARATOR)[2];
+      return name?.startsWith("refs/heads/") ? [name.slice("refs/heads/".length)] : [];
+    }),
+  };
+  if (!checkout.headSha && !refsResult.stdout.trim()) {
+    return { commits: [], hasMore: false, checkout };
+  }
+  const logResult = await runGitCommand(
+    [
+      "log",
+      `--max-count=${boundedLimit + 1}`,
+      `--format=${LOG_FORMAT}`,
+      "--date-order",
+      "--branches",
+      "--tags",
+      "--remotes",
+      ...(checkout.headSha ? ["HEAD"] : []),
+      "--",
+    ],
+    { cwd, envOverlay: READ_ONLY_GIT_ENV },
+  );
+  if (logResult.truncated) {
     throw new Error("Repository graph exceeded the git output limit");
   }
   const commits = parseCommits(logResult.stdout, parseRefs(refsResult.stdout));
-  return { commits: commits.slice(0, boundedLimit), hasMore: commits.length > boundedLimit };
+  return {
+    commits: commits.slice(0, boundedLimit),
+    hasMore: commits.length > boundedLimit,
+    checkout,
+  };
+}
+
+export async function checkoutRepositoryGraph({
+  cwd,
+  target,
+}: {
+  cwd: string;
+  target: RepositoryGraphCheckoutTarget;
+}): Promise<void> {
+  if (target.kind === "commit") {
+    const resolved = await runGitCommand(
+      ["rev-parse", "--verify", "--end-of-options", `${target.sha}^{commit}`],
+      { cwd, envOverlay: READ_ONLY_GIT_ENV },
+    );
+    await runGitCommand(["switch", "--detach", resolved.stdout.trim()], { cwd });
+    return;
+  }
+  await runGitCommand(["check-ref-format", "--branch", target.name], { cwd });
+  await runGitCommand(["show-ref", "--verify", "--", `refs/heads/${target.name}`], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+  });
+  await runGitCommand(["switch", "--no-guess", "--", target.name], { cwd });
 }
 
 function parseRemoteBranch(name: string): { remote: string; branch: string } {

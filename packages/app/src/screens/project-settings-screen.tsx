@@ -508,7 +508,7 @@ function ProjectConfigForm({
     },
     onSuccess: (result) => {
       if (result.ok) {
-        queryClient.setQueryData<ReadProjectConfigData>(queryKey, {
+        const cachedConfig: ReadProjectConfigData = {
           ok: true,
           config: result.config,
           revision: result.revision,
@@ -519,7 +519,8 @@ function ProjectConfigForm({
             : {
                 hasUncommittedWorktreeSetupChanges: result.hasUncommittedWorktreeSetupChanges,
               }),
-        });
+        };
+        queryClient.setQueryData<ReadProjectConfigData>(queryKey, cachedConfig);
         setWriteError(null);
         queryClient.invalidateQueries({ queryKey: ["projects"] });
         toast.show(t("settings.project.actions.saved"), { variant: "success" });

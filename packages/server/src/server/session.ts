@@ -2952,6 +2952,8 @@ export class Session {
         return this.checkoutSession.handleRepositoryGraphGetCommitDetailsRequest(msg);
       case "checkout.repository_graph.mutate_ref.request":
         return this.checkoutSession.handleRepositoryGraphMutateRefRequest(msg);
+      case "checkout.repository_graph.checkout.request":
+        return this.checkoutSession.handleRepositoryGraphCheckoutRequest(msg);
       case "checkout.commits.file_diff.request":
         return this.checkoutSession.handleCommitFileDiffRequest(msg);
       case "validate_branch_request":
