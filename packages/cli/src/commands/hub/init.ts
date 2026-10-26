@@ -12,7 +12,6 @@ import {
   select,
   spinner,
   text,
-  type TextOptions,
 } from "@clack/prompts";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -718,7 +717,7 @@ async function withSpinner<T>(
 
 async function requiredText(
   environment: HubGuidedSetupEnvironment,
-  options: Omit<TextOptions, "validate"> & { validate?: (value: string) => string | undefined },
+  options: Parameters<typeof text>[0],
 ): Promise<string> {
   const request = {
     ...options,

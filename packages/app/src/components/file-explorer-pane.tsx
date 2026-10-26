@@ -886,7 +886,6 @@ export function FileExplorerPane({
   const { refetch: refetchExplorer, isFetching: isRefreshFetching } = useQuery({
     queryKey: ["fileExplorerRefresh", serverId, normalizedWorkspaceRoot, workspaceStateKey],
     queryFn: refreshExplorer,
-    // Directory listings load through explorer actions; this query only coordinates explicit refreshes.
     enabled: hasWorkspaceScope,
     initialData: null,
     staleTime: Infinity,

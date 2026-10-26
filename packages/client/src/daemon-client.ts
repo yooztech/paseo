@@ -16,6 +16,10 @@ import {
   type TimelineSubscription,
 } from "./connection/index.js";
 import { CreationClient } from "./creation/index.js";
+import {
+  checkoutRepositoryGraph,
+  type RepositoryGraphCheckoutInput,
+} from "./fork/repository-graph.js";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
 import type { z } from "zod";
 import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
@@ -58,7 +62,6 @@ import type {
   RepositoryGraphCommit,
   RepositoryGraphCommitDetails,
   RepositoryGraphCheckout,
-  RepositoryGraphCheckoutTarget,
   ParsedDiffFile,
   CheckoutCommitResponse,
   CheckoutMergeResponse,
@@ -4677,27 +4680,12 @@ export class DaemonClient {
     }
   }
 
-  async checkoutRepositoryGraph(input: {
-    cwd: string;
-    target: RepositoryGraphCheckoutTarget;
-  }): Promise<void> {
-    const payload =
-      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.checkout.response">(
-        {
-          message: {
-            type: "checkout.repository_graph.checkout.request",
-            cwd: input.cwd,
-            target: input.target,
-          },
-          timeout: 60000,
-        },
-      );
-    if (payload.error) {
-      throw new Error(payload.error.message);
-    }
-    if (!payload.success) {
-      throw new Error("Repository graph checkout failed");
-    }
+  async checkoutRepositoryGraph(input: RepositoryGraphCheckoutInput): Promise<void> {
+    return checkoutRepositoryGraph(input, (params) =>
+      this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.checkout.response">(
+        params,
+      ),
+    );
   }
 
   async getCommitFileDiff(

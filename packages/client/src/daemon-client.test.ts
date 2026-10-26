@@ -785,63 +785,6 @@ function useHeartbeatClock(): void {
   });
 }
 
-test("correlates repository graph checkouts and reports checkout errors", async () => {
-  const mock = createMockTransport();
-  const client = new DaemonClient({
-    url: "ws://test",
-    clientId: "clsk_unit_test",
-    logger: createMockLogger(),
-    reconnect: { enabled: false },
-    transportFactory: () => mock.transport,
-  });
-  clients.push(client);
-  const connected = client.connect();
-  mock.triggerOpen();
-  await connected;
-
-  const detached = client.checkoutRepositoryGraph({
-    cwd: "/tmp/project",
-    target: { kind: "commit", sha: "abc123" },
-  });
-  const attached = client.checkoutRepositoryGraph({
-    cwd: "/tmp/project",
-    target: { kind: "branch", name: "main" },
-  });
-  const [detachRequest, attachRequest] = mock.sent.map(parseSentFrame);
-  expect(detachRequest).toMatchObject({
-    type: "checkout.repository_graph.checkout.request",
-    cwd: "/tmp/project",
-    target: { kind: "commit", sha: "abc123" },
-  });
-  expect(attachRequest).toMatchObject({ target: { kind: "branch", name: "main" } });
-  expect(detachRequest.requestId).not.toBe(attachRequest.requestId);
-  const rejected = expect(attached).rejects.toThrow("Branch is checked out elsewhere");
-  mock.triggerMessage(
-    wrapSessionMessage({
-      type: "checkout.repository_graph.checkout.response",
-      payload: {
-        cwd: "/tmp/project",
-        success: false,
-        error: { code: "UNKNOWN", message: "Branch is checked out elsewhere" },
-        requestId: attachRequest.requestId,
-      },
-    }),
-  );
-  mock.triggerMessage(
-    wrapSessionMessage({
-      type: "checkout.repository_graph.checkout.response",
-      payload: {
-        cwd: "/tmp/project",
-        success: true,
-        error: null,
-        requestId: detachRequest.requestId,
-      },
-    }),
-  );
-  await expect(detached).resolves.toBeUndefined();
-  await rejected;
-});
-
 test("dedupes in-flight checkout status requests per agentId", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

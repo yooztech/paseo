@@ -18,7 +18,7 @@ vi.mock("@xterm/addon-image", () => ({
   },
 }));
 
-vi.mock("@xterm/addon-ligatures/lib/addon-ligatures.js", () => ({
+vi.mock("@xterm/addon-ligatures/lib/addon-ligatures.mjs", () => ({
   LigaturesAddon: class LigaturesAddon {
     dispose(): void {}
   },

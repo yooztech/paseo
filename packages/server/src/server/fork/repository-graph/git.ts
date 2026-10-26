@@ -120,9 +120,6 @@ export async function getRepositoryGraphHistory({
       return name?.startsWith("refs/heads/") ? [name.slice("refs/heads/".length)] : [];
     }),
   };
-  if (!checkout.headSha && !refsResult.stdout.trim()) {
-    return { commits: [], hasMore: false, checkout };
-  }
   const logResult = await runGitCommand(
     [
       "log",
@@ -132,7 +129,7 @@ export async function getRepositoryGraphHistory({
       "--branches",
       "--tags",
       "--remotes",
-      ...(checkout.headSha ? ["HEAD"] : []),
+      "HEAD",
       "--",
     ],
     { cwd, envOverlay: READ_ONLY_GIT_ENV },

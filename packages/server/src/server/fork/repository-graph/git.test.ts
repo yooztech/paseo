@@ -269,17 +269,6 @@ describe("RepositoryGraphForkSessionHandler.handleCheckout", () => {
 });
 
 describe("getRepositoryGraphHistory", () => {
-  it("returns checkout metadata for an empty repository", async () => {
-    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "repository-graph-empty-")));
-    tempDirs.push(root);
-    git(["init", "-b", "main"], root);
-    expect(await getRepositoryGraphHistory({ cwd: root })).toEqual({
-      commits: [],
-      hasMore: false,
-      checkout: { headSha: null, currentBranch: "main", localBranches: [] },
-    });
-  });
-
   it("returns topo-ordered commits and associates branches and tags", async () => {
     const repoDir = initRepo();
     git(["checkout", "-b", "feature"], repoDir);
