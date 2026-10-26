@@ -12,6 +12,7 @@ import {
   Copy,
   File,
   GitBranch,
+  GitCommitHorizontal,
   Pencil,
   RotateCw,
   Tag,
@@ -101,6 +102,7 @@ const ThemedCopy = withUnistyles(Copy);
 const ThemedTag = withUnistyles(Tag);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedGitBranch = withUnistyles(GitBranch);
+const ThemedGitCommitHorizontal = withUnistyles(GitCommitHorizontal);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
@@ -189,6 +191,10 @@ function RefBadge({
     () => onCheckout({ kind: "branch", name: refInfo.name }),
     [onCheckout, refInfo.name],
   );
+  const checkoutLeading = useMemo(
+    () => <ThemedGitBranch size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
   const renameLeading = useMemo(
     () => <ThemedPencil size={15} uniProps={foregroundMutedColorMapping} />,
     [],
@@ -223,7 +229,11 @@ function RefBadge({
       </ContextMenuTrigger>
       <ContextMenuContent align="start" width={230} sheetTitle={refInfo.name}>
         {refInfo.kind === "head" && checkout.enabled && refInfo.name !== checkout.currentBranch ? (
-          <ContextMenuItem disabled={checkout.pending} onSelect={handleCheckout}>
+          <ContextMenuItem
+            leading={checkoutLeading}
+            disabled={checkout.pending}
+            onSelect={handleCheckout}
+          >
             {t("workspace.repositoryGraph.checkout.branch")}
           </ContextMenuItem>
         ) : null}
@@ -349,6 +359,10 @@ function CommitRow({
     () => <ThemedTag size={15} uniProps={foregroundMutedColorMapping} />,
     [],
   );
+  const checkoutLeading = useMemo(
+    () => <ThemedGitCommitHorizontal size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
   const rowContent = (
     <PressHighlight
       style={interactiveRowStyle}
@@ -393,7 +407,11 @@ function CommitRow({
           <ContextMenuTrigger>{rowContent}</ContextMenuTrigger>
           <ContextMenuContent align="start" width={230} sheetTitle={row.commit.shortSha}>
             {checkout.enabled ? (
-              <ContextMenuItem disabled={checkout.pending} onSelect={handleCheckout}>
+              <ContextMenuItem
+                leading={checkoutLeading}
+                disabled={checkout.pending}
+                onSelect={handleCheckout}
+              >
                 {t("workspace.repositoryGraph.checkout.commit")}
               </ContextMenuItem>
             ) : null}
@@ -717,8 +735,13 @@ function CheckoutBranchItem({ name, checkout }: { name: string; checkout: GraphC
   const { t } = useTranslation();
   const { onCheckout } = checkout;
   const handleSelect = useCallback(() => onCheckout({ kind: "branch", name }), [name, onCheckout]);
+  const checkoutLeading = useMemo(
+    () => <ThemedGitBranch size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
   return (
     <DropdownMenuItem
+      leading={checkoutLeading}
       disabled={checkout.pending || name === checkout.currentBranch}
       onSelect={handleSelect}
     >
