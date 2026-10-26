@@ -68,6 +68,7 @@ function initRepo(): string {
   const repoDir = join(root, "repo");
   mkdirSync(repoDir);
   git(["init", "-b", "main"], repoDir);
+  git(["config", "core.autocrlf", "false"], repoDir);
   git(["config", "user.email", "test@test.com"], repoDir);
   git(["config", "user.name", "Test User"], repoDir);
   commitFile(repoDir, "README.md", "base\n", "Initial commit");
