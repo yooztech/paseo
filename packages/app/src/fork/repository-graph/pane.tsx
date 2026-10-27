@@ -12,6 +12,7 @@ import {
   Copy,
   File,
   GitBranch,
+  GitCommitHorizontal,
   Pencil,
   RotateCw,
   Tag,
@@ -43,6 +44,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/toast-context";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { useSessionStore } from "@/stores/session-store";
@@ -63,6 +65,15 @@ import { useRepositoryGraphRefMutation } from "./use-ref-mutation";
 import { RefDeleteModal } from "./ref-delete-modal";
 import { matchesRepositoryGraphSearch } from "./filter";
 import { TagCreateModal } from "./tag-create-modal";
+import { useRepositoryGraphCheckout, type GraphCheckoutTarget } from "./use-checkout";
+
+interface GraphCheckout {
+  enabled: boolean;
+  pending: boolean;
+  currentBranch: string | null;
+  headSha: string | null;
+  onCheckout: (target: GraphCheckoutTarget) => void;
+}
 
 const EMPTY_COMMITS: RepositoryGraphCommit[] = [];
 const ROW_HEIGHT = 52;
@@ -90,6 +101,8 @@ const ThemedTrash = withUnistyles(Trash2);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedTag = withUnistyles(Tag);
 const ThemedRotateCw = withUnistyles(RotateCw);
+const ThemedGitBranch = withUnistyles(GitBranch);
+const ThemedGitCommitHorizontal = withUnistyles(GitCommitHorizontal);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
@@ -156,6 +169,7 @@ function RefBadge({
   onRename,
   onDelete,
   onCopy,
+  checkout,
 }: {
   refInfo: GraphRef;
   remote?: string;
@@ -164,6 +178,7 @@ function RefBadge({
   onRename: (refInfo: GraphRef) => void;
   onDelete: (refInfo: GraphRef) => void;
   onCopy: (refInfo: GraphRef) => void;
+  checkout: GraphCheckout;
 }) {
   const { t } = useTranslation();
   const RefIcon = refInfo.kind === "tag" ? Tag : GitBranch;
@@ -171,6 +186,15 @@ function RefBadge({
   const handleRename = useCallback(() => onRename(refInfo), [onRename, refInfo]);
   const handleDelete = useCallback(() => onDelete(refInfo), [onDelete, refInfo]);
   const handleCopy = useCallback(() => onCopy(refInfo), [onCopy, refInfo]);
+  const { onCheckout } = checkout;
+  const handleCheckout = useCallback(
+    () => onCheckout({ kind: "branch", name: refInfo.name }),
+    [onCheckout, refInfo.name],
+  );
+  const checkoutLeading = useMemo(
+    () => <ThemedGitBranch size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
   const renameLeading = useMemo(
     () => <ThemedPencil size={15} uniProps={foregroundMutedColorMapping} />,
     [],
@@ -204,6 +228,15 @@ function RefBadge({
         {badge}
       </ContextMenuTrigger>
       <ContextMenuContent align="start" width={230} sheetTitle={refInfo.name}>
+        {refInfo.kind === "head" && checkout.enabled && refInfo.name !== checkout.currentBranch ? (
+          <ContextMenuItem
+            leading={checkoutLeading}
+            disabled={checkout.pending}
+            onSelect={handleCheckout}
+          >
+            {t("workspace.repositoryGraph.checkout.branch")}
+          </ContextMenuItem>
+        ) : null}
         {!isRemote && actionsEnabled ? (
           <ContextMenuItem leading={renameLeading} onSelect={handleRename}>
             {isTag
@@ -241,6 +274,7 @@ function RefBadges({
   onRename,
   onDelete,
   onCopy,
+  checkout,
 }: {
   refs: GraphRef[];
   color: string;
@@ -248,6 +282,7 @@ function RefBadges({
   onRename: (refInfo: GraphRef) => void;
   onDelete: (refInfo: GraphRef) => void;
   onCopy: (refInfo: GraphRef) => void;
+  checkout: GraphCheckout;
 }) {
   const consumedRemotes = new Set<string>();
   const badges: Array<{ refInfo: GraphRef; remote?: string }> = refs.flatMap((refInfo) => {
@@ -280,6 +315,7 @@ function RefBadges({
       onRename={onRename}
       onDelete={onDelete}
       onCopy={onCopy}
+      checkout={checkout}
     />
   ));
 }
@@ -295,6 +331,7 @@ function CommitRow({
   onDeleteRef,
   onCopyRef,
   onCreateTag,
+  checkout,
 }: {
   row: RepositoryGraphRowLayout;
   laneCount: number;
@@ -306,14 +343,24 @@ function CommitRow({
   onDeleteRef: (refInfo: GraphRef) => void;
   onCopyRef: (refInfo: GraphRef) => void;
   onCreateTag: (sha: string) => void;
+  checkout: GraphCheckout;
 }) {
   const { t } = useTranslation();
   const openCreateTag = useCallback(
     () => onCreateTag(row.commit.sha),
     [onCreateTag, row.commit.sha],
   );
+  const { onCheckout } = checkout;
+  const handleCheckout = useCallback(
+    () => onCheckout({ kind: "commit", sha: row.commit.sha }),
+    [onCheckout, row.commit.sha],
+  );
   const createTagLeading = useMemo(
     () => <ThemedTag size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
+  const checkoutLeading = useMemo(
+    () => <ThemedGitCommitHorizontal size={15} uniProps={foregroundMutedColorMapping} />,
     [],
   );
   const rowContent = (
@@ -333,12 +380,16 @@ function CommitRow({
             onRename={onRenameRef}
             onDelete={onDeleteRef}
             onCopy={onCopyRef}
+            checkout={checkout}
           />
           <Text style={styles.subject} numberOfLines={1}>
             {row.commit.subject}
           </Text>
         </View>
         <View style={styles.metaLine}>
+          {checkout.headSha === row.commit.sha ? (
+            <Text style={styles.sha}>{t("workspace.repositoryGraph.checkout.head")}</Text>
+          ) : null}
           <Text style={styles.author} numberOfLines={1}>
             {row.commit.authorName}
           </Text>
@@ -351,13 +402,24 @@ function CommitRow({
 
   return (
     <View style={selected && styles.rowSelected}>
-      {tagActionsEnabled ? (
+      {tagActionsEnabled || checkout.enabled ? (
         <ContextMenu>
           <ContextMenuTrigger>{rowContent}</ContextMenuTrigger>
           <ContextMenuContent align="start" width={230} sheetTitle={row.commit.shortSha}>
-            <ContextMenuItem leading={createTagLeading} onSelect={openCreateTag}>
-              {t("workspace.repositoryGraph.actions.createTag")}
-            </ContextMenuItem>
+            {checkout.enabled ? (
+              <ContextMenuItem
+                leading={checkoutLeading}
+                disabled={checkout.pending}
+                onSelect={handleCheckout}
+              >
+                {t("workspace.repositoryGraph.checkout.commit")}
+              </ContextMenuItem>
+            ) : null}
+            {tagActionsEnabled ? (
+              <ContextMenuItem leading={createTagLeading} onSelect={openCreateTag}>
+                {t("workspace.repositoryGraph.actions.createTag")}
+              </ContextMenuItem>
+            ) : null}
           </ContextMenuContent>
         </ContextMenu>
       ) : (
@@ -514,6 +576,7 @@ function CommitGraphItem({
   onDeleteRef,
   onCopyRef,
   onCreateTag,
+  checkout,
 }: {
   item: RepositoryGraphRowLayout;
   laneCount: number;
@@ -534,6 +597,7 @@ function CommitGraphItem({
   onDeleteRef: (refInfo: GraphRef) => void;
   onCopyRef: (refInfo: GraphRef) => void;
   onCreateTag: (sha: string) => void;
+  checkout: GraphCheckout;
 }) {
   const selected = item.commit.sha === selectedSha;
   const handlePress = useCallback(
@@ -585,6 +649,7 @@ function CommitGraphItem({
         onDeleteRef={onDeleteRef}
         onCopyRef={onCopyRef}
         onCreateTag={onCreateTag}
+        checkout={checkout}
       />
       {selected ? (
         <CommitDetails
@@ -657,6 +722,216 @@ function RepositoryGraphContent({
     </>
   );
 }
+function CheckoutHeadLabel({ checkout }: { checkout: GraphCheckout }) {
+  const { t } = useTranslation();
+  if (checkout.currentBranch)
+    return t("workspace.repositoryGraph.checkout.onBranch", { name: checkout.currentBranch });
+  if (checkout.headSha)
+    return t("workspace.repositoryGraph.checkout.detached", { sha: checkout.headSha.slice(0, 7) });
+  return t("workspace.repositoryGraph.checkout.unborn");
+}
+
+function CheckoutBranchItem({ name, checkout }: { name: string; checkout: GraphCheckout }) {
+  const { t } = useTranslation();
+  const { onCheckout } = checkout;
+  const handleSelect = useCallback(() => onCheckout({ kind: "branch", name }), [name, onCheckout]);
+  const checkoutLeading = useMemo(
+    () => <ThemedGitBranch size={15} uniProps={foregroundMutedColorMapping} />,
+    [],
+  );
+  return (
+    <DropdownMenuItem
+      leading={checkoutLeading}
+      disabled={checkout.pending || name === checkout.currentBranch}
+      onSelect={handleSelect}
+    >
+      {name === checkout.currentBranch
+        ? t("workspace.repositoryGraph.checkout.currentBranch", { name })
+        : name}
+    </DropdownMenuItem>
+  );
+}
+
+function CheckoutBranchMenu({
+  checkout,
+  branches,
+}: {
+  checkout: GraphCheckout;
+  branches: string[];
+}) {
+  const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  return (
+    <DropdownMenu compactMode="sheet">
+      <ToolbarButton
+        kind="menu"
+        label={t("workspace.repositoryGraph.checkout.selectBranch")}
+        testID="repository-graph-checkout-branches"
+        disabled={!checkout.enabled || checkout.pending || branches.length === 0}
+      >
+        <ThemedGitBranch
+          size={paneContentToolbarIconSize(isCompact)}
+          uniProps={extraMutedIconColorMapping}
+        />
+      </ToolbarButton>
+      <DropdownMenuContent
+        align="end"
+        width={280}
+        sheetTitle={t("workspace.repositoryGraph.checkout.selectBranch")}
+      >
+        {branches.map((name) => (
+          <CheckoutBranchItem key={name} name={name} checkout={checkout} />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+interface CheckoutStatusMutation {
+  variables?: GraphCheckoutTarget;
+  error: Error | null;
+  reset: () => void;
+  isSuccess: boolean;
+}
+
+function CheckoutStatus({
+  checkout,
+  mutation,
+}: {
+  checkout: GraphCheckout;
+  mutation: CheckoutStatusMutation;
+}) {
+  const { t } = useTranslation();
+  const { variables, reset } = mutation;
+  const { onCheckout } = checkout;
+  const retry = useCallback(() => {
+    if (variables) onCheckout(variables);
+  }, [onCheckout, variables]);
+  if (checkout.pending) {
+    return (
+      <View
+        style={styles.checkoutStatus}
+        accessibilityLiveRegion="polite"
+        testID="repository-graph-checkout-pending"
+      >
+        <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
+        <Text style={styles.stateText}>{t("workspace.repositoryGraph.checkout.pending")}</Text>
+      </View>
+    );
+  }
+  if (mutation.error) {
+    return (
+      <View
+        style={styles.checkoutStatus}
+        accessibilityRole="alert"
+        testID="repository-graph-checkout-error"
+      >
+        <Text style={[styles.stateText, styles.checkoutMessage]}>
+          {t("workspace.repositoryGraph.checkout.failed")}: {mutation.error.message}
+        </Text>
+        <PressHighlight
+          accessibilityRole="button"
+          accessibilityLabel={t("workspace.repositoryGraph.retry")}
+          disabled={!checkout.enabled}
+          onPress={retry}
+        >
+          <Text style={styles.retryText}>{t("workspace.repositoryGraph.retry")}</Text>
+        </PressHighlight>
+        <PressHighlight
+          accessibilityRole="button"
+          accessibilityLabel={t("workspace.repositoryGraph.checkout.dismiss")}
+          onPress={reset}
+        >
+          <Text style={styles.retryText}>{t("workspace.repositoryGraph.checkout.dismiss")}</Text>
+        </PressHighlight>
+      </View>
+    );
+  }
+  if (mutation.isSuccess) {
+    return (
+      <View
+        style={styles.checkoutStatus}
+        accessibilityLiveRegion="polite"
+        testID="repository-graph-checkout-result"
+      >
+        <Text style={styles.stateText}>{t("workspace.repositoryGraph.checkout.success")}</Text>
+      </View>
+    );
+  }
+  return null;
+}
+
+interface GraphToolbarProps {
+  checkout: GraphCheckout;
+  metadata?: { localBranches: string[] };
+  supported: boolean;
+  search: string;
+  onSearch: (value: string) => void;
+  fetching: boolean;
+  onRefresh: () => void;
+}
+
+function GraphToolbar({
+  checkout,
+  metadata,
+  supported,
+  search,
+  onSearch,
+  fetching,
+  onRefresh,
+}: GraphToolbarProps) {
+  const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  return (
+    <PaneContentToolbar
+      style={[
+        styles.toolbar,
+        { paddingRight: paneContentToolbarTrailingPadding(isCompact, "glyph") },
+      ]}
+      testID="repository-graph-toolbar"
+    >
+      {metadata ? (
+        <Text style={styles.checkoutHead} numberOfLines={1} testID="repository-graph-head">
+          <CheckoutHeadLabel checkout={checkout} />
+        </Text>
+      ) : null}
+      <SearchField
+        value={search}
+        onChangeText={onSearch}
+        placeholder={t("workspace.repositoryGraph.searchPlaceholder")}
+        clearAccessibilityLabel={t("workspace.repositoryGraph.clearSearch")}
+        density="toolbar"
+        testID="repository-graph-search"
+        clearTestID="repository-graph-search-clear"
+      />
+      <ToolbarControls style={styles.toolbarActions}>
+        {supported ? (
+          <CheckoutBranchMenu checkout={checkout} branches={metadata?.localBranches ?? []} />
+        ) : null}
+        <ToolbarButton
+          label={t("workspace.repositoryGraph.refresh")}
+          compact={isCompact}
+          disabled={fetching}
+          onPress={onRefresh}
+          testID="repository-graph-refresh"
+        >
+          {fetching ? (
+            <ThemedLoadingSpinner
+              size={paneContentToolbarIconSize(isCompact)}
+              uniProps={extraMutedIconColorMapping}
+            />
+          ) : (
+            <ThemedRotateCw
+              size={paneContentToolbarIconSize(isCompact)}
+              uniProps={extraMutedIconColorMapping}
+            />
+          )}
+        </ToolbarButton>
+      </ToolbarControls>
+    </PaneContentToolbar>
+  );
+}
+
 export function RepositoryGraphPane({
   serverId,
   workspaceId,
@@ -670,9 +945,30 @@ export function RepositoryGraphPane({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const isCompact = useIsCompactFormFactor();
   const [search, setSearch] = useState("");
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
+  const query = useRepositoryGraphHistory({ serverId, cwd, enabled });
+  const checkoutMetadata = query.data?.checkout;
+  const checkoutMutation = useRepositoryGraphCheckout(serverId, cwd);
+  const checkoutSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.repositoryGraphCheckout === true,
+  );
+  const checkout = useMemo<GraphCheckout>(
+    () => ({
+      enabled: checkoutSupported && query.isConnected,
+      pending: checkoutMutation.isPending,
+      currentBranch: checkoutMetadata?.currentBranch ?? null,
+      headSha: checkoutMetadata?.headSha ?? null,
+      onCheckout: checkoutMutation.checkout,
+    }),
+    [
+      checkoutSupported,
+      query.isConnected,
+      checkoutMetadata,
+      checkoutMutation.isPending,
+      checkoutMutation.checkout,
+    ],
+  );
   const [renameTarget, setRenameTarget] = useState<GraphRef | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<GraphRef | null>(null);
   const [tagTarget, setTagTarget] = useState<string | null>(null);
@@ -689,7 +985,6 @@ export function RepositoryGraphPane({
     () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId: workspaceId ?? cwd }),
     [cwd, serverId, workspaceId],
   );
-  const query = useRepositoryGraphHistory({ serverId, cwd, enabled });
   const commits = query.data?.commits ?? EMPTY_COMMITS;
   const filteredCommits = useMemo(
     () => commits.filter((commit) => matchesRepositoryGraphSearch(commit, search)),
@@ -779,6 +1074,7 @@ export function RepositoryGraphPane({
         onDeleteRef={handleOpenDelete}
         onCopyRef={handleCopyRef}
         onCreateTag={handleOpenCreateTag}
+        checkout={checkout}
       />
     ),
     [
@@ -795,6 +1091,7 @@ export function RepositoryGraphPane({
       selectedSha,
       serverId,
       tagActionsSupported,
+      checkout,
     ],
   );
   const keyExtractor = useCallback((row: RepositoryGraphRowLayout) => row.commit.sha, []);
@@ -818,44 +1115,16 @@ export function RepositoryGraphPane({
       : deleteTarget?.kind === "head" && Boolean(deleteTarget.upstream);
   return (
     <View style={styles.list}>
-      <PaneContentToolbar
-        style={[
-          styles.toolbar,
-          { paddingRight: paneContentToolbarTrailingPadding(isCompact, "glyph") },
-        ]}
-        testID="repository-graph-toolbar"
-      >
-        <SearchField
-          value={search}
-          onChangeText={setSearch}
-          placeholder={t("workspace.repositoryGraph.searchPlaceholder")}
-          clearAccessibilityLabel={t("workspace.repositoryGraph.clearSearch")}
-          density="toolbar"
-          testID="repository-graph-search"
-          clearTestID="repository-graph-search-clear"
-        />
-        <ToolbarControls style={styles.toolbarActions}>
-          <ToolbarButton
-            label={t("workspace.repositoryGraph.refresh")}
-            compact={isCompact}
-            disabled={query.isFetching}
-            onPress={refresh}
-            testID="repository-graph-refresh"
-          >
-            {query.isFetching ? (
-              <ThemedLoadingSpinner
-                size={paneContentToolbarIconSize(isCompact)}
-                uniProps={extraMutedIconColorMapping}
-              />
-            ) : (
-              <ThemedRotateCw
-                size={paneContentToolbarIconSize(isCompact)}
-                uniProps={extraMutedIconColorMapping}
-              />
-            )}
-          </ToolbarButton>
-        </ToolbarControls>
-      </PaneContentToolbar>
+      <GraphToolbar
+        checkout={checkout}
+        metadata={checkoutMetadata}
+        supported={checkoutSupported}
+        search={search}
+        onSearch={setSearch}
+        fetching={query.isFetching}
+        onRefresh={refresh}
+      />
+      <CheckoutStatus checkout={checkout} mutation={checkoutMutation} />
       <RepositoryGraphContent
         commits={commits}
         rows={rows}
@@ -901,6 +1170,24 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[3],
   },
   toolbarActions: { marginLeft: "auto" },
+  checkoutHead: {
+    maxWidth: "40%",
+    flexShrink: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  checkoutStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderAccent,
+  },
+  checkoutMessage: { flex: 1, textAlign: "left" },
+  retryText: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   commitList: { flex: 1 },
   listContent: { paddingVertical: theme.spacing[2] },
   row: {

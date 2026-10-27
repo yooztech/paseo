@@ -7,6 +7,7 @@ import type {
   BranchSuggestionsRequest,
   CheckoutCommitsListRequest,
   CheckoutCommitFileDiffRequest,
+  CheckoutRepositoryGraphCheckoutRequest,
   CheckoutRepositoryGraphGetHistoryRequest,
   CheckoutRepositoryGraphMutateRefRequest,
   CheckoutRepositoryGraphGetCommitDetailsRequest,
@@ -322,6 +323,12 @@ export class CheckoutSession {
     msg: CheckoutRepositoryGraphMutateRefRequest,
   ): Promise<void> {
     return this.repositoryGraphFork.handleMutateRef(msg);
+  }
+
+  async handleRepositoryGraphCheckoutRequest(
+    msg: CheckoutRepositoryGraphCheckoutRequest,
+  ): Promise<void> {
+    return this.repositoryGraphFork.handleCheckout(msg);
   }
 
   async handleCommitFileDiffRequest(msg: CheckoutCommitFileDiffRequest): Promise<void> {

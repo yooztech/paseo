@@ -2094,6 +2094,7 @@ export class VoiceAssistantWebSocketServer {
         repositoryGraphCommitDetails: true,
         repositoryGraphRefActions: true,
         repositoryGraphTagActions: true,
+        repositoryGraphCheckout: true,
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: true,
         hopliteProvider: this.providerSnapshotManager.supportsConfigRequiredProvider("hoplite"),

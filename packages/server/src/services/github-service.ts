@@ -12,6 +12,7 @@ import {
 } from "../utils/change-request-checkout.js";
 import { execCommand } from "../utils/spawn.js";
 import { resolveSshHostname } from "../utils/ssh-hostname.js";
+import { getGitHubPollParentFallback } from "../server/fork/github-poll-policy.js";
 import {
   CLI_AUTH_PROBE_TIMEOUT_MS,
   createForgeCliRunner,
@@ -1088,8 +1089,6 @@ interface GitHubPollTarget {
 interface GitHubBatchPollEntry {
   target: GitHubPollTarget;
   host: string;
-  originOwner: string;
-  originName: string;
   owner: string;
   name: string;
   headRepositoryOwner?: string;
@@ -1161,10 +1160,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
   // Rollup nodes for merged/closed PRs keyed by repo#number@headOid: their
   // checks can no longer change, so each is fetched at most once per daemon run.
   const frozenPullRequestChecksCache = new Map<string, unknown[]>();
-  const pollRepositoryRedirects = new Map<
-    string,
-    { owner: string; name: string; headRepositoryOwner: string }
-  >();
   const pollPausedUntilByHost = new Map<string, number>();
   const rateLimitResetLoads = new Map<string, Promise<number | null>>();
   let githubPollTimer: NodeJS.Timeout | null = null;
@@ -1521,8 +1516,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       group.push({
         target,
         host: key,
-        originOwner: owner,
-        originName: name,
         owner,
         name,
       });
@@ -1621,13 +1614,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     entries: GitHubBatchPollEntry[],
     startedAt: number,
   ): Promise<void> {
-    const addressedEntries = entries.map(addressGitHubBatchEntry);
-    const firstEntry = addressedEntries[0];
+    const firstEntry = entries[0];
     if (!firstEntry) {
       return;
     }
     const query = buildBatchPullRequestStatusQuery(
-      addressedEntries.map((entry) => ({
+      entries.map((entry) => ({
         owner: entry.owner,
         name: entry.name,
         headRef: entry.target.headRef,
@@ -1635,7 +1627,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     );
     const args = ["api", "graphql", "-f", `query=${query}`];
     const response = await loadGitHubPollBatchResponse({
-      entries: addressedEntries,
+      entries,
       firstEntry,
       args,
     });
@@ -1645,12 +1637,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     const rateLimit = parseGraphqlBatchRateLimit(response.stdout);
     if (rateLimit && pauseGitHubPollsAtReserve(firstEntry.host, rateLimit)) {
       const error = new GitHubGraphqlPollPausedError(rateLimit);
-      reportGitHubBatchError(addressedEntries, error);
+      reportGitHubBatchError(entries, error);
       return;
     }
 
     const distribution = distributeGitHubPollBatch({
-      entries: addressedEntries,
+      entries,
       aliases: response.aliases,
       args,
       startedAt,
@@ -1717,14 +1709,9 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         continue;
       }
       const node = selectBatchPollNode(entry, repository.data);
-      if (!node && repository.data.isFork && repository.data.parent) {
-        const forkOwner = repository.data.owner?.login ?? entry.owner;
-        pollRepositoryRedirects.set(batchRepositoryRedirectKey(entry), {
-          owner: repository.data.parent.owner.login,
-          name: repository.data.parent.name,
-          headRepositoryOwner: forkOwner,
-        });
-        distribution.redirected.push(entry);
+      const parentFallback = !node && getGitHubPollParentFallback(entry, repository.data);
+      if (parentFallback) {
+        distribution.redirected.push({ ...entry, ...parentFallback });
         continue;
       }
       if (!node) {
@@ -1772,22 +1759,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       }
     }
     return distribution;
-  }
-
-  function addressGitHubBatchEntry(entry: GitHubBatchPollEntry): GitHubBatchPollEntry {
-    const redirect = pollRepositoryRedirects.get(batchRepositoryRedirectKey(entry));
-    return redirect
-      ? {
-          ...entry,
-          owner: redirect.owner,
-          name: redirect.name,
-          headRepositoryOwner: redirect.headRepositoryOwner,
-        }
-      : entry;
-  }
-
-  function batchRepositoryRedirectKey(entry: GitHubBatchPollEntry): string {
-    return `${entry.host}\n${entry.originOwner}/${entry.originName}`;
   }
 
   function selectBatchPollNode(
@@ -2683,7 +2654,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         closeGitHubPollTarget(target);
       }
       pollTargets.clear();
-      pollRepositoryRedirects.clear();
       pollPausedUntilByHost.clear();
       rateLimitResetLoads.clear();
     },

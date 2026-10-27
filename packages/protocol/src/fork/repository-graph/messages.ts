@@ -43,6 +43,34 @@ const RepositoryGraphCommitDetailsSchema = z.object({
   files: z.array(CheckoutCommitFileSchema),
 });
 
+const RepositoryGraphCheckoutSchema = z.object({
+  headSha: z.string().nullable(),
+  currentBranch: z.string().nullable(),
+  localBranches: z.array(z.string()),
+});
+
+const RepositoryGraphCheckoutTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("commit"), sha: z.string() }),
+  z.object({ kind: z.literal("branch"), name: z.string() }),
+]);
+
+export const CheckoutRepositoryGraphCheckoutRequestSchema = z.object({
+  type: z.literal("checkout.repository_graph.checkout.request"),
+  cwd: z.string(),
+  target: RepositoryGraphCheckoutTargetSchema,
+  requestId: z.string(),
+});
+
+export const CheckoutRepositoryGraphCheckoutResponseSchema = z.object({
+  type: z.literal("checkout.repository_graph.checkout.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutRepositoryGraphGetHistoryRequestSchema = z.object({
   type: z.literal("checkout.repository_graph.get_history.request"),
   cwd: z.string(),
@@ -77,6 +105,7 @@ export const CheckoutRepositoryGraphGetHistoryResponseSchema = z.object({
     cwd: z.string(),
     commits: z.array(RepositoryGraphCommitSchema),
     hasMore: z.boolean(),
+    checkout: RepositoryGraphCheckoutSchema.optional(),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
@@ -108,3 +137,5 @@ export const CheckoutRepositoryGraphMutateRefResponseSchema = z.object({
 
 export type RepositoryGraphCommit = z.infer<typeof RepositoryGraphCommitSchema>;
 export type RepositoryGraphCommitDetails = z.infer<typeof RepositoryGraphCommitDetailsSchema>;
+export type RepositoryGraphCheckout = z.infer<typeof RepositoryGraphCheckoutSchema>;
+export type RepositoryGraphCheckoutTarget = z.infer<typeof RepositoryGraphCheckoutTargetSchema>;

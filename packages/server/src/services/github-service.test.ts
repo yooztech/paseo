@@ -1481,69 +1481,6 @@ describe("ForgeService", () => {
     service.dispose?.();
   });
 
-  it("redirects a fork poll to its parent and reuses that batch address", async () => {
-    let now = 0;
-    const parent = { owner: { login: "upstream" }, name: "widgets" };
-    const forkPr = batchPollPrNodeJson({
-      url: "https://github.com/upstream/widgets/pull/42",
-      headRefName: "feat-a",
-      headRefOid: "oid-a",
-      headRepositoryOwner: { login: "forkowner" },
-    });
-    const runner = createScriptedRunner([
-      batchPollStatusJson({
-        t0: batchPollRepositoryJson([], { isFork: true, parent }),
-      }),
-      batchPollStatusJson({ t0: batchPollRepositoryJson([forkPr]) }),
-      batchPollStatusJson({
-        t0: batchPollChecksAliasJson([
-          { __typename: "StatusContext", context: "ci", state: "SUCCESS" },
-        ]),
-      }),
-      batchPollStatusJson({ t0: batchPollRepositoryJson([forkPr]) }),
-    ]);
-    const service = createGitHubService({
-      ttlMs: 0,
-      runner: runner.runner,
-      resolveGhPath: async () => "/usr/bin/gh",
-      resolveRepoHost: async () => null,
-      resolveRepoSlug: async () => "forkowner/widgets",
-      now: () => now,
-    });
-    const statuses: Array<CurrentPullRequestStatus | null> = [];
-
-    const subscription = service.retainCurrentPullRequestStatusPoll?.({
-      cwd: "/ws-a",
-      headRef: "feat-a",
-      headSha: "oid-a",
-      onStatus: (status) => statuses.push(status),
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    await flushMicrotasks();
-
-    expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(0);
-    expect(runner.calls[0]?.args[3]).toContain(
-      't0: repository(owner: "forkowner", name: "widgets")',
-    );
-    expect(runner.calls[1]?.args[3]).toContain(
-      't0: repository(owner: "upstream", name: "widgets")',
-    );
-    expect(statuses).toEqual([
-      expect.objectContaining({ number: 42, repoOwner: "upstream", checksStatus: "success" }),
-    ]);
-
-    now = EXPECTED_GITHUB_SLOW_POLL_MS;
-    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS);
-    await flushMicrotasks();
-
-    expect(runner.calls[3]?.args[3]).toContain(
-      't0: repository(owner: "upstream", name: "widgets")',
-    );
-
-    subscription?.unsubscribe();
-    service.dispose?.();
-  });
-
   it("treats a missing pullRequests connection as a failed alias", async () => {
     let now = 0;
     const runner = createScriptedRunner([

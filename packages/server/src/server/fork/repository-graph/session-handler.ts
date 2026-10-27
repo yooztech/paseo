@@ -1,4 +1,5 @@
 import type {
+  CheckoutRepositoryGraphCheckoutRequest,
   CheckoutRepositoryGraphGetCommitDetailsRequest,
   CheckoutRepositoryGraphGetHistoryRequest,
   CheckoutRepositoryGraphMutateRefRequest,
@@ -8,6 +9,7 @@ import { toCheckoutError } from "../../checkout-git-utils.js";
 import { assertSafeGitRef } from "../../worktree-session.js";
 import { expandTilde } from "../../../utils/path.js";
 import {
+  checkoutRepositoryGraph,
   getRepositoryGraphCommitDetails,
   getRepositoryGraphHistory,
   mutateRepositoryGraphRef,
@@ -51,6 +53,35 @@ export class RepositoryGraphForkSessionHandler {
         payload: { cwd, sha, details: null, error: toCheckoutError(error), requestId },
       });
     }
+  }
+
+  async handleCheckout(msg: CheckoutRepositoryGraphCheckoutRequest): Promise<void> {
+    const { cwd, target, requestId } = msg;
+    try {
+      if (target.kind === "commit") {
+        assertSafeGitRef(target.sha, "commit");
+      }
+      await checkoutRepositoryGraph({ cwd: expandTilde(cwd), target });
+    } catch (error) {
+      this.emit({
+        type: "checkout.repository_graph.checkout.response",
+        payload: { cwd, success: false, error: toCheckoutError(error), requestId },
+      });
+      return;
+    }
+    try {
+      await this.onMutation(cwd);
+    } catch (error) {
+      try {
+        this.onRefreshError(error, cwd);
+      } catch {
+        // Refresh reporting must not turn a successful checkout into a failed response.
+      }
+    }
+    this.emit({
+      type: "checkout.repository_graph.checkout.response",
+      payload: { cwd, success: true, error: null, requestId },
+    });
   }
 
   async handleMutateRef(msg: CheckoutRepositoryGraphMutateRefRequest): Promise<void> {

@@ -1,10 +1,11 @@
 import { execFileSync } from "child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import {
+  checkoutRepositoryGraph,
   getRepositoryGraphCommitDetails,
   getRepositoryGraphHistory,
   mutateRepositoryGraphRef,
@@ -67,11 +68,206 @@ function initRepo(): string {
   const repoDir = join(root, "repo");
   mkdirSync(repoDir);
   git(["init", "-b", "main"], repoDir);
+  git(["config", "core.autocrlf", "false"], repoDir);
   git(["config", "user.email", "test@test.com"], repoDir);
   git(["config", "user.name", "Test User"], repoDir);
   commitFile(repoDir, "README.md", "base\n", "Initial commit");
   return repoDir;
 }
+
+describe("checkoutRepositoryGraph", () => {
+  it.each([false, true])("detaches and reattaches in a linked worktree: %s", async (linked) => {
+    const repoDir = initRepo();
+    const baseSha = git(["rev-parse", "HEAD"], repoDir);
+    const tipSha = commitFile(repoDir, "README.md", "tip\n", "Tip");
+    git(["branch", "older", baseSha], repoDir);
+    const cwd = linked ? join(repoDir, "../linked") : repoDir;
+    const branch = linked ? "worktree-branch" : "main";
+    if (linked) {
+      git(["worktree", "add", "-b", branch, cwd], repoDir);
+    }
+    await checkoutRepositoryGraph({ cwd, target: { kind: "commit", sha: baseSha } });
+    expect(git(["rev-parse", "HEAD"], cwd)).toBe(baseSha);
+    expect((await getRepositoryGraphHistory({ cwd, limit: 1 })).checkout).toEqual({
+      headSha: baseSha,
+      currentBranch: null,
+      localBranches: linked ? ["main", "older", "worktree-branch"] : ["main", "older"],
+    });
+    await checkoutRepositoryGraph({ cwd, target: { kind: "branch", name: branch } });
+    expect(git(["symbolic-ref", "--short", "HEAD"], cwd)).toBe(branch);
+    expect(git(["rev-parse", "HEAD"], cwd)).toBe(tipSha);
+    expect(readFileSync(join(cwd, "README.md"), "utf8")).toBe("tip\n");
+  });
+
+  it("preserves HEAD and dirty files when checkout would overwrite changes", async () => {
+    const cwd = initRepo();
+    const baseSha = git(["rev-parse", "HEAD"], cwd);
+    const tipSha = commitFile(cwd, "README.md", "tip\n", "Tip");
+    writeFileSync(join(cwd, "README.md"), "dirty\n");
+    await expect(
+      checkoutRepositoryGraph({ cwd, target: { kind: "commit", sha: baseSha } }),
+    ).rejects.toThrow();
+    expect(git(["rev-parse", "HEAD"], cwd)).toBe(tipSha);
+    expect(git(["symbolic-ref", "--short", "HEAD"], cwd)).toBe("main");
+    expect(readFileSync(join(cwd, "README.md"), "utf8")).toBe("dirty\n");
+  });
+
+  it("rejects branches in another worktree without changing HEAD or files", async () => {
+    const repoDir = initRepo();
+    const cwd = join(repoDir, "../linked");
+    git(["worktree", "add", "-b", "linked", cwd], repoDir);
+    const sha = git(["rev-parse", "HEAD"], cwd);
+    await checkoutRepositoryGraph({ cwd, target: { kind: "commit", sha } });
+    await expect(
+      checkoutRepositoryGraph({ cwd, target: { kind: "branch", name: "main" } }),
+    ).rejects.toThrow();
+    expect((await getRepositoryGraphHistory({ cwd })).checkout).toMatchObject({
+      headSha: sha,
+      currentBranch: null,
+    });
+    expect(readFileSync(join(cwd, "README.md"), "utf8")).toBe("base\n");
+  });
+
+  it("does not guess remote branches or interpret branch options", async () => {
+    const cwd = initRepo();
+    git(["update-ref", "refs/remotes/origin/remote-only", "HEAD"], cwd);
+    for (const name of ["remote-only", "--detach", "main~1", "@{-1}"]) {
+      await expect(
+        checkoutRepositoryGraph({ cwd, target: { kind: "branch", name } }),
+      ).rejects.toThrow();
+    }
+    expect(git(["symbolic-ref", "--short", "HEAD"], cwd)).toBe("main");
+    expect(git(["for-each-ref", "--format=%(refname:short)", "refs/heads"], cwd)).toBe("main");
+  });
+});
+
+describe("RepositoryGraphForkSessionHandler.handleCheckout", () => {
+  it("correlates detach and reattach responses and refreshes successful mutations", async () => {
+    const cwd = initRepo();
+    const sha = git(["rev-parse", "HEAD"], cwd);
+    const responses: SessionOutboundMessage[] = [];
+    const refreshed: string[] = [];
+    const handler = new RepositoryGraphForkSessionHandler(
+      (message) => responses.push(message),
+      async (path) => {
+        refreshed.push(path);
+      },
+      () => {},
+    );
+    await handler.handleCheckout({
+      type: "checkout.repository_graph.checkout.request",
+      cwd,
+      target: { kind: "commit", sha },
+      requestId: "detach",
+    });
+    expect((await getRepositoryGraphHistory({ cwd })).checkout.currentBranch).toBeNull();
+    await handler.handleCheckout({
+      type: "checkout.repository_graph.checkout.request",
+      cwd,
+      target: { kind: "branch", name: "main" },
+      requestId: "attach",
+    });
+    expect(responses).toEqual(
+      ["detach", "attach"].map((requestId) => ({
+        type: "checkout.repository_graph.checkout.response",
+        payload: { cwd, success: true, error: null, requestId },
+      })),
+    );
+    expect(refreshed).toEqual([cwd, cwd]);
+    expect(git(["symbolic-ref", "--short", "HEAD"], cwd)).toBe("main");
+  });
+
+  it.each(["feature/c++", "工作分支"])("returns to Git-valid local branch %s", async (name) => {
+    const cwd = initRepo();
+    const sha = git(["rev-parse", "HEAD"], cwd);
+    git(["branch", name], cwd);
+    const responses: SessionOutboundMessage[] = [];
+    const handler = new RepositoryGraphForkSessionHandler(
+      (message) => responses.push(message),
+      async () => {},
+      () => {},
+    );
+    await handler.handleCheckout({
+      type: "checkout.repository_graph.checkout.request",
+      cwd,
+      target: { kind: "commit", sha },
+      requestId: "detach",
+    });
+    await handler.handleCheckout({
+      type: "checkout.repository_graph.checkout.request",
+      cwd,
+      target: { kind: "branch", name },
+      requestId: "return",
+    });
+    expect(git(["symbolic-ref", "--short", "HEAD"], cwd)).toBe(name);
+    expect(git(["rev-parse", "HEAD"], cwd)).toBe(sha);
+    expect(responses[1]).toEqual({
+      type: "checkout.repository_graph.checkout.response",
+      payload: { cwd, success: true, error: null, requestId: "return" },
+    });
+  });
+
+  it("returns a correlated error without refreshing for invalid refs", async () => {
+    const cwd = initRepo();
+    const headSha = git(["rev-parse", "HEAD"], cwd);
+    const responses: SessionOutboundMessage[] = [];
+    let refreshCount = 0;
+    const handler = new RepositoryGraphForkSessionHandler(
+      (message) => responses.push(message),
+      async () => {
+        refreshCount += 1;
+      },
+      () => {},
+    );
+    await handler.handleCheckout({
+      type: "checkout.repository_graph.checkout.request",
+      cwd,
+      target: { kind: "commit", sha: "--help" },
+      requestId: "invalid",
+    });
+    expect(responses).toEqual([
+      {
+        type: "checkout.repository_graph.checkout.response",
+        payload: {
+          cwd,
+          success: false,
+          error: expect.objectContaining({ code: expect.any(String), message: expect.any(String) }),
+          requestId: "invalid",
+        },
+      },
+    ]);
+    expect(refreshCount).toBe(0);
+    expect(git(["symbolic-ref", "--short", "HEAD"], cwd)).toBe("main");
+    expect(git(["rev-parse", "HEAD"], cwd)).toBe(headSha);
+    expect(readFileSync(join(cwd, "README.md"), "utf8")).toBe("base\n");
+  });
+
+  it("reports successful checkout once even if refresh and refresh reporting fail", async () => {
+    const cwd = initRepo();
+    const responses: SessionOutboundMessage[] = [];
+    const handler = new RepositoryGraphForkSessionHandler(
+      (message) => responses.push(message),
+      async () => {
+        throw new Error("refresh failed");
+      },
+      () => {
+        throw new Error("report failed");
+      },
+    );
+    await handler.handleCheckout({
+      type: "checkout.repository_graph.checkout.request",
+      cwd,
+      target: { kind: "commit", sha: git(["rev-parse", "HEAD"], cwd) },
+      requestId: "refresh-error",
+    });
+    expect(responses).toEqual([
+      {
+        type: "checkout.repository_graph.checkout.response",
+        payload: { cwd, success: true, error: null, requestId: "refresh-error" },
+      },
+    ]);
+  });
+});
 
 describe("getRepositoryGraphHistory", () => {
   it("returns topo-ordered commits and associates branches and tags", async () => {
