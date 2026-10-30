@@ -37,7 +37,7 @@ function parseArgs(argv: string[]): { modelsDir: string; modelIds: LocalSpeechMo
   return { modelsDir, modelIds };
 }
 
-const logger = createRootLogger({ level: "info", format: "pretty" });
+const logger = await createRootLogger({ level: "info", format: "pretty" });
 
 const { modelsDir, modelIds } = parseArgs(process.argv.slice(2));
 await ensureLocalSpeechModels({ modelsDir, modelIds, logger });

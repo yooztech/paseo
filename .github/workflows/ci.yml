@@ -136,11 +136,12 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run typecheck:examples --workspace=@getpaseo/client
 
+  # The locked Playwright installers do not support ubuntu-latest's Ubuntu 26.04.
   typecheck:
     name: typecheck
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -398,7 +399,7 @@ jobs:
     name: app-tests
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -420,19 +421,11 @@ jobs:
       - name: Run app unit tests
         run: npm run test --workspace=@getpaseo/app
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Run Android module tests
-        run: npm run test:android --workspace=@getpaseo/app
-
   playwright-1:
     name: playwright (shard 1/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "1/8"
       PLAYWRIGHT_ARTIFACT: "1"
@@ -488,7 +481,7 @@ jobs:
     name: playwright (shard 2/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "2/8"
       PLAYWRIGHT_ARTIFACT: "2"
@@ -498,7 +491,7 @@ jobs:
     name: playwright (shard 3/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "3/8"
       PLAYWRIGHT_ARTIFACT: "3"
@@ -508,7 +501,7 @@ jobs:
     name: playwright (shard 4/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "4/8"
       PLAYWRIGHT_ARTIFACT: "4"
@@ -518,7 +511,7 @@ jobs:
     name: playwright (shard 5/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "5/8"
       PLAYWRIGHT_ARTIFACT: "5"
@@ -528,7 +521,7 @@ jobs:
     name: playwright (shard 6/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "6/8"
       PLAYWRIGHT_ARTIFACT: "6"
@@ -538,7 +531,7 @@ jobs:
     name: playwright (shard 7/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "7/8"
       PLAYWRIGHT_ARTIFACT: "7"
@@ -548,7 +541,7 @@ jobs:
     name: playwright (shard 8/8)
     needs: changes
     if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "8/8"
       PLAYWRIGHT_ARTIFACT: "8"

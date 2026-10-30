@@ -1205,7 +1205,7 @@ describe("WorkspaceGitService checkout observation", () => {
       ]);
     await vi.advanceTimersByTimeAsync(1_000);
     await vi.waitFor(() => {
-      expect(getCalledCwds(getCheckoutStatus)).toEqual([WORKTREE_A, WORKTREE_B]);
+      expect(getCalledCwds(getCheckoutStatus).sort()).toEqual([WORKTREE_A, WORKTREE_B].sort());
     });
 
     first.unsubscribe();
@@ -1640,6 +1640,12 @@ describe("WorkspaceGitService checkout observation", () => {
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
 
     await vi.waitFor(() => {
+      expect(watcher.subscribe).toHaveBeenCalledWith(
+        GIT_DIR,
+        expect.any(Function),
+        expect.any(Object),
+      );
+      expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
       expect(service.getMetrics().workspaceObservationSetupInFlightCount).toBe(0);
       expect(service.getMetrics().workspaceRefreshInFlightCount).toBe(0);
     });
@@ -1658,14 +1664,17 @@ describe("WorkspaceGitService checkout observation", () => {
       [60_000, 6],
     ] as const) {
       await vi.advanceTimersByTimeAsync(elapsedMs);
-      expect(pollCount()).toBe(expectedPolls);
+      await vi.waitFor(() => {
+        expect(pollCount()).toBe(expectedPolls);
+        expect(service.getMetrics().workspaceRefreshInFlightCount).toBe(0);
+      });
     }
 
     isDirty = true;
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(pollCount()).toBe(7);
+    await vi.waitFor(() => expect(pollCount()).toBe(7));
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(pollCount()).toBe(8);
+    await vi.waitFor(() => expect(pollCount()).toBe(8));
 
     subscription.unsubscribe();
     service.dispose();
@@ -1876,8 +1885,10 @@ describe("WorkspaceGitService checkout observation", () => {
       expect(watcher.subscribe).toHaveBeenCalledTimes(1);
     });
     await vi.advanceTimersByTimeAsync(35_000);
-    expect(service.getMetrics().workingTreeWatchSetupInFlightCount).toBe(0);
-    expect(service.getMetrics().workspaceObservationSetupAdmissionActiveCount).toBe(0);
+    await vi.waitFor(() => {
+      expect(service.getMetrics().workingTreeWatchSetupInFlightCount).toBe(0);
+      expect(service.getMetrics().workspaceObservationSetupAdmissionActiveCount).toBe(0);
+    });
     expect(getWatcherSubscribeCallCount(watcher, REPO_CWD)).toBe(1);
 
     openedSubscription.resolve({

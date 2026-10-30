@@ -1,6 +1,5 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState } from "react";
 import { getDesktopRuntimeInfo } from "@/desktop/updates/desktop-updates";
-import type { SettingsView } from "@/navigation/settings-navigation";
 
 export function useForkAppVersion(
   isDesktopApp: boolean,
@@ -27,15 +26,4 @@ export function useForkAppVersion(
   }, [isDesktopApp]);
 
   return desktopAppVersion ?? fallbackVersion;
-}
-
-export function useSyncForkSettingsHost(
-  view: SettingsView,
-  setSelectedServerId: Dispatch<SetStateAction<string | null>>,
-): void {
-  useEffect(() => {
-    if (view.kind === "host") {
-      setSelectedServerId(view.serverId);
-    }
-  }, [view, setSelectedServerId]);
 }

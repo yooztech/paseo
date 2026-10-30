@@ -286,7 +286,7 @@ async function createProviderPlugin(
     path.join(directory, "paseo-plugin.json"),
     JSON.stringify({
       id: "shutdown-provider-plugin",
-      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
+      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
     }),
   );
   await writeFile(
