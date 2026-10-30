@@ -21,7 +21,20 @@ afterEach(() => {
 });
 
 describe("resolveDaemonVersion", () => {
-  it("resolves a fork version from the most recent daemon release tag", () => {
+  it("falls back to the package version outside a Git checkout", async () => {
+    const root = createTempDir();
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "@getpaseo/server", version: "0.14.0" }),
+      "utf8",
+    );
+
+    expect(await resolveDaemonVersion(pathToFileURL(path.join(root, "index.js")).href)).toBe(
+      "0.14.0",
+    );
+  });
+
+  it("resolves a fork version from the most recent daemon release tag", async () => {
     const root = createTempDir();
     writeFileSync(
       path.join(root, "package.json"),
@@ -47,9 +60,9 @@ describe("resolveDaemonVersion", () => {
     );
 
     const moduleUrl = pathToFileURL(path.join(nestedDir, "index.js")).href;
-    expect(resolveDaemonVersion(moduleUrl)).toBe("9.8.7-fork.4");
+    expect(await resolveDaemonVersion(moduleUrl)).toBe("9.8.7-fork.4");
   });
-  it("uses the package version after upgrading past the last fork release", () => {
+  it("uses the package version after upgrading past the last fork release", async () => {
     const root = createTempDir();
     writeFileSync(
       path.join(root, "package.json"),
@@ -65,10 +78,12 @@ describe("resolveDaemonVersion", () => {
     );
     execFileSync("git", ["tag", "v0.7.2-fork.8"], { cwd: root });
 
-    expect(resolveDaemonVersion(pathToFileURL(path.join(root, "index.js")).href)).toBe("0.9.2");
+    expect(await resolveDaemonVersion(pathToFileURL(path.join(root, "index.js")).href)).toBe(
+      "0.9.2",
+    );
   });
 
-  it("prefers the matching fork release over an upstream tag at HEAD", () => {
+  it("prefers the matching fork release over an upstream tag at HEAD", async () => {
     const root = createTempDir();
     writeFileSync(
       path.join(root, "package.json"),
@@ -85,7 +100,7 @@ describe("resolveDaemonVersion", () => {
     execFileSync("git", ["tag", "v0.9.2-fork.1"], { cwd: root });
     execFileSync("git", ["tag", "v0.9.2"], { cwd: root });
 
-    expect(resolveDaemonVersion(pathToFileURL(path.join(root, "index.js")).href)).toBe(
+    expect(await resolveDaemonVersion(pathToFileURL(path.join(root, "index.js")).href)).toBe(
       "0.9.2-fork.1",
     );
   });

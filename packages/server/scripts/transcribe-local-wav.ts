@@ -116,7 +116,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const logger = createRootLogger({ level: "info", format: "pretty" });
+  const logger = await createRootLogger({ level: "info", format: "pretty" });
 
   const providers: RequestedSpeechProviders = {
     dictationStt: { provider: "local", explicit: true },

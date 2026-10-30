@@ -734,7 +734,7 @@ describe("paseo daemon bootstrap", () => {
         path.join(pluginDirectory, "paseo-plugin.json"),
         JSON.stringify({
           id: "startup-rollback",
-          requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
+          requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
         }),
       );
       await writeFile(

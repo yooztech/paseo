@@ -162,10 +162,10 @@ export function resolveLogConfig(
   };
 }
 
-export function createRootLogger(
+export async function createRootLogger(
   configInput: LoggerConfigInput,
   options?: ResolveLogConfigOptions,
-): pino.Logger {
+): Promise<pino.Logger> {
   const config = resolveLogConfig(configInput, options);
   if (config.file) {
     mkdirSync(path.dirname(config.file.path), { recursive: true });
@@ -189,7 +189,7 @@ export function createRootLogger(
     stream,
   );
 
-  return logger.child({ daemonVersion: resolveDaemonVersion() });
+  return logger.child({ daemonVersion: await resolveDaemonVersion() });
 }
 
 export function createChildLogger(parent: pino.Logger, name: string): pino.Logger {

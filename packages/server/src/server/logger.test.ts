@@ -158,7 +158,7 @@ describe("createRootLogger", () => {
     const paseoHome = await mkdtemp(path.join(tmpdir(), "paseo-logger-version-"));
 
     const { stdout } = await runLoggerFixture(`
-      const logger = createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
+      const logger = await createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
       logger.child({ name: "fixture" }).info("versioned child logger");
       logger.flush();
     `);
@@ -166,7 +166,7 @@ describe("createRootLogger", () => {
     expect(JSON.parse(stdout)).toMatchObject({
       pid: expect.any(Number),
       hostname: expect.any(String),
-      daemonVersion: resolveDaemonVersion(),
+      daemonVersion: await resolveDaemonVersion(),
       name: "fixture",
       msg: "versioned child logger",
     });
@@ -177,7 +177,7 @@ describe("createRootLogger", () => {
     const missingLogDir = path.join(paseoHome, "logs");
 
     const { stdout } = await runLoggerFixture(`
-      const logger = createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
+      const logger = await createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
       logger.info({ proof: "stdout-default" }, "default logger");
       logger.flush();
     `);
@@ -193,7 +193,7 @@ describe("createRootLogger", () => {
     const logPath = path.join(paseoHome, "logs", "programmatic.log");
 
     await runLoggerFixture(`
-      const logger = createRootLogger(
+      const logger = await createRootLogger(
         { log: { file: { path: ${JSON.stringify(logPath)} } } },
         { paseoHome: ${JSON.stringify(paseoHome)} },
       );
@@ -214,7 +214,7 @@ describe("createRootLogger", () => {
     const logPath = path.join(paseoHome, "daemon.log");
 
     const { stdout } = await runLoggerFixture(`
-      const logger = createRootLogger(
+      const logger = await createRootLogger(
         { log: { file: { path: ${JSON.stringify(logPath)} } } },
         { paseoHome: ${JSON.stringify(paseoHome)}, file: false },
       );
@@ -231,7 +231,7 @@ describe("createRootLogger", () => {
     const paseoHome = await mkdtemp(path.join(tmpdir(), "paseo-logger-pretty-"));
 
     const { stdout } = await runLoggerFixture(`
-      const logger = createRootLogger({ level: "info", format: "pretty" }, {
+      const logger = await createRootLogger({ level: "info", format: "pretty" }, {
         paseoHome: ${JSON.stringify(paseoHome)},
       });
       logger.info("pretty logger");
