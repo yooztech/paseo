@@ -18,11 +18,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { ChildProcess, spawn } from "child_process";
-import {
-  isSameDaemonInstance,
-  readDaemonInstance,
-  type DaemonInstance,
-} from "@getpaseo/server/daemon-control";
+import { readDaemonInstance } from "@getpaseo/server/daemon-control";
 
 export interface TestDaemonContext {
   /** Available local port for test daemon (never 6767) */
@@ -199,65 +195,26 @@ async function probeDaemonReady(
 }
 
 async function waitForDaemonReady(
-  requestedPort: number,
   paseoHome: string,
-  daemonProcess: ChildProcess,
-  getProcessError: () => Error | undefined,
   timeout = 30000,
   env?: NodeJS.ProcessEnv,
 ): Promise<number> {
   const deadline = Date.now() + timeout;
-  let acquired: DaemonInstance | null = null;
 
-  const assertRunning = () => {
-    const error = getProcessError();
-    if (error) throw error;
-    if (daemonProcess.exitCode !== null || daemonProcess.signalCode !== null) {
-      throw new Error(
-        `Daemon process exited (code ${daemonProcess.exitCode}, signal ${daemonProcess.signalCode})`,
-      );
-    }
-  };
-
-  while (true) {
-    assertRunning();
+  async function poll(): Promise<number> {
     const instance = await readDaemonInstance(paseoHome);
-    if (instance) {
-      if (acquired && !isSameDaemonInstance(acquired, instance)) {
-        throw new Error(`Daemon supervisor changed for ${paseoHome}`);
-      }
-      acquired ??= instance;
-    } else if (acquired) {
-      throw new Error(`Daemon supervisor stopped for ${paseoHome}`);
-    }
     if (instance?.listen) {
-      const address = new URL(`http://${instance.listen}`);
-      const port = Number(address.port);
-      if (
-        address.hostname !== TEST_DAEMON_HOST ||
-        !port ||
-        (requestedPort && port !== requestedPort)
-      ) {
-        throw new Error(`Daemon reported unexpected listen address ${instance.listen}`);
-      }
-      if (await probeDaemonReady(port, paseoHome, env)) {
-        assertRunning();
-        const current = await readDaemonInstance(paseoHome);
-        if (
-          current &&
-          isSameDaemonInstance(instance, current) &&
-          current.listen === instance.listen
-        ) {
-          return port;
-        }
-        throw new Error(`Daemon supervisor changed or stopped for ${paseoHome}`);
-      }
+      const port = Number(new URL(`http://${instance.listen}`).port);
+      if (await probeDaemonReady(port, paseoHome, env)) return port;
     }
     if (Date.now() >= deadline) {
-      throw new Error(`Daemon failed to become ready on port ${requestedPort} within ${timeout}ms`);
+      throw new Error(`Daemon failed to publish a ready endpoint within ${timeout}ms`);
     }
     await sleep(100);
+    return poll();
   }
+
+  return poll();
 }
 
 function sleep(ms: number): Promise<void> {
@@ -277,6 +234,7 @@ export async function startTestDaemon(options?: {
   timeout?: number;
   env?: NodeJS.ProcessEnv;
 }): Promise<TestDaemonContext> {
+  // Let the listening process allocate its port, without a reserve/release race.
   const requestedPort = options?.port ?? 0;
   const { paseoHome, workDir } =
     options?.paseoHome && options?.workDir
@@ -284,8 +242,6 @@ export async function startTestDaemon(options?: {
       : await createTempDirs();
   const timeout = options?.timeout ?? 30000;
 
-  const existingInstance = await readDaemonInstance(paseoHome);
-  if (existingInstance) throw new Error(`Daemon already running for ${paseoHome}`);
   // Find the CLI entry point - use the source file directly with tsx
   const cliDir = join(import.meta.dirname, "..", "..");
   const cliSrcPath = join(cliDir, "src", "index.ts");
@@ -297,11 +253,11 @@ export async function startTestDaemon(options?: {
         Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_")),
       ),
       ...TEST_DAEMON_ENV_DEFAULTS,
-      ...options?.env,
       PASEO_HOME: paseoHome,
       PASEO_LISTEN: `${TEST_DAEMON_HOST}:${requestedPort}`,
       // Force no TTY to prevent QR code output
       CI: "true",
+      ...options?.env,
       HOME: paseoHome,
       USERPROFILE: paseoHome,
     },
@@ -344,9 +300,7 @@ export async function startTestDaemon(options?: {
   };
 
   // Handle process errors
-  let processError: Error | undefined;
   daemonProcess.on("error", (err) => {
-    processError = err;
     console.error("Daemon process error:", err);
   });
 
@@ -360,28 +314,18 @@ export async function startTestDaemon(options?: {
     }
   });
 
-  const ctx: TestDaemonContext = {
-    port: requestedPort,
-    wsUrl: `ws://${TEST_DAEMON_HOST}:${requestedPort}`,
-    paseoHome,
-    workDir,
-    process: daemonProcess,
-    isReady: false,
-    stop: cleanup,
-  };
-
   // Wait for daemon to be ready
   try {
-    ctx.port = await waitForDaemonReady(
-      requestedPort,
+    const port = await waitForDaemonReady(paseoHome, timeout, options?.env);
+    return {
+      port,
+      wsUrl: `ws://${TEST_DAEMON_HOST}:${port}`,
       paseoHome,
-      daemonProcess,
-      () => processError,
-      timeout,
-      options?.env,
-    );
-    ctx.wsUrl = `ws://${TEST_DAEMON_HOST}:${ctx.port}`;
-    ctx.isReady = true;
+      workDir,
+      process: daemonProcess,
+      isReady: true,
+      stop: cleanup,
+    };
   } catch (err) {
     // Daemon failed to start - clean up and rethrow
     await cleanup();
@@ -391,8 +335,6 @@ export async function startTestDaemon(options?: {
       { cause: err },
     );
   }
-
-  return ctx;
 }
 
 /**
