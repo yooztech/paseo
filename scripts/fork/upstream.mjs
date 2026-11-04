@@ -222,7 +222,13 @@ function committedStore() {
 function readPatches() {
   return PATCHES.map((name) => {
     try {
-      return readFileSync(path.join(root, STORE, name));
+      const file = `${STORE}/${name}`;
+      const content = readFileSync(path.join(root, file));
+      // Undo checkout conversion using the same attributes and filters Git uses when staging.
+      const oid = runGit(["hash-object", "-w", `--path=${file}`, "--stdin"], { input: content })
+        .stdout.toString()
+        .trim();
+      return runGit(["cat-file", "blob", oid]).stdout;
     } catch (error) {
       fail(`Cannot read ${name}: ${error.message}`);
     }

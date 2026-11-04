@@ -1085,6 +1085,38 @@ index bc5acbc404958d5a8843241398423253b4987510..75d399d0cee4a4bebff95e4a6a35380e
    let daemon: Awaited<ReturnType<typeof createPaseoDaemon>> | null = null;
    let shutdownPromise: Promise<number> | null = null;
    let exitHookInstalled = false;
+diff --git a/packages/server/src/server/file-observer/index.test.ts b/packages/server/src/server/file-observer/index.test.ts
+index 95fe416c5480531750d0b4b2d463b0727477c489..ac46456adffe53ff553381e3e186c82f51cef28f 100644
+--- a/packages/server/src/server/file-observer/index.test.ts
++++ b/packages/server/src/server/file-observer/index.test.ts
+@@ -157,13 +157,25 @@ test("survives atomic replacement and remains observable", async () => {
+ test("classifies a removed file as deleted", async () => {
+   const root = await createRoot();
+   const target = join(root, "removed.txt");
+-  await writeFile(target, "before");
+   const events: FileChange[] = [];
+-  const subscription = await subscribeToFileChanges(root, (error, batch) => {
++  const observer = createObserver();
++  const subscription = await observer.subscribe(root, (error, batch) => {
+     expect(error).toBeNull();
+     events.push(...batch);
+   });
+ 
++  await writeFile(target, "before");
++  await expect.poll(() => events.some((event) => event.path === target)).toBe(true);
++  // Drain create classifications before starting the separate deletion phase.
++  await expect
++    .poll(() => observer.getDiagnostics())
++    .toMatchObject({
++      pendingEventCount: 0,
++      pendingClassificationCount: 0,
++      reconciliationInFlightCount: 0,
++    });
++  events.length = 0;
++
+   await rm(target);
+   await expect.poll(() => events.find((event) => event.path === target)?.type).toBe("delete");
+   await subscription.unsubscribe();
 diff --git a/packages/server/src/server/logger.test.ts b/packages/server/src/server/logger.test.ts
 index f7f42a7ef4a7ea111b9dd9ee37258a9e267a8f74..9113f54b4822f807844e9f69e3fadf865590f7a4 100644
 --- a/packages/server/src/server/logger.test.ts

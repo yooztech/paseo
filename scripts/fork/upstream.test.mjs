@@ -453,6 +453,42 @@ test("snapshots preserve tracked executable modes when Git cannot trust filesyst
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
+test("replay cleans Git CRLF checkout conversion without relaxing patch matching", (t) => {
+  const f = fixture(t);
+  const clone = path.join(f.root, "crlf-clone");
+  execFileSync("git", ["clone", "-q", "-c", "core.autocrlf=true", f.repo, clone]);
+  const git = (...args) => execFileSync("git", args, { cwd: clone, encoding: "utf8" }).trim();
+  const run = (...args) =>
+    spawnSync(process.execPath, [cli, ...args], {
+      cwd: clone,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_ACTIONS: "true", EAS_BUILD: "" },
+    });
+  const patch = path.join(clone, store, patches[0]);
+  const checkout = readFileSync(patch, "utf8");
+  assert.match(checkout, /\r\n/);
+  assert.doesNotMatch(git("show", `HEAD:${store}/${patches[0]}`), /\r/);
+  assert.match(readFileSync(path.join(clone, "packages/app/view.txt"), "utf8"), /\r\n/);
+  git("config", "core.filemode", "false");
+  const treeResult = run("tree");
+  assert.equal(treeResult.status, 0, `${treeResult.stdout}\n${treeResult.stderr}`);
+  const tree = JSON.parse(treeResult.stdout).tree;
+  assert.equal(git("show", `${tree}:packages/app/view.txt`), "fork app");
+  assert.match(git("ls-tree", tree, "tools/execute.sh"), /^100755 /);
+  assert.deepEqual(
+    execFileSync("git", ["show", `${tree}:assets/image.bin`], { cwd: clone }),
+    Buffer.from([0, 9, 8, 255]),
+  );
+  writeFileSync(patch, checkout.replace("-base app\r\n", "-wrong base\r\n"));
+  const drift = run("tree");
+  assert.notEqual(drift.status, 0);
+  assert.match(drift.stderr, /Patch replay failed/);
+  git("restore", `${store}/${patches[0]}`);
+  const result = run("ci-apply");
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(readFileSync(path.join(clone, "packages/app/view.txt"), "utf8"), /^fork app\r?\n$/);
+});
+
 test("missing pin label is accepted but a moved label is rejected", (t) => {
   const f = fixture(t);
   f.git("tag", "-d", "upstream-base");
