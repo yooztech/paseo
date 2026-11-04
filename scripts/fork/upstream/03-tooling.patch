@@ -370,6 +370,63 @@ index cbc19f57b65236027559712b92975efe85dd1ecb..9c9a8957e1b877d880b43b382647767c
        "--ip",
        "127.0.0.1",
        "--port",
+diff --git a/packages/website/e2e/plugins.spec.ts b/packages/website/e2e/plugins.spec.ts
+index 22baf9e7f1086007bbb5d42401643cbea88728f9..6477d1cb359fc8912e8049e3739e2f85fa18f981 100644
+--- a/packages/website/e2e/plugins.spec.ts
++++ b/packages/website/e2e/plugins.spec.ts
+@@ -61,6 +61,30 @@ async function scrollPluginCarousel(page: Page, section: string) {
+   await expect(cards.first()).not.toBeInViewport();
+ }
+ 
++test("enables copying the install command only after hydration", async ({ page, context }) => {
++  await context.addInitScript(() => {
++    Object.defineProperty(navigator, "clipboard", {
++      configurable: true,
++      value: {
++        writeText: (text: string) => {
++          Reflect.set(window, "__copied", text);
++          return Promise.resolve();
++        },
++      },
++    });
++  });
++  const releaseScripts = await holdScripts(page);
++  await page.goto("/plugins/omercnet/fresh-worktrees", { waitUntil: "commit" });
++  const copyButton = page.getByRole("button", { name: "Copy to clipboard" });
++  await expect(copyButton).toBeDisabled();
++  await releaseScripts();
++  await expect(copyButton).toBeEnabled();
++  await copyButton.click();
++  await expect
++    .poll(() => page.evaluate(() => Reflect.get(window, "__copied")))
++    .toBe("paseo plugin add omercnet/fresh-worktrees");
++});
++
+ test("browses from the directory into a category, a plugin, and its author", async ({
+   page,
+   context,
+diff --git a/packages/website/src/components/code-block.tsx b/packages/website/src/components/code-block.tsx
+index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5a633eb75 100644
+--- a/packages/website/src/components/code-block.tsx
++++ b/packages/website/src/components/code-block.tsx
+@@ -14,6 +14,9 @@ const SIZE_PADDING: Record<NonNullable<CodeBlockProps["size"]>, string> = {
+ export function CodeBlock({ children, size = "md" }: CodeBlockProps) {
+   const { t } = useTranslation();
+   const [copied, setCopied] = React.useState(false);
++  const [hydrated, setHydrated] = React.useState(false);
++
++  React.useEffect(() => setHydrated(true), []);
+ 
+   const handleCopy = React.useCallback(() => {
+     navigator.clipboard.writeText(children);
+@@ -31,6 +34,7 @@ export function CodeBlock({ children, size = "md" }: CodeBlockProps) {
+       </div>
+       <button
+         type="button"
++        disabled={!hydrated}
+         onClick={handleCopy}
+         className="text-muted-foreground hover:text-foreground transition-colors p-1"
+         title={t("common.copyToClipboard")}
 diff --git a/paseo.json b/paseo.json
 index 4e7b0e81167c9a27e01597c2a4d8d79ad6823c32..f5add06be40f5f1f4d9d9e7acf55787f4099d151 100644
 --- a/paseo.json
