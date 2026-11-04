@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
@@ -109,40 +109,6 @@ function resolvePaneContribution(
     return null;
   }
   return CLIENT_PANE_CONTRIBUTIONS.find((contribution) => contribution.guard(facts)) ?? null;
-}
-
-function resolveNativePaneSlots(input: {
-  forgeSpecific: ForgeSpecificStatusFacts | undefined;
-  serverId: string;
-  cwd: string;
-  changeRequestNumber: number;
-  checksOpen: boolean;
-  onToggleChecks: () => void;
-  forgeProvidersEnabled: boolean;
-  canFetchForgeCheckDetails: boolean;
-}): {
-  nativeHeaderMeta: ReactNode;
-  nativeChecksSection: ReactNode;
-} {
-  if (!input.forgeSpecific) {
-    return { nativeHeaderMeta: null, nativeChecksSection: null };
-  }
-  const contribution = resolvePaneContribution(input.forgeSpecific);
-  if (!contribution) {
-    return { nativeHeaderMeta: null, nativeChecksSection: null };
-  }
-  return {
-    nativeHeaderMeta: contribution.renderHeaderMeta(input.forgeSpecific),
-    nativeChecksSection: contribution.renderChecksSection(input.forgeSpecific, {
-      serverId: input.serverId,
-      cwd: input.cwd,
-      changeRequestNumber: input.changeRequestNumber,
-      open: input.checksOpen,
-      onToggle: input.onToggleChecks,
-      enabled: input.forgeProvidersEnabled,
-      canFetchCheckDetails: input.canFetchForgeCheckDetails,
-    }),
-  };
 }
 
 type IconColorMapping = typeof foregroundColorMapping;
@@ -495,16 +461,21 @@ export function PullRequestPane({
 
   // Native forge surfaces (e.g. GitLab approvals/pipeline) come from a registry
   // keyed by the facts-family, so the central render has no per-forge branch.
-  const { nativeHeaderMeta, nativeChecksSection } = resolveNativePaneSlots({
-    forgeSpecific: data.forgeSpecific,
-    serverId,
-    cwd,
-    changeRequestNumber: data.number,
-    checksOpen,
-    onToggleChecks: handleToggleChecks,
-    forgeProvidersEnabled,
-    canFetchForgeCheckDetails,
-  });
+  const nativeContribution = resolvePaneContribution(data.forgeSpecific);
+  const nativeHeaderMeta = data.forgeSpecific
+    ? nativeContribution?.renderHeaderMeta(data.forgeSpecific)
+    : null;
+  const nativeChecksSection = data.forgeSpecific
+    ? nativeContribution?.renderChecksSection(data.forgeSpecific, {
+        serverId,
+        cwd,
+        changeRequestNumber: data.number,
+        open: checksOpen,
+        onToggle: handleToggleChecks,
+        enabled: forgeProvidersEnabled,
+        canFetchCheckDetails: canFetchForgeCheckDetails,
+      })
+    : null;
 
   return (
     <View style={styles.root} testID="pr-pane">

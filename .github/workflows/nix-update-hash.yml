@@ -19,8 +19,14 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           ref: ${{ github.ref }}
           token: ${{ steps.app-token.outputs.token }}
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:

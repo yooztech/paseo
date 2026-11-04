@@ -16,10 +16,6 @@ import {
   type TimelineSubscription,
 } from "./connection/index.js";
 import { CreationClient } from "./creation/index.js";
-import {
-  checkoutRepositoryGraph,
-  type RepositoryGraphCheckoutInput,
-} from "./fork/repository-graph.js";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
 import type { z } from "zod";
 import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
@@ -60,9 +56,6 @@ import type {
   GitSetupOptions,
   CheckoutStatusResponse,
   CheckoutCommit,
-  RepositoryGraphCommit,
-  RepositoryGraphCommitDetails,
-  RepositoryGraphCheckout,
   ParsedDiffFile,
   CheckoutCommitResponse,
   CheckoutMergeResponse,
@@ -76,7 +69,6 @@ import type {
   CheckoutForgeSetAutoMergeResponse,
   CheckoutGithubSetAutoMergeResponse,
   CheckoutForgeGetCheckDetailsResponse,
-  CheckoutForgeGetBranchPipelineResponse,
   CheckoutGithubGetCheckDetailsResponse,
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
@@ -543,7 +535,6 @@ type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
 type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
 type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
-type CheckoutForgeGetBranchPipelinePayload = CheckoutForgeGetBranchPipelineResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
@@ -934,18 +925,6 @@ export interface UpdateScheduleOptions {
 export interface RenameBranchInput {
   cwd: string;
   branch: string;
-  requestId?: string;
-}
-export interface RepositoryGraphRefMutationInput {
-  cwd: string;
-  action: "rename" | "delete" | "create";
-  refKind: "head" | "remote" | "tag";
-  name: string;
-  newName?: string;
-  targetSha?: string;
-  force?: boolean;
-  deleteOnRemote?: boolean;
-  pushToRemote?: boolean;
   requestId?: string;
 }
 export interface RenameTerminalInput {
@@ -4520,7 +4499,6 @@ export class DaemonClient {
         addAll: input.addAll,
       },
       responseType: "checkout_commit_response",
-      timeout: 120_000,
     });
   }
 
@@ -4609,92 +4587,6 @@ export class DaemonClient {
       throw new Error(payload.error.message);
     }
     return { baseRef: payload.baseRef, commits: payload.commits };
-  }
-  // FORK(repository-graph): thin client entry points for fork-only RPCs.
-  async getRepositoryGraphHistory(
-    cwd: string,
-    limit?: number,
-    requestId?: string,
-  ): Promise<{
-    commits: RepositoryGraphCommit[];
-    hasMore: boolean;
-    checkout?: RepositoryGraphCheckout;
-  }> {
-    const payload =
-      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.get_history.response">(
-        {
-          requestId,
-          message: {
-            type: "checkout.repository_graph.get_history.request",
-            cwd,
-            limit,
-          },
-          timeout: 60000,
-        },
-      );
-    if (payload.error) {
-      throw new Error(payload.error.message);
-    }
-    return { commits: payload.commits, hasMore: payload.hasMore, checkout: payload.checkout };
-  }
-
-  async getRepositoryGraphCommitDetails(
-    cwd: string,
-    sha: string,
-    requestId?: string,
-  ): Promise<RepositoryGraphCommitDetails> {
-    const payload =
-      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.get_commit_details.response">(
-        {
-          requestId,
-          message: {
-            type: "checkout.repository_graph.get_commit_details.request",
-            cwd,
-            sha,
-          },
-          timeout: 60000,
-        },
-      );
-    if (payload.error) {
-      throw new Error(payload.error.message);
-    }
-    if (!payload.details) {
-      throw new Error(`Commit details missing for ${sha}`);
-    }
-    return payload.details;
-  }
-
-  async mutateRepositoryGraphRef(input: RepositoryGraphRefMutationInput): Promise<void> {
-    const payload =
-      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.mutate_ref.response">(
-        {
-          requestId: input.requestId,
-          message: {
-            type: "checkout.repository_graph.mutate_ref.request",
-            cwd: input.cwd,
-            action: input.action,
-            refKind: input.refKind,
-            name: input.name,
-            newName: input.newName,
-            targetSha: input.targetSha,
-            force: input.force,
-            deleteOnRemote: input.deleteOnRemote,
-            pushToRemote: input.pushToRemote,
-          },
-          timeout: 60000,
-        },
-      );
-    if (payload.error) {
-      throw new Error(payload.error.message);
-    }
-  }
-
-  async checkoutRepositoryGraph(input: RepositoryGraphCheckoutInput): Promise<void> {
-    return checkoutRepositoryGraph(input, (params) =>
-      this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.checkout.response">(
-        params,
-      ),
-    );
   }
 
   async getCommitFileDiff(
@@ -4809,25 +4701,6 @@ export class DaemonClient {
           checkRunId: input.checkRunId,
           workflowRunId: input.workflowRunId,
           changeRequestNumber: input.changeRequestNumber,
-        },
-        timeout: 60000,
-      },
-    );
-  }
-  async checkoutForgeGetBranchPipeline(
-    input: {
-      cwd: string;
-      branch?: string;
-    },
-    requestId?: string,
-  ): Promise<CheckoutForgeGetBranchPipelinePayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.get_branch_pipeline.response">(
-      {
-        requestId,
-        message: {
-          type: "checkout.forge.get_branch_pipeline.request",
-          cwd: input.cwd,
-          branch: input.branch,
         },
         timeout: 60000,
       },

@@ -33,16 +33,6 @@ export {
   type AppUpdateInstallResult,
 };
 
-export function resolveElectronUpdateChannel(
-  currentVersion: string,
-  releaseChannel: AppReleaseChannel,
-): "latest" | "beta" | "fork" {
-  if (/^\d+\.\d+\.\d+-fork\.\d+$/.test(currentVersion)) {
-    return "fork";
-  }
-  return releaseChannel === "beta" ? "beta" : "latest";
-}
-
 let cachedStagingUserIdPromise: Promise<string> | null = null;
 
 const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
@@ -150,20 +140,18 @@ export function shouldInstallAppUpdateOnQuit(input: {
   return !(input.platform === "linux" && input.isAppImage);
 }
 
-export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
+class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   private configured = false;
 
   configure(input: AppUpdateRuntimeConfiguration): void {
-    const updateChannel = resolveElectronUpdateChannel(app.getVersion(), input.releaseChannel);
-    autoUpdater.logger = log;
     autoUpdater.autoDownload = true;
     autoUpdater.autoRunAppAfterInstall = true;
     // Paseo revalidates the current manifest before explicitly installing on quit.
     // Electron's built-in handler would install an older download without checking
     // whether a newer release has superseded it.
     autoUpdater.autoInstallOnAppQuit = false;
-    autoUpdater.allowPrerelease = updateChannel !== "latest";
-    autoUpdater.channel = updateChannel;
+    autoUpdater.allowPrerelease = input.releaseChannel === "beta";
+    autoUpdater.channel = input.releaseChannel === "beta" ? "beta" : "latest";
     autoUpdater.allowDowngrade = false;
     autoUpdater.isUserWithinRollout = async (info) => {
       try {
@@ -172,14 +160,6 @@ export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
         return true;
       }
     };
-
-    log.info("[auto-updater] configured", {
-      currentVersion: app.getVersion(),
-      releaseChannel: input.releaseChannel,
-      updateChannel,
-      autoDownload: autoUpdater.autoDownload,
-      autoInstallOnAppQuit: autoUpdater.autoInstallOnAppQuit,
-    });
 
     if (this.configured) return;
     this.configured = true;
@@ -206,49 +186,24 @@ export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       updateLifecycleLog.updateDownloaded(updateInfo.version);
       input.onUpdateDownloaded(updateInfo);
     });
-    autoUpdater.on("update-not-available", () => {
-      log.info("[auto-updater] update-not-available");
-      input.onUpdateNotAvailable();
-    });
     autoUpdater.on("error", (error) => {
-      if (isUpdateChannelNotPublished(error)) {
-        log.info("[auto-updater] update-not-available", { reason: "manifest-not-found" });
-        input.onUpdateNotAvailable();
-        return;
-      }
-      log.error("[auto-updater] error", error);
+      if (isUpdateChannelNotPublished(error)) return;
       input.onError(error);
     });
   }
 
   async checkForUpdates(): Promise<RuntimeUpdateCheckResult | null> {
-    log.info("[auto-updater] check-for-updates.start");
-    let result;
     try {
-      result = await autoUpdater.checkForUpdates();
+      const result = await autoUpdater.checkForUpdates();
+      if (!result) return null;
+      return {
+        isUpdateAvailable: result.isUpdateAvailable,
+        updateInfo: result.updateInfo as RuntimeUpdateInfo,
+      };
     } catch (error) {
-      if (isUpdateChannelNotPublished(error)) {
-        log.info("[auto-updater] check-for-updates.done", {
-          result: null,
-          reason: "manifest-not-found",
-        });
-        return null;
-      }
+      if (isUpdateChannelNotPublished(error)) return null;
       throw error;
     }
-    if (!result) {
-      log.info("[auto-updater] check-for-updates.done", { result: null });
-      return null;
-    }
-    log.info("[auto-updater] check-for-updates.done", {
-      isUpdateAvailable: result.isUpdateAvailable,
-      version: result.updateInfo.version,
-      hasDownloadPromise: result.downloadPromise != null,
-    });
-    return {
-      isUpdateAvailable: result.isUpdateAvailable,
-      updateInfo: result.updateInfo as RuntimeUpdateInfo,
-    };
   }
 
   downloadUpdate(targetVersion: string): Promise<unknown> {

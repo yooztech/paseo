@@ -72,8 +72,6 @@ export type GitMutationRefreshReason =
   | "create-pr"
   | "switch-branch"
   | "rename-branch"
-  // FORK(repository-graph): refresh after fork-only branch and tag mutations.
-  | "repository-graph-ref"
   | "create-branch"
   | "stash-push"
   | "stash-pop"
@@ -873,10 +871,6 @@ export interface AheadBehind {
   behind: number;
 }
 
-interface RefComparison extends AheadBehind {
-  hasChanges: boolean;
-}
-
 export interface CheckoutStatus {
   isGit: false;
 }
@@ -889,14 +883,12 @@ export interface CheckoutStatusGitNonPaseo {
   isDirty: boolean;
   baseRef: string | null;
   aheadBehind: AheadBehind | null;
-  hasChangesFromBase: boolean | null;
   // Remote-tracking ref for currentBranch, e.g. "refs/remotes/origin/main". Null when the
   // branch has no upstream or git could not resolve it. aheadOfOrigin/behindOfOrigin are
   // measured against exactly this ref.
   upstreamRef: string | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
-  hasChangesFromOrigin: boolean | null;
   hasRemote: boolean;
   remoteUrl: string | null;
   isPaseoOwnedWorktree: false;
@@ -910,11 +902,9 @@ export interface CheckoutStatusGitPaseo {
   isDirty: boolean;
   baseRef: string;
   aheadBehind: AheadBehind | null;
-  hasChangesFromBase: boolean | null;
   upstreamRef: string | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
-  hasChangesFromOrigin: boolean | null;
   hasRemote: boolean;
   remoteUrl: string | null;
   isPaseoOwnedWorktree: true;
@@ -1779,16 +1769,24 @@ async function getAheadBehind(
   baseRef: string,
   currentBranch: string,
   context?: CheckoutContext,
-): Promise<RefComparison | null> {
+): Promise<AheadBehind | null> {
   const normalizedBaseRef = branchNameFromRef(baseRef);
   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
     return null;
   }
-  const comparisonBaseRef = await resolveMostAheadBaseRef(cwd, baseRef);
+  const comparisonBaseRef =
+    context?.facts?.isGit && context.facts.resolvedBaseRef === baseRef
+      ? context.facts.comparisonBaseRef
+      : await resolveBestComparisonBaseRef(cwd, baseRef, context);
   if (!comparisonBaseRef) {
     return null;
   }
   return getAheadBehindForComparisonRef(cwd, comparisonBaseRef, currentBranch, context);
+}
+
+export interface UpstreamStatus {
+  ref: string;
+  aheadBehind: AheadBehind;
 }
 
 async function getAheadBehindForComparisonRef(
@@ -1796,31 +1794,18 @@ async function getAheadBehindForComparisonRef(
   comparisonRef: string,
   currentBranch: string,
   context?: CheckoutContext,
-): Promise<RefComparison | null> {
-  if (!comparisonRef || !currentBranch || comparisonRef === currentBranch) {
-    return null;
-  }
-  const run = getRunGitCommand(context);
-  const [{ stdout }, diffResult] = await Promise.all([
-    run(["rev-list", "--left-right", "--count", `${comparisonRef}...${currentBranch}`], {
-      cwd,
-      envOverlay: READ_ONLY_GIT_ENV,
-      logger: context?.logger,
-    }),
-    run(["diff", "--quiet", comparisonRef, currentBranch], {
-      cwd,
-      envOverlay: READ_ONLY_GIT_ENV,
-      acceptExitCodes: [0, 1],
-      logger: context?.logger,
-    }),
-  ]);
+): Promise<AheadBehind | null> {
+  const { stdout } = await getRunGitCommand(context)(
+    ["rev-list", "--left-right", "--count", `${comparisonRef}...${currentBranch}`],
+    { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+  );
   const [behindRaw, aheadRaw] = stdout.trim().split(/\s+/);
   const behind = Number.parseInt(behindRaw ?? "0", 10);
   const ahead = Number.parseInt(aheadRaw ?? "0", 10);
   if (Number.isNaN(behind) || Number.isNaN(ahead)) {
     return null;
   }
-  return { ahead, behind, hasChanges: diffResult.exitCode === 1 };
+  return { ahead, behind };
 }
 
 async function getUpstreamStatus(
@@ -1843,22 +1828,10 @@ async function getUpstreamStatus(
     }
     const ahead = Number.parseInt(track.match(/ahead (\d+)/)?.[1] ?? "0", 10);
     const behind = Number.parseInt(track.match(/behind (\d+)/)?.[1] ?? "0", 10);
-    const diffResult = await getRunGitCommand(context)(["diff", "--quiet", ref, currentBranch], {
-      cwd,
-      envOverlay: READ_ONLY_GIT_ENV,
-      acceptExitCodes: [0, 1],
-      logger: context?.logger,
-    });
-    return { ref, aheadBehind: { ahead, behind }, hasChanges: diffResult.exitCode === 1 };
+    return { ref, aheadBehind: { ahead, behind } };
   } catch {
     return null;
   }
-}
-
-export interface UpstreamStatus {
-  ref: string;
-  aheadBehind: AheadBehind;
-  hasChanges: boolean;
 }
 
 interface CheckoutInspectionContext {
@@ -2355,11 +2328,16 @@ export async function getCheckoutStatus(
     return { isGit: false };
   }
 
+  const worktreeRoot = facts.worktreeRoot;
   const currentBranch = facts.currentBranch;
+  const remoteUrl = facts.remoteUrl;
+  const paseoWorktree = facts.paseoWorktree;
   const isDirty = await isWorkingTreeDirty(cwd, context);
+  const hasRemote = remoteUrl !== null;
   const baseRef = facts.resolvedBaseRef;
+  const mainRepoRoot = facts.mainRepoRoot;
   const factsContext = { ...context, facts };
-  const baseComparison =
+  const aheadBehind =
     baseRef && currentBranch
       ? await getAheadBehind(cwd, baseRef, currentBranch, factsContext)
       : null;
@@ -2371,64 +2349,19 @@ export async function getCheckoutStatus(
   const upstreamRef = upstreamStatus?.ref ?? null;
   const aheadOfOrigin = upstreamStatus?.aheadBehind.ahead ?? null;
   const behindOfOrigin = upstreamStatus?.aheadBehind.behind ?? null;
-  const aheadBehind = baseComparison
-    ? { ahead: baseComparison.ahead, behind: baseComparison.behind }
-    : null;
-  const hasChangesFromBase = baseComparison?.hasChanges ?? null;
-  const hasChangesFromOrigin = upstreamStatus?.hasChanges ?? null;
 
-  return buildCheckoutStatusFromFacts({
-    facts,
-    isDirty,
-    displayBaseRef,
-    aheadBehind,
-    hasChangesFromBase,
-    upstreamRef,
-    aheadOfOrigin,
-    behindOfOrigin,
-    hasChangesFromOrigin,
-  });
-}
-
-function buildCheckoutStatusFromFacts({
-  facts,
-  isDirty,
-  displayBaseRef,
-  aheadBehind,
-  hasChangesFromBase,
-  upstreamRef,
-  aheadOfOrigin,
-  behindOfOrigin,
-  hasChangesFromOrigin,
-}: {
-  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>;
-  isDirty: boolean;
-  displayBaseRef: string | null;
-  aheadBehind: AheadBehind | null;
-  hasChangesFromBase: boolean | null;
-  upstreamRef: string | null;
-  aheadOfOrigin: number | null;
-  behindOfOrigin: number | null;
-  hasChangesFromOrigin: boolean | null;
-}): CheckoutStatusGit {
-  const { worktreeRoot, currentBranch, remoteUrl, paseoWorktree, resolvedBaseRef, mainRepoRoot } =
-    facts;
-  const hasRemote = remoteUrl !== null;
-
-  if (paseoWorktree.isPaseoOwnedWorktree && resolvedBaseRef) {
+  if (paseoWorktree.isPaseoOwnedWorktree && baseRef) {
     return {
       isGit: true,
       repoRoot: worktreeRoot,
       mainRepoRoot: mainRepoRoot ?? worktreeRoot,
       currentBranch,
       isDirty,
-      baseRef: displayBaseRef ?? resolvedBaseRef,
+      baseRef: displayBaseRef ?? baseRef,
       aheadBehind,
-      hasChangesFromBase,
       upstreamRef,
       aheadOfOrigin,
       behindOfOrigin,
-      hasChangesFromOrigin,
       hasRemote,
       remoteUrl,
       isPaseoOwnedWorktree: true,
@@ -2444,11 +2377,9 @@ function buildCheckoutStatusFromFacts({
     isDirty,
     baseRef: displayBaseRef,
     aheadBehind,
-    hasChangesFromBase,
     upstreamRef,
     aheadOfOrigin,
     behindOfOrigin,
-    hasChangesFromOrigin,
     hasRemote,
     remoteUrl,
     isPaseoOwnedWorktree: false,
@@ -2795,8 +2726,16 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
 }
 
 /**
- * Returns the unified diff for one file in one commit, parsed into the same
- * shape emitted by the checkout diff subscription.
+ * Fetches the unified diff of a single file as introduced by one commit and
+ * parses it into the same {@link ParsedDiffFile} shape the diff subscription
+ * emits (so the client can reuse its existing renderer).
+ *
+ * Compares merge commits to their first parent, matching the linear history shown
+ * in the explorer. The text is parsed and highlighted by
+ * {@link parseAndHighlightDiff} — the exact parser the diff subscription uses.
+ * Returns `null` when the file is absent from the commit or the change is
+ * binary-only (no textual hunks). Throws on git failure (e.g. an unknown sha),
+ * which the caller maps to a typed checkout error.
  */
 export async function getCommitFileDiff({
   cwd,
@@ -2829,6 +2768,7 @@ export async function getCommitFileDiff({
       envOverlay: READ_ONLY_GIT_ENV,
     },
   );
+
   if (stdout.trim().length === 0) {
     return null;
   }
@@ -2842,17 +2782,18 @@ export async function getCommitFileDiff({
   // Including the rename source lets Git pair it with the destination. Select
   // the requested entry if another change also matches the source path.
   const file = parsedFiles.find((candidate) => candidate.path === path) ?? null;
-  if (!file || (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout))) {
+  if (!file) {
     return null;
   }
+
+  // Binary changes carry a "Binary files ... differ" marker and no hunks; there
+  // is nothing textual to render, so report them as absent.
+  if (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout)) {
+    return null;
+  }
+
   return file;
 }
-
-// FORK(repository-graph): expose existing Git primitives to the fork-only feature.
-export const repositoryGraphGitPrimitives = {
-  getCommitRecords: getCheckoutCommitRecords,
-  readFileAtRef: readGitFileContentAtRef,
-};
 
 export interface CheckoutShortstat {
   additions: number;
@@ -3066,7 +3007,6 @@ export async function getCheckoutShortstat(
 
 export interface CheckoutRefDerivedState {
   aheadBehind: AheadBehind | null;
-  hasChangesFromBase: boolean | null;
   diffStat: CheckoutShortstat | null;
   upstreamStatus: UpstreamStatus | null;
 }
@@ -3128,7 +3068,7 @@ function getCheckoutRefMovement(
 export async function getCheckoutRefDerivedState(
   cwd: string,
   facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
-  current: Pick<CheckoutRefDerivedState, "aheadBehind" | "hasChangesFromBase" | "diffStat">,
+  current: Pick<CheckoutRefDerivedState, "aheadBehind" | "diffStat">,
   movedRemoteRefs: ReadonlySet<string>,
   context?: CheckoutContext,
 ): Promise<CheckoutRefDerivedState> {
@@ -3142,29 +3082,12 @@ export async function getCheckoutRefDerivedState(
   } = getCheckoutRefMovement(facts, movedRemoteRefs);
 
   let aheadBehind = current.aheadBehind;
-  let hasChangesFromBase = current.hasChangesFromBase;
-  let baseComparison: RefComparison | null = null;
   let diffStat = current.diffStat;
-  const normalizedComparison = comparisonRef ? normalizeRemoteTrackingRef(comparisonRef) : null;
-  const normalizedUpstream = upstreamRef ? normalizeRemoteTrackingRef(upstreamRef) : null;
-  const sharedComparisonRef = getSharedMovedComparisonRef({
-    baseMoved,
-    upstreamMoved,
-    comparisonRef,
-    normalizedComparison,
-    normalizedUpstream,
-  });
   if (baseMoved && currentBranch && facts.resolvedBaseRef) {
-    baseComparison = sharedComparisonRef
-      ? await getAheadBehindForComparisonRef(cwd, sharedComparisonRef, currentBranch, context)
-      : await getAheadBehind(cwd, facts.resolvedBaseRef, currentBranch, {
-          ...context,
-          facts,
-        });
-    aheadBehind = baseComparison
-      ? { ahead: baseComparison.ahead, behind: baseComparison.behind }
-      : null;
-    hasChangesFromBase = baseComparison?.hasChanges ?? null;
+    aheadBehind = await getAheadBehind(cwd, facts.resolvedBaseRef, currentBranch, {
+      ...context,
+      facts,
+    });
   }
   if (baseMoved || (upstreamMoved && currentBranch === normalizedResolvedBase)) {
     diffStat = await getCheckoutShortstatUncached(
@@ -3176,39 +3099,21 @@ export async function getCheckoutRefDerivedState(
 
   let upstreamStatus = facts.upstreamStatus;
   if (upstreamMoved && currentBranch && upstreamRef) {
-    const upstreamComparison = sharedComparisonRef
-      ? baseComparison
-      : await getAheadBehindForComparisonRef(cwd, upstreamRef, currentBranch, context);
-    upstreamStatus = upstreamComparison
+    const normalizedUpstream = normalizeRemoteTrackingRef(upstreamRef);
+    const normalizedComparison = comparisonRef ? normalizeRemoteTrackingRef(comparisonRef) : null;
+    const upstreamAheadBehind =
+      baseMoved && normalizedComparison === normalizedUpstream
+        ? aheadBehind
+        : await getAheadBehindForComparisonRef(cwd, upstreamRef, currentBranch, context);
+    upstreamStatus = upstreamAheadBehind
       ? {
-          ref:
-            facts.upstreamStatus?.ref ?? `refs/remotes/${normalizeRemoteTrackingRef(upstreamRef)}`,
-          aheadBehind: { ahead: upstreamComparison.ahead, behind: upstreamComparison.behind },
-          hasChanges: upstreamComparison.hasChanges,
+          ref: facts.upstreamStatus?.ref ?? `refs/remotes/${normalizedUpstream}`,
+          aheadBehind: upstreamAheadBehind,
         }
       : null;
   }
 
-  return { aheadBehind, hasChangesFromBase, diffStat, upstreamStatus };
-}
-
-function getSharedMovedComparisonRef(input: {
-  baseMoved: boolean;
-  upstreamMoved: boolean;
-  comparisonRef: string | null;
-  normalizedComparison: string | null;
-  normalizedUpstream: string | null;
-}): string | null {
-  if (
-    input.baseMoved &&
-    input.upstreamMoved &&
-    input.comparisonRef !== null &&
-    input.normalizedComparison !== null &&
-    input.normalizedComparison === input.normalizedUpstream
-  ) {
-    return input.comparisonRef;
-  }
-  return null;
+  return { aheadBehind, diffStat, upstreamStatus };
 }
 
 export interface CheckoutWorktreeState {
@@ -4054,14 +3959,6 @@ export async function mergeFromBase(
 
   const bestBaseRef = await resolveMostAheadBaseRef(cwd, baseRef);
   if (bestBaseRef === currentBranch) {
-    return;
-  }
-  const treeDiff = await runGitCommand(["diff", "--quiet", bestBaseRef, currentBranch], {
-    cwd,
-    envOverlay: READ_ONLY_GIT_ENV,
-    acceptExitCodes: [0, 1],
-  });
-  if (treeDiff.exitCode === 0) {
     return;
   }
 

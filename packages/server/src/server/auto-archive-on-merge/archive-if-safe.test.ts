@@ -381,17 +381,6 @@ describe("archiveIfSafe", () => {
     expect(harness.deps.archiveByScope).not.toHaveBeenCalled();
   });
 
-  test("archives when only a tree-equivalent merge commit is ahead of origin", async () => {
-    const harness = createHarness({
-      getSnapshot: async () =>
-        createSnapshot({ git: { aheadOfOrigin: 1, hasChangesFromBase: false } }),
-    });
-
-    await runArchiveIfSafe(harness);
-
-    expect(harness.deps.archiveByScope).toHaveBeenCalledTimes(1);
-  });
-
   test("archives when the PR is merged and the upstream branch was deleted", async () => {
     const harness = createHarness({
       snapshot: createSnapshot({ git: { aheadOfOrigin: null, behindOfOrigin: null } }),

@@ -27,15 +27,6 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("changes_tree") }),
   z.strictObject({ kind: z.literal("files") }),
   z.strictObject({ kind: z.literal("pull_request") }),
-  // FORK(repository-graph): retain fork panels in persisted workspace layouts.
-  z.strictObject({ kind: z.literal("repository_graph") }),
-  z.strictObject({ kind: z.literal("branch_ci") }),
-  z.strictObject({
-    kind: z.literal("repository_graph_file_diff"),
-    sha: z.string(),
-    path: z.string(),
-    requestId: z.number().optional(),
-  }),
   z.strictObject({
     kind: z.literal("file"),
     path: z.string(),

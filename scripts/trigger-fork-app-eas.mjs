@@ -1,11 +1,23 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import path from "node:path";
+
+const runtimeRoot = fileURLToPath(new URL("..", import.meta.url));
+let state;
+try {
+  state = JSON.parse(readFileSync(path.join(runtimeRoot, ".dev/fork-build-state.json"), "utf8"));
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}
+const root = state?.sourceRoot ?? runtimeRoot;
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
-    cwd: options.cwd ?? process.cwd(),
+    cwd: options.cwd ?? root,
     encoding: "utf8",
+    env: options.env ?? process.env,
     stdio: options.capture ? ["ignore", "pipe", "inherit"] : "inherit",
   })?.trim();
 }
@@ -29,7 +41,22 @@ export function selectAppReleaseTag(tags, version) {
   return matches[0];
 }
 
-function triggerForkAppEas() {
+export function triggerForkAppEas() {
+  const initialHead = capture("git", ["rev-parse", "HEAD"]);
+  if (state && initialHead !== state.sourceHead) {
+    throw new Error("Canonical source HEAD changed since the fork build was materialized.");
+  }
+  const appDir = path.join(root, "packages/app");
+  const require = createRequire(path.join(appDir, "app.config.js"));
+  const { expo: exp } = require("./app.config.js");
+  if (
+    exp.extra?.eas?.projectId !== "fbf5a457-e6af-4dce-a36e-6b79b413f734" ||
+    exp.ios?.bundleIdentifier !== "com.yooztech.paseo"
+  ) {
+    throw new Error(
+      "Effective app configuration does not identify the fork production EAS project and bundle.",
+    );
+  }
   const branch = capture("git", ["branch", "--show-current"]);
   if (branch !== "main") {
     throw new Error(`Fork app EAS builds must run from main, got ${branch || "detached HEAD"}.`);
@@ -40,35 +67,51 @@ function triggerForkAppEas() {
 
   run("git", ["fetch", "origin", "main", "--tags"]);
   const head = capture("git", ["rev-parse", "HEAD"]);
+  if (head !== initialHead) {
+    throw new Error("Canonical source HEAD changed while preparing the EAS workflow.");
+  }
   if (head !== capture("git", ["rev-parse", "origin/main"])) {
     throw new Error("HEAD must match origin/main before triggering a fork app EAS build.");
   }
 
-  const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const { version } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
   const currentTags = capture("git", ["tag", "--points-at", "HEAD"]).split("\n").filter(Boolean);
   const releaseTag = selectAppReleaseTag(currentTags, version);
-  const remoteTag = capture("git", ["ls-remote", "--tags", "origin", `refs/tags/${releaseTag}`]);
-  if (remoteTag.split(/\s+/, 1)[0] !== head) {
+  const remoteTag = capture("git", [
+    "ls-remote",
+    "--tags",
+    "origin",
+    `refs/tags/${releaseTag}`,
+    `refs/tags/${releaseTag}^{}`,
+  ]);
+  const refs = new Map(
+    remoteTag
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => line.split(/\s+/).reverse()),
+  );
+  if ((refs.get(`refs/tags/${releaseTag}^{}`) ?? refs.get(`refs/tags/${releaseTag}`)) !== head) {
     throw new Error(`Remote app release tag ${releaseTag} does not point to ${head}.`);
   }
 
+  console.log(`Starting EAS workflow for ${releaseTag} (${head}).`);
   run(
     "npx",
     [
-      "eas",
+      "--yes",
+      "eas-cli@27.4.1",
       "workflow:run",
       ".eas/workflows/release-mobile.yml",
       "--ref",
-      releaseTag,
-      "--input",
+      head,
+      "-F",
       `release_tag=${releaseTag}`,
+      "-F",
+      `source_commit=${head}`,
       "--non-interactive",
     ],
-    { cwd: new URL("../packages/app", import.meta.url) },
+    { cwd: path.join(root, "packages/app") },
   );
-  console.log(`Triggered EAS iOS release workflow for ${releaseTag}.`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  triggerForkAppEas();
-}
+if (process.argv[1] === fileURLToPath(import.meta.url)) triggerForkAppEas();

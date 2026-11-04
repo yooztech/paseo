@@ -14,7 +14,6 @@
 import { FORGE_DEFINITIONS, getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
 import { normalizeHost, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import type { ForgeAuthState } from "@getpaseo/protocol/messages";
-import { getForkForgeKnownHosts } from "@getpaseo/protocol/fork/forges/self-hosted";
 import {
   buildForgeBlobUrl,
   buildForgeBranchTreeUrl,
@@ -57,11 +56,7 @@ export function forgeFromRemoteUrl(remoteUrl: string | null | undefined): string
   }
   const normalized = normalizeHost(host);
   for (const definition of FORGE_DEFINITIONS) {
-    if (
-      getForkForgeKnownHosts(definition).some(
-        (knownHost) => normalizeHost(knownHost) === normalized,
-      )
-    ) {
+    if (definition.cloudHosts?.some((cloudHost) => normalizeHost(cloudHost) === normalized)) {
       return definition.id;
     }
   }

@@ -17,9 +17,6 @@ describe("parseRemoteHost", () => {
   it("parses ssh and https remotes", () => {
     expect(parseRemoteHost("git@github.com:owner/repo.git")).toBe("github.com");
     expect(parseRemoteHost("git@gitlab.example.com:group/sub/repo.git")).toBe("gitlab.example.com");
-    expect(parseRemoteHost("https://gitlab.iceveil.com:38443/group/repo.git")).toBe(
-      "gitlab.iceveil.com",
-    );
     expect(parseRemoteHost("https://GitLab.Example.Com./group/repo.git")).toBe(
       "gitlab.example.com",
     );
@@ -31,7 +28,6 @@ describe("forgeForHost", () => {
   it("maps public registered forge hosts without resolver-specific branches", () => {
     expect(forgeForHost("github.com")).toBe("github");
     expect(forgeForHost("gitlab.com")).toBe("gitlab");
-    expect(forgeForHost("gitlab.iceveil.com")).toBe("gitlab");
     expect(forgeForHost("gitea.com")).toBe("gitea");
     expect(forgeForHost("codeberg.org")).toBe("codeberg");
   });
@@ -310,12 +306,11 @@ describe("createForgeResolver", () => {
   it.each([
     ["github", "git@github.com:owner/repo.git", "github.com"],
     ["gitlab", "git@gitlab.com:group/repo.git", "gitlab.com"],
-    ["gitlab", "https://gitlab.iceveil.com:38443/group/repo.git", "gitlab.iceveil.com"],
     ["gitea", "git@gitea.com:owner/repo.git", "gitea.com"],
     ["codeberg", "git@codeberg.org:owner/repo.git", "codeberg.org"],
-  ])("resolves the %s known host without probing CLI auth", async (forge, remoteUrl, host) => {
+  ])("resolves the %s cloud host without probing CLI auth", async (forge, remoteUrl, host) => {
     const probeForge = vi.fn(async () => {
-      throw new Error("known host should not probe");
+      throw new Error("cloud host should not probe");
     });
     const resolver = createForgeResolver({
       resolveRemoteUrl: async () => remoteUrl,

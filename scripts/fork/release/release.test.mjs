@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -63,6 +63,8 @@ function withGitRepo(fn) {
     git("commit", "--quiet", "--allow-empty", "-m", "initial");
     git("remote", "add", "origin", origin);
     fn({
+      repo,
+      root,
       git,
       remoteTags,
       commands: {
@@ -203,5 +205,46 @@ test("daemon publish creates and pushes its canonical source tag", () => {
     publish(metadata, commands);
     assert.equal(git("rev-parse", `${metadata.publicationTag}^{commit}`), git("rev-parse", "HEAD"));
     assert.deepEqual(remoteTags(), [metadata.publicationTag]);
+  });
+});
+
+test("release preflight and publication use canonical main from a detached runtime", () => {
+  withGitRepo(({ git, repo, root }) => {
+    git("branch", "-M", "main");
+    git("push", "-u", "origin", "main");
+    const head = git("rev-parse", "HEAD");
+    const runtime = path.join(root, "runtime");
+    git("worktree", "add", "--detach", runtime, head);
+    mkdirSync(path.join(runtime, "scripts/fork/release"), { recursive: true });
+    mkdirSync(path.join(runtime, ".dev"), { recursive: true });
+    writeFileSync(
+      path.join(runtime, ".dev/fork-build-state.json"),
+      JSON.stringify({ sourceRoot: repo, sourceHead: head }),
+    );
+    writeFileSync(path.join(runtime, "package.json"), JSON.stringify({ version: "0.2.5" }));
+    copyFileSync(
+      new URL("./release.mjs", import.meta.url),
+      path.join(runtime, "scripts/fork/release/release.mjs"),
+    );
+    copyFileSync(
+      new URL("../../trigger-fork-app-eas.mjs", import.meta.url),
+      path.join(runtime, "scripts/trigger-fork-app-eas.mjs"),
+    );
+    copyFileSync(
+      new URL("./launch.mjs", import.meta.url),
+      path.join(runtime, "scripts/fork/release/launch.mjs"),
+    );
+    copyFileSync(
+      new URL("../../release-fork-desktop.mjs", import.meta.url),
+      path.join(runtime, "scripts/release-fork-desktop.mjs"),
+    );
+    execFileSync(
+      process.execPath,
+      [path.join(runtime, "scripts/release-fork-desktop.mjs"), "--fork-runtime"],
+      { cwd: runtime },
+    );
+    assert.equal(git("rev-parse", "desktop-v0.2.5-fork.1^{commit}"), head);
+    assert.equal(git("rev-parse", "v0.2.5-fork.1^{commit}"), head);
+    assert.equal(git("branch", "--show-current"), "main");
   });
 });

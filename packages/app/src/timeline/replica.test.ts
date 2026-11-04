@@ -295,7 +295,6 @@ describe("viewed timeline persistence", () => {
     first.flushStreamAgent(AGENT_ID);
 
     expect(pending).toMatchObject({ range: null, hasOlder: false });
-    expect(pending).toMatchObject({ items: [{ text: "cached" }, { text: "live" }] });
     expect(pending?.items.map((entry) => entry.id)).toEqual(["cached", expect.any(String)]);
     durable = pending;
     first.dispose();
@@ -317,6 +316,7 @@ describe("viewed timeline persistence", () => {
       });
     reopened.dispose();
   });
+
   it("does not let a late cache read overwrite newer network state", async () => {
     useSessionStore.getState().initializeSession(SERVER_ID, null);
     let release!: (value: CachedTimeline) => void;

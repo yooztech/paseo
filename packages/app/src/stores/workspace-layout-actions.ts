@@ -1106,14 +1106,7 @@ export function collectAllPanes(root: SplitNode): SplitPane[] {
 }
 
 function isEphemeralTab(tab: WorkspaceTab): boolean {
-  // Commit diff tabs are ephemeral: their SHA may be rebased away before the next
-  // load, so a restored tab could point at a dead commit.
-  // FORK(repository-graph): repository graph file diffs also point at rebased SHAs.
-  return (
-    tab.target.kind === "commit_diff" ||
-    tab.target.kind === "repository_graph_file_diff" ||
-    tab.target.kind === "new_tab"
-  );
+  return tab.target.kind === "commit_diff" || tab.target.kind === "new_tab";
 }
 
 function stripEphemeralTabsFromNode(node: SplitNodeInternal): SplitNodeInternal {
@@ -1166,10 +1159,6 @@ function restoreEmptyPanesInNode(
             node.pane.id === explorerSidebarPaneId
               ? createDefaultExplorerSidebarTabs()
               : [createNewWorkspaceTab()],
-          focusedTabId:
-            node.pane.id === explorerSidebarPaneId
-              ? buildDeterministicWorkspaceTabId({ kind: "changes_tree" })
-              : undefined,
           hidden: node.pane.hidden,
         });
   }
@@ -1263,12 +1252,7 @@ export function createDefaultLayout(): WorkspaceLayout {
 
 function createDefaultExplorerSidebarTabs(): WorkspaceTab[] {
   const createdAt = Date.now();
-  const targets = [
-    { kind: "files" },
-    { kind: "changes_tree" },
-    { kind: "repository_graph" },
-    { kind: "branch_ci" },
-  ] as const;
+  const targets = [{ kind: "files" }, { kind: "changes_tree" }] as const;
   return targets.map((target) => ({
     tabId: buildDeterministicWorkspaceTabId(target),
     target,
@@ -1287,7 +1271,6 @@ export function createWorkspaceLayoutWithExplorerSidebar(): WorkspaceLayout {
         createPaneNode({
           id: EXPLORER_SIDEBAR_PANE_ID,
           tabs: createDefaultExplorerSidebarTabs(),
-          focusedTabId: buildDeterministicWorkspaceTabId({ kind: "changes_tree" }),
           hidden: true,
         }),
       ],

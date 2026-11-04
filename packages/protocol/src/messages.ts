@@ -110,37 +110,6 @@ import {
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
-// FORK(repository-graph): register fork-only schemas in the central wire unions.
-import {
-  CheckoutRepositoryGraphCheckoutRequestSchema,
-  CheckoutRepositoryGraphCheckoutResponseSchema,
-  type RepositoryGraphCheckout,
-  type RepositoryGraphCheckoutTarget,
-  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
-  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
-  CheckoutRepositoryGraphGetHistoryRequestSchema,
-  CheckoutRepositoryGraphGetHistoryResponseSchema,
-  CheckoutRepositoryGraphMutateRefRequestSchema,
-  CheckoutRepositoryGraphMutateRefResponseSchema,
-  type RepositoryGraphCommit,
-  type RepositoryGraphCommitDetails,
-} from "./fork/repository-graph/messages.js";
-export type {
-  RepositoryGraphCommit,
-  RepositoryGraphCommitDetails,
-  RepositoryGraphCheckout,
-  RepositoryGraphCheckoutTarget,
-};
-export {
-  CheckoutRepositoryGraphCheckoutRequestSchema,
-  CheckoutRepositoryGraphCheckoutResponseSchema,
-  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
-  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
-  CheckoutRepositoryGraphGetHistoryRequestSchema,
-  CheckoutRepositoryGraphGetHistoryResponseSchema,
-  CheckoutRepositoryGraphMutateRefRequestSchema,
-  CheckoutRepositoryGraphMutateRefResponseSchema,
-};
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -2395,6 +2364,7 @@ export const CheckoutCommitsListRequestSchema = z.object({
   cwd: z.string(),
   requestId: z.string(),
 });
+
 export const CheckoutCommitFileDiffRequestSchema = z.object({
   type: z.literal("checkout.commits.file_diff.request"),
   cwd: z.string(),
@@ -2437,13 +2407,6 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
   CheckoutCheckDetailsRequestPayloadSchema.extend({
     type: z.literal("checkout.github.get_check_details.request"),
   });
-/** Latest pipeline for a branch when there is no open PR/MR. */
-export const CheckoutForgeGetBranchPipelineRequestSchema = z.object({
-  type: z.literal("checkout.forge.get_branch_pipeline.request"),
-  cwd: z.string(),
-  branch: z.string().optional(),
-  requestId: z.string(),
-});
 
 export const CheckoutPrStatusRequestSchema = z.object({
   type: z.literal("checkout_pr_status_request"),
@@ -3418,14 +3381,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutForgeSetAutoMergeRequestSchema,
   CheckoutGithubSetAutoMergeRequestSchema,
   CheckoutCommitsListRequestSchema,
-  CheckoutRepositoryGraphGetHistoryRequestSchema,
-  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
-  CheckoutRepositoryGraphMutateRefRequestSchema,
-  CheckoutRepositoryGraphCheckoutRequestSchema,
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
   CheckoutGithubGetCheckDetailsRequestSchema,
-  CheckoutForgeGetBranchPipelineRequestSchema,
   CheckoutPrStatusRequestSchema,
   PullRequestTimelineRequestSchema,
   CheckoutSwitchBranchRequestSchema,
@@ -3727,8 +3685,6 @@ export const ServerInfoStatusPayloadSchema = z
         // gate and githubCheckDetails fallback after 2027-01-17 once the
         // supported daemon floor is >= v0.2.0.
         forgeCheckDetails: z.boolean().optional(),
-        // COMPAT(forgeBranchPipeline): added in v0.2.5, remove gate after 2027-02-08.
-        forgeBranchPipeline: z.boolean().optional(),
         // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
         // and github_search fallback after 2027-01-17 once the supported daemon
         // floor is >= v0.2.0.
@@ -3835,13 +3791,6 @@ export const ServerInfoStatusPayloadSchema = z
         commitsList: z.boolean().optional(),
         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
         commitBaseClassification: z.boolean().optional(),
-        // FORK(repository-graph): optional across app/host versions.
-        repositoryGraph: z.boolean().optional(),
-        repositoryGraphCommitDetails: z.boolean().optional(),
-        repositoryGraphRefActions: z.boolean().optional(),
-        repositoryGraphCheckout: z.boolean().optional(),
-        // COMPAT(repositoryGraphTagActions): added in v0.7.3, remove after 2027-03-04.
-        repositoryGraphTagActions: z.boolean().optional(),
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: z.boolean().optional(),
         // COMPAT(hopliteProvider): added after v0.11.2, remove after 2027-04-15 once host floor includes the bundled adapter.
@@ -4106,10 +4055,8 @@ const WorkspaceGitRuntimePayloadSchema = z
       })
       .nullable()
       .optional(),
-    hasChangesFromBase: z.boolean().nullable().optional(),
     aheadOfOrigin: z.number().nullable().optional(),
     behindOfOrigin: z.number().nullable().optional(),
-    hasChangesFromOrigin: z.boolean().nullable().optional(),
   })
   .optional()
   .nullable();
@@ -5383,10 +5330,8 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
   isDirty: z.null(),
   baseRef: z.null(),
   aheadBehind: z.null(),
-  hasChangesFromBase: z.null().optional(),
   aheadOfOrigin: z.null(),
   behindOfOrigin: z.null(),
-  hasChangesFromOrigin: z.null().optional(),
   hasRemote: z.boolean(),
   remoteUrl: z.null(),
 });
@@ -5400,10 +5345,8 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
   isDirty: z.boolean(),
   baseRef: z.string().nullable(),
   aheadBehind: AheadBehindSchema.nullable(),
-  hasChangesFromBase: z.boolean().nullable().optional(),
   aheadOfOrigin: z.number().nullable(),
   behindOfOrigin: z.number().nullable(),
-  hasChangesFromOrigin: z.boolean().nullable().optional(),
   hasRemote: z.boolean(),
   remoteUrl: z.string().nullable(),
 });
@@ -5417,10 +5360,8 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
   isDirty: z.boolean(),
   baseRef: z.string(),
   aheadBehind: AheadBehindSchema.nullable(),
-  hasChangesFromBase: z.boolean().nullable().optional(),
   aheadOfOrigin: z.number().nullable(),
   behindOfOrigin: z.number().nullable(),
-  hasChangesFromOrigin: z.boolean().nullable().optional(),
   hasRemote: z.boolean(),
   remoteUrl: z.string().nullable(),
 });
@@ -5730,6 +5671,7 @@ export const CheckoutCommitsListResponseSchema = z.object({
     requestId: z.string(),
   }),
 });
+
 export const CheckoutCommitFileDiffResponseSchema = z.object({
   type: z.literal("checkout.commits.file_diff.response"),
   payload: z.object({
@@ -5842,18 +5784,6 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
     cwd: z.string(),
     success: z.boolean(),
     details: CheckoutCheckDetailsSchema.nullable().optional().default(null),
-    error: CheckoutErrorSchema.nullable(),
-    requestId: z.string(),
-  }),
-});
-export const CheckoutForgeGetBranchPipelineResponseSchema = z.object({
-  type: z.literal("checkout.forge.get_branch_pipeline.response"),
-  payload: z.object({
-    cwd: z.string(),
-    branch: z.string().nullable(),
-    success: z.boolean(),
-    pipeline: CheckoutPipelineSchema.nullable().optional().default(null),
-    supported: z.boolean(),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
@@ -7183,14 +7113,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutForgeSetAutoMergeResponseSchema,
   CheckoutGithubSetAutoMergeResponseSchema,
   CheckoutCommitsListResponseSchema,
-  CheckoutRepositoryGraphGetHistoryResponseSchema,
-  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
-  CheckoutRepositoryGraphMutateRefResponseSchema,
-  CheckoutRepositoryGraphCheckoutResponseSchema,
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
   CheckoutGithubGetCheckDetailsResponseSchema,
-  CheckoutForgeGetBranchPipelineResponseSchema,
   CheckoutPrStatusResponseSchema,
   PullRequestTimelineResponseSchema,
   CheckoutSwitchBranchResponseSchema,
@@ -7555,30 +7480,6 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
 export type CheckoutCommit = z.infer<typeof CheckoutCommitSchema>;
 export type CheckoutCommitsListRequest = z.infer<typeof CheckoutCommitsListRequestSchema>;
 export type CheckoutCommitsListResponse = z.infer<typeof CheckoutCommitsListResponseSchema>;
-export type CheckoutRepositoryGraphGetHistoryRequest = z.infer<
-  typeof CheckoutRepositoryGraphGetHistoryRequestSchema
->;
-export type CheckoutRepositoryGraphGetHistoryResponse = z.infer<
-  typeof CheckoutRepositoryGraphGetHistoryResponseSchema
->;
-export type CheckoutRepositoryGraphGetCommitDetailsRequest = z.infer<
-  typeof CheckoutRepositoryGraphGetCommitDetailsRequestSchema
->;
-export type CheckoutRepositoryGraphGetCommitDetailsResponse = z.infer<
-  typeof CheckoutRepositoryGraphGetCommitDetailsResponseSchema
->;
-export type CheckoutRepositoryGraphMutateRefRequest = z.infer<
-  typeof CheckoutRepositoryGraphMutateRefRequestSchema
->;
-export type CheckoutRepositoryGraphMutateRefResponse = z.infer<
-  typeof CheckoutRepositoryGraphMutateRefResponseSchema
->;
-export type CheckoutRepositoryGraphCheckoutRequest = z.infer<
-  typeof CheckoutRepositoryGraphCheckoutRequestSchema
->;
-export type CheckoutRepositoryGraphCheckoutResponse = z.infer<
-  typeof CheckoutRepositoryGraphCheckoutResponseSchema
->;
 export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
 export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
 export type ParsedDiffFile = z.infer<typeof ParsedDiffFileSchema>;
@@ -7605,9 +7506,6 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
 export type CheckoutGithubGetCheckDetailsRequest = z.infer<
   typeof CheckoutGithubGetCheckDetailsRequestSchema
 >;
-export type CheckoutForgeGetBranchPipelineRequest = z.infer<
-  typeof CheckoutForgeGetBranchPipelineRequestSchema
->;
 export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
 export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
 export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
@@ -7618,9 +7516,6 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
 >;
 export type CheckoutGithubGetCheckDetailsResponse = z.infer<
   typeof CheckoutGithubGetCheckDetailsResponseSchema
->;
-export type CheckoutForgeGetBranchPipelineResponse = z.infer<
-  typeof CheckoutForgeGetBranchPipelineResponseSchema
 >;
 export type PullRequestMergeable = z.infer<typeof CheckoutPrStatusSchema>["mergeable"];
 export type CheckoutPrStatusRequest = z.infer<typeof CheckoutPrStatusRequestSchema>;

@@ -1,5 +1,6 @@
-import { isAbsolute } from "node:path";
 import type pino from "pino";
+import type { SessionDelivery } from "../owned-subscriptions/index.js";
+import { isAbsolute } from "node:path";
 import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import { getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
 import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
@@ -7,10 +8,6 @@ import type {
   BranchSuggestionsRequest,
   CheckoutCommitsListRequest,
   CheckoutCommitFileDiffRequest,
-  CheckoutRepositoryGraphCheckoutRequest,
-  CheckoutRepositoryGraphGetHistoryRequest,
-  CheckoutRepositoryGraphMutateRefRequest,
-  CheckoutRepositoryGraphGetCommitDetailsRequest,
   CheckoutRefreshRequest,
   CheckoutRenameBranchRequest,
   CheckoutStatusRequest,
@@ -59,9 +56,6 @@ import {
 import { runGitCommand } from "../../../utils/run-git-command.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
-// FORK(repository-graph): delegate fork-only RPC behavior outside the checkout session.
-import { RepositoryGraphForkSessionHandler } from "../../fork/repository-graph/session-handler.js";
-import type { SessionDelivery } from "../owned-subscriptions/index.js";
 
 /**
  * The collaborators a checkout command reaches that are NOT part of the checkout
@@ -162,7 +156,6 @@ export class CheckoutSession {
   private readonly paseoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly logger: pino.Logger;
-  private readonly repositoryGraphFork: RepositoryGraphForkSessionHandler;
   private readonly statusUpdateFingerprints = new Map<string, string>();
 
   constructor(options: CheckoutSessionOptions) {
@@ -175,16 +168,6 @@ export class CheckoutSession {
     this.paseoHome = options.paseoHome;
     this.worktreesRoot = options.worktreesRoot;
     this.logger = options.logger;
-    this.repositoryGraphFork = new RepositoryGraphForkSessionHandler(
-      (message) => this.host.emit(message),
-      async (cwd) => {
-        await this.gitMutation.notifyGitMutation(cwd, "repository-graph-ref");
-        await this.host.emitWorkspaceUpdateForCwd(cwd);
-      },
-      (error, cwd) => {
-        this.logger.warn({ err: error, cwd }, "Repository graph ref changed but refresh failed");
-      },
-    );
   }
 
   private async resolveForgeService(
@@ -305,30 +288,6 @@ export class CheckoutSession {
         payload: { cwd, baseRef: null, commits: [], error: toCheckoutError(error), requestId },
       });
     }
-  }
-
-  async handleRepositoryGraphGetHistoryRequest(
-    msg: CheckoutRepositoryGraphGetHistoryRequest,
-  ): Promise<void> {
-    return this.repositoryGraphFork.handleHistory(msg);
-  }
-
-  async handleRepositoryGraphGetCommitDetailsRequest(
-    msg: CheckoutRepositoryGraphGetCommitDetailsRequest,
-  ): Promise<void> {
-    return this.repositoryGraphFork.handleCommitDetails(msg);
-  }
-
-  async handleRepositoryGraphMutateRefRequest(
-    msg: CheckoutRepositoryGraphMutateRefRequest,
-  ): Promise<void> {
-    return this.repositoryGraphFork.handleMutateRef(msg);
-  }
-
-  async handleRepositoryGraphCheckoutRequest(
-    msg: CheckoutRepositoryGraphCheckoutRequest,
-  ): Promise<void> {
-    return this.repositoryGraphFork.handleCheckout(msg);
   }
 
   async handleCommitFileDiffRequest(
@@ -528,7 +487,6 @@ export class CheckoutSession {
     const resolvedCwd = expandTilde(cwd);
 
     try {
-      await this.workspaceGitService.requestFetch(resolvedCwd);
       (await this.resolveForgeService(resolvedCwd))?.service.invalidate({ cwd: resolvedCwd });
       await this.workspaceGitService.getSnapshot(resolvedCwd, {
         force: true,
@@ -1381,67 +1339,6 @@ export class CheckoutSession {
           cwd,
           success: false,
           details: null,
-          error: {
-            code: "UNKNOWN",
-            message: error instanceof Error ? error.message : String(error),
-          },
-          requestId,
-        },
-      });
-    }
-  }
-
-  async handleCheckoutForgeGetBranchPipelineRequest(
-    msg: Extract<SessionInboundMessage, { type: "checkout.forge.get_branch_pipeline.request" }>,
-  ): Promise<void> {
-    const { cwd, requestId } = msg;
-    try {
-      const { service } = await this.requireForgeService(cwd);
-      const branch =
-        msg.branch?.trim() ||
-        (await this.workspaceGitService.getSnapshot(cwd, { includeForge: false })).git
-          .currentBranch ||
-        null;
-      if (!branch) {
-        throw new Error("Branch pipeline request requires a branch name");
-      }
-      if (!service.getBranchPipeline) {
-        this.host.emit({
-          type: "checkout.forge.get_branch_pipeline.response",
-          payload: {
-            cwd,
-            branch,
-            success: true,
-            pipeline: null,
-            supported: false,
-            error: null,
-            requestId,
-          },
-        });
-        return;
-      }
-      const pipeline = await service.getBranchPipeline({ cwd, branch });
-      this.host.emit({
-        type: "checkout.forge.get_branch_pipeline.response",
-        payload: {
-          cwd,
-          branch,
-          success: true,
-          pipeline,
-          supported: true,
-          error: null,
-          requestId,
-        },
-      });
-    } catch (error) {
-      this.host.emit({
-        type: "checkout.forge.get_branch_pipeline.response",
-        payload: {
-          cwd,
-          branch: msg.branch?.trim() || null,
-          success: false,
-          pipeline: null,
-          supported: true,
           error: {
             code: "UNKNOWN",
             message: error instanceof Error ? error.message : String(error),

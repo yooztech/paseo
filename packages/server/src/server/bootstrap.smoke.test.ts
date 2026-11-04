@@ -1,4 +1,4 @@
-import { resolveDaemonVersion } from "./fork/daemon-version.js";
+import { resolveDaemonVersion } from "./daemon-version.js";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -10,7 +10,7 @@ import path from "node:path";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { WebSocket, WebSocketServer } from "ws";
+import { WebSocket } from "ws";
 
 import { createPaseoDaemon, parseListenString, type PaseoDaemonConfig } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
@@ -512,52 +512,6 @@ describe("paseo daemon bootstrap", () => {
     }
   });
 
-  test("routes public service websocket upgrades without daemon websocket interference", async () => {
-    const upstream = http.createServer();
-    const upstreamWss = new WebSocketServer({ server: upstream });
-    upstreamWss.on("connection", (socket) => socket.send("service-ready"));
-    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
-    const upstreamAddress = upstream.address();
-    if (!upstreamAddress || typeof upstreamAddress === "string") {
-      throw new Error("Expected upstream TCP address");
-    }
-
-    const daemonHandle = await createTestPaseoDaemon();
-    let ws: WebSocket | null = null;
-    try {
-      const route = daemonHandle.daemon.serviceProxy.registerWorkspaceService({
-        workspaceId: "workspace-public-websocket",
-        projectSlug: "repo",
-        branchName: "main",
-        scriptName: "web",
-        port: upstreamAddress.port,
-        publicBaseUrl: "https://services.example.test:8443",
-      });
-      if (!route.publicHostname) {
-        throw new Error("Expected public service hostname");
-      }
-
-      ws = new WebSocket(`ws://127.0.0.1:${daemonHandle.port}/ws`, {
-        headers: {
-          Host: `${route.publicHostname}:8443`,
-          Origin: "https://app.services.example.test:8443",
-        },
-      });
-      await expect(
-        new Promise<string>((resolve, reject) => {
-          ws?.once("message", (data) => resolve(data.toString()));
-          ws?.once("error", reject);
-        }),
-      ).resolves.toBe("service-ready");
-    } finally {
-      ws?.terminate();
-      for (const socket of upstreamWss.clients) socket.terminate();
-      await new Promise<void>((resolve) => upstreamWss.close(() => resolve()));
-      await new Promise<void>((resolve) => upstream.close(() => resolve()));
-      await daemonHandle.close();
-    }
-  });
-
   test("relay config changes during Hub enrollment reach the live runtime", async () => {
     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-relay-startup-"));
     const paseoHome = path.join(paseoHomeRoot, ".paseo");
@@ -734,7 +688,7 @@ describe("paseo daemon bootstrap", () => {
         path.join(pluginDirectory, "paseo-plugin.json"),
         JSON.stringify({
           id: "startup-rollback",
-          requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+          requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
         }),
       );
       await writeFile(

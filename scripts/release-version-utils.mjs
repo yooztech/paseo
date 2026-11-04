@@ -1,7 +1,7 @@
 const versionPattern =
   /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<prerelease>[0-9A-Za-z.-]+))?$/;
 const sourceTagPattern =
-  /^(?:(?:desktop(?:-(?:windows|linux|macos))?|android|app)-)?v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+  /^(?:(?:desktop(?:-(?:windows|linux|macos))?|android)-)?v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 
 function assertInteger(value, label) {
   if (!Number.isInteger(value) || value < 0) {
@@ -23,12 +23,11 @@ export function parseReleaseVersion(version) {
   const patch = Number.parseInt(match.groups.patch, 10);
   const prerelease = match.groups.prerelease ?? null;
   const betaMatch = prerelease?.match(/^beta\.(?<beta>\d+)$/) ?? null;
-  const forkMatch = prerelease?.match(/^fork\.\d+$/) ?? null;
   const betaNumber = betaMatch?.groups?.beta ? Number.parseInt(betaMatch.groups.beta, 10) : null;
 
-  if (prerelease !== null && betaNumber === null && forkMatch === null) {
+  if (prerelease !== null && betaNumber === null) {
     throw new Error(
-      `Unsupported release version "${version}". Expected prerelease versions like 0.1.41-beta.1 or 0.1.41-fork.1.`,
+      `Unsupported release version "${version}". Expected beta prerelease versions like 0.1.41-beta.1.`,
     );
   }
 
@@ -60,14 +59,11 @@ export function formatReleaseVersion({ major, minor, patch, prerelease = null })
 }
 
 export function normalizeReleaseTag(rawTag) {
-  const trimmed = rawTag
-    .trim()
-    .replace(/^refs\/tags\//, "")
-    .replace(/^(v\d+\.\d+\.\d+-fork\.\d+)-app$/, "$1");
+  const trimmed = rawTag.trim().replace(/^refs\/tags\//, "");
   const match = trimmed.match(sourceTagPattern);
   if (!match?.groups?.version) {
     throw new Error(
-      `Unsupported release tag "${rawTag}". Expected vX.Y.Z, vX.Y.Z-beta.N, desktop-v..., app-v..., or android-v...`,
+      `Unsupported release tag "${rawTag}". Expected vX.Y.Z, vX.Y.Z-beta.N, desktop-v..., or android-v...`,
     );
   }
   return `v${match.groups.version}`;
@@ -76,11 +72,8 @@ export function normalizeReleaseTag(rawTag) {
 export function getReleaseInfoFromSourceTag(sourceTag) {
   const releaseTag = normalizeReleaseTag(sourceTag);
   const parsed = parseReleaseVersion(releaseTag.slice(1));
-  const releaseChannel = parsed.isBeta ? "beta" : (parsed.prerelease?.split(".")[0] ?? "latest");
   return {
     sourceTag,
-    publicationTag: releaseTag,
-    changelogVersion: releaseChannel === "fork" ? parsed.baseVersion : parsed.version,
     releaseTag,
     version: parsed.version,
     baseVersion: parsed.baseVersion,
@@ -89,7 +82,7 @@ export function getReleaseInfoFromSourceTag(sourceTag) {
     isBeta: parsed.isBeta,
     betaNumber: parsed.betaNumber,
     releaseType: parsed.isPrerelease ? "prerelease" : "release",
-    releaseChannel,
+    releaseChannel: parsed.isBeta ? "beta" : "latest",
     isSmokeTag: sourceTag.includes("gha-smoke"),
   };
 }

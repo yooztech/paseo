@@ -533,9 +533,9 @@ describe("ForgeService", () => {
   });
 
   it.each([
-    ["merge", ["pr", "merge", "42", "--repo", "acme/repo", "--merge"]],
-    ["squash", ["pr", "merge", "42", "--repo", "acme/repo", "--squash"]],
-    ["rebase", ["pr", "merge", "42", "--repo", "acme/repo", "--rebase"]],
+    ["merge", ["pr", "merge", "42", "--merge"]],
+    ["squash", ["pr", "merge", "42", "--squash"]],
+    ["rebase", ["pr", "merge", "42", "--rebase"]],
   ] as const)("merges pull requests with gh using %s", async (mergeMethod, expectedArgs) => {
     const runner = createRunner([""]);
     const service = createGitHubService({
@@ -681,9 +681,9 @@ describe("ForgeService", () => {
   });
 
   it.each([
-    ["merge", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--merge"]],
-    ["squash", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--squash"]],
-    ["rebase", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--rebase"]],
+    ["merge", ["pr", "merge", "42", "--auto", "--merge"]],
+    ["squash", ["pr", "merge", "42", "--auto", "--squash"]],
+    ["rebase", ["pr", "merge", "42", "--auto", "--rebase"]],
   ] as const)("enables auto-merge with gh using %s", async (mergeMethod, expectedArgs) => {
     const runner = createRunner([""]);
     const service = createGitHubService({
@@ -745,7 +745,7 @@ describe("ForgeService", () => {
 
     expect(runner.calls).toEqual([
       {
-        args: ["pr", "merge", "42", "--repo", "acme/repo", "--disable-auto"],
+        args: ["pr", "merge", "42", "--disable-auto"],
         cwd: "/tmp/repo",
         envOverlay: { GH_PROMPT_DISABLED: "1" },
       },
@@ -759,13 +759,11 @@ describe("ForgeService", () => {
       checks: [{ name: "ci", status: "pending", url: null }],
     });
     const stableStatus = createCurrentPullRequestStatus({ checksStatus: "success" });
-    const emptyChecksStatus = createCurrentPullRequestStatus({ checksStatus: "none" });
 
     expect(computeGithubNextInterval(pendingStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
     expect(computeGithubNextInterval(runningCheckStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
     expect(computeGithubNextInterval(stableStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
     expect(computeGithubNextInterval(null, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
-    expect(computeGithubNextInterval(emptyChecksStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
   });
 
   it("computes exponential error backoff up to the cap", () => {
@@ -851,7 +849,6 @@ describe("ForgeService", () => {
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
       now: () => now,
-      resolveRepoSlug: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 
@@ -925,7 +922,6 @@ describe("ForgeService", () => {
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
       now: () => now,
-      resolveRepoSlug: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 
@@ -972,7 +968,6 @@ describe("ForgeService", () => {
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
       now: () => now,
-      resolveRepoSlug: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 
@@ -1423,28 +1418,26 @@ describe("ForgeService", () => {
     service.dispose?.();
   });
 
-  it("uses a fork-internal PR from the fork repository without redirecting to the parent", async () => {
+  it("redirects a fork poll to its parent and reuses that batch address", async () => {
     let now = 0;
     const parent = { owner: { login: "upstream" }, name: "widgets" };
     const forkPr = batchPollPrNodeJson({
-      url: "https://github.com/forkowner/widgets/pull/33",
+      url: "https://github.com/upstream/widgets/pull/42",
       headRefName: "feat-a",
       headRefOid: "oid-a",
       headRepositoryOwner: { login: "forkowner" },
     });
     const runner = createScriptedRunner([
       batchPollStatusJson({
-        t0: batchPollRepositoryJson([forkPr], {
-          isFork: true,
-          parent,
-          owner: { login: "forkowner" },
-        }),
+        t0: batchPollRepositoryJson([], { isFork: true, parent }),
       }),
+      batchPollStatusJson({ t0: batchPollRepositoryJson([forkPr]) }),
       batchPollStatusJson({
         t0: batchPollChecksAliasJson([
           { __typename: "StatusContext", context: "ci", state: "SUCCESS" },
         ]),
       }),
+      batchPollStatusJson({ t0: batchPollRepositoryJson([forkPr]) }),
     ]);
     const service = createGitHubService({
       ttlMs: 0,
@@ -1466,16 +1459,23 @@ describe("ForgeService", () => {
     await flushMicrotasks();
 
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(0);
-    expect(runner.calls).toHaveLength(2);
     expect(runner.calls[0]?.args[3]).toContain(
       't0: repository(owner: "forkowner", name: "widgets")',
     );
-    expect(runner.calls[1]?.args[3]).not.toContain(
+    expect(runner.calls[1]?.args[3]).toContain(
       't0: repository(owner: "upstream", name: "widgets")',
     );
     expect(statuses).toEqual([
-      expect.objectContaining({ number: 42, repoOwner: "forkowner", checksStatus: "success" }),
+      expect.objectContaining({ number: 42, repoOwner: "upstream", checksStatus: "success" }),
     ]);
+
+    now = EXPECTED_GITHUB_SLOW_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS);
+    await flushMicrotasks();
+
+    expect(runner.calls[3]?.args[3]).toContain(
+      't0: repository(owner: "upstream", name: "widgets")',
+    );
 
     subscription?.unsubscribe();
     service.dispose?.();
@@ -3152,75 +3152,6 @@ describe("ForgeService", () => {
     expect(status).toMatchObject({ number: 42, state: "open" });
   });
 
-  it("scopes current PR lookup to origin when another remote has the same head SHA", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "github-service-origin-pr-"));
-    const headSha = "2222222222222222222222222222222222222222";
-    execFileSync("git", ["init", tempDir], { stdio: "pipe" });
-    execFileSync(
-      "git",
-      ["-C", tempDir, "remote", "add", "origin", "https://github.com/yooztech/paseo.git"],
-      { stdio: "pipe" },
-    );
-    execFileSync(
-      "git",
-      ["-C", tempDir, "remote", "add", "upstream", "https://github.com/getpaseo/paseo.git"],
-      { stdio: "pipe" },
-    );
-    const calls: RunnerCall[] = [];
-    const runner: GitHubCommandRunner = async (args, options) => {
-      calls.push({ args, cwd: options.cwd });
-      if (args[0] === "api") {
-        return { stdout: currentPullRequestGithubFactsJson(), stderr: "" };
-      }
-      const scopedToOrigin = args.includes("--repo") && args.includes("yooztech/paseo");
-      return {
-        stdout: currentPullRequestJson({
-          number: scopedToOrigin ? 6 : 2852,
-          url: scopedToOrigin
-            ? "https://github.com/yooztech/paseo/pull/6"
-            : "https://github.com/getpaseo/paseo/pull/2852",
-          title: scopedToOrigin ? "Origin PR" : "Upstream PR",
-          state: scopedToOrigin ? "OPEN" : "CLOSED",
-          headRefName: "demonic-shark",
-          headRefOid: headSha,
-          headRepositoryOwner: { login: "yooztech" },
-        }),
-        stderr: "",
-      };
-    };
-    const service = createGitHubService({
-      runner,
-      resolveGhPath: async () => "/usr/bin/gh",
-    });
-
-    try {
-      const status = await service.getCurrentPullRequestStatus({
-        cwd: tempDir,
-        headRef: "demonic-shark",
-        headSha,
-        headRepositoryOwner: "yooztech",
-      });
-
-      expect(status).toMatchObject({
-        number: 6,
-        repoOwner: "yooztech",
-        repoName: "paseo",
-        state: "open",
-      });
-      expect(calls[0]?.args).toEqual([
-        "pr",
-        "view",
-        "demonic-shark",
-        "--repo",
-        "yooztech/paseo",
-        "--json",
-        CURRENT_PR_STATUS_FIELDS,
-      ]);
-    } finally {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
   it("loads GitHub merge, auto-merge, permission, policy, and queue facts for PR 993 shape", async () => {
     const runner = createScriptedRunner([
       currentPullRequestJson({
@@ -4528,10 +4459,9 @@ describe("ForgeService", () => {
 
     const first = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
     const second = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
-    await vi.waitFor(() => {
-      expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
-    });
+    await flushMicrotasks();
 
+    expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
     runner.resolveNext(currentPullRequestJson());
     for (let i = 0; i < 10 && runner.calls.length < 2; i += 1) {
       await Promise.resolve();

@@ -159,12 +159,6 @@ describe("workspace recovery", () => {
     });
     const worktreeRoot = realpathSync(created.worktreePath);
     const workspaceCwd = join(worktreeRoot, "packages", "app");
-    writeFileSync(join(worktreeRoot, "feature.txt"), "feature\n");
-    execFileSync("git", ["add", "feature.txt"], { cwd: worktreeRoot, stdio: "pipe" });
-    execFileSync("git", ["commit", "-m", "add feature"], {
-      cwd: worktreeRoot,
-      stdio: "pipe",
-    });
     rmSync(worktreeRoot, { recursive: true, force: true });
     execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
 
@@ -181,7 +175,6 @@ describe("workspace recovery", () => {
       cwd: workspaceCwd,
       branch,
       worktreeRoot,
-      baseBranch: "main",
       mainRepoRoot: repoDir,
     });
     const unarchived: string[] = [];
@@ -203,10 +196,6 @@ describe("workspace recovery", () => {
     });
     expect(existsSync(worktreeRoot)).toBe(true);
     expect(existsSync(workspaceCwd)).toBe(true);
-    await expect(getCheckoutStatus(worktreeRoot, { paseoHome })).resolves.toMatchObject({
-      baseRef: "main",
-      hasChangesFromBase: true,
-    });
     expect(unarchived).toEqual([workspace.workspaceId]);
   });
 

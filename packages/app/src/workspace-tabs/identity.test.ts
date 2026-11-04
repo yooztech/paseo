@@ -143,12 +143,9 @@ describe("commit diff tab identity", () => {
     expect(
       normalizeWorkspaceTabTarget({
         kind: "commit_diff",
-        sha: " abc123 ",
+        sha: "abc123",
       }),
-    ).toEqual({
-      kind: "commit_diff",
-      sha: "abc123",
-    });
+    ).toEqual({ kind: "commit_diff", sha: "abc123" });
   });
 
   it("rejects a commit diff target with a blank sha", () => {
@@ -162,7 +159,7 @@ describe("commit diff tab identity", () => {
 });
 
 describe("plugin panel tab identity", () => {
-  it("normalizes the plugin and agent context", () => {
+  it("normalizes exact workspace and agent context", () => {
     expect(
       normalizeWorkspaceTabTarget({
         kind: "plugin",
@@ -180,69 +177,22 @@ describe("plugin panel tab identity", () => {
     });
   });
 
-  it("keeps workspace and different agent panels distinct", () => {
-    const workspace = {
-      kind: "plugin" as const,
+  it("gives workspace and agent instances distinct stable ids", () => {
+    const workspace = buildDeterministicWorkspaceTabId({
+      kind: "plugin",
       pluginId: "review",
       panelId: "details",
-      context: "workspace" as const,
-    };
-    const agent = {
-      kind: "plugin" as const,
+      context: "workspace",
+    });
+    const agent = buildDeterministicWorkspaceTabId({
+      kind: "plugin",
       pluginId: "review",
       panelId: "details",
-      context: "agent" as const,
+      context: "agent",
       agentId: "agent-1",
-    };
-    expect(buildDeterministicWorkspaceTabId(workspace)).not.toBe(
-      buildDeterministicWorkspaceTabId(agent),
-    );
-    expect(buildDeterministicWorkspaceTabId(agent)).not.toBe(
-      buildDeterministicWorkspaceTabId({ ...agent, agentId: "agent-2" }),
-    );
-  });
-});
-
-describe("fork singleton tab identity", () => {
-  it("does not equate repository graph and branch CI targets", () => {
-    expect(workspaceTabTargetsEqual({ kind: "repository_graph" }, { kind: "branch_ci" })).toBe(
-      false,
-    );
-  });
-});
-
-describe("repository graph file diff tab identity", () => {
-  it("keys one reusable file diff tab per commit", () => {
-    expect(
-      buildDeterministicWorkspaceTabId({
-        kind: "repository_graph_file_diff",
-        sha: "abc123",
-        path: "src/file.ts",
-      }),
-    ).toBe("repository_graph_file_diff_abc123");
-  });
-
-  it("normalizes and compares file selections", () => {
-    const target = normalizeWorkspaceTabTarget({
-      kind: "repository_graph_file_diff",
-      sha: " abc123 ",
-      path: " src/file.ts ",
-      requestId: 42,
     });
-    expect(target).toEqual({
-      kind: "repository_graph_file_diff",
-      sha: "abc123",
-      path: "src/file.ts",
-      requestId: 42,
-    });
-    expect(
-      target &&
-        workspaceTabTargetsEqual(target, {
-          kind: "repository_graph_file_diff",
-          sha: "abc123",
-          path: "src/other.ts",
-          requestId: 43,
-        }),
-    ).toBe(false);
+
+    expect(workspace).toBe("plugin_workspace_6_review_7_details");
+    expect(agent).toBe("plugin_agent_6_review_7_details_7_agent-1");
   });
 });

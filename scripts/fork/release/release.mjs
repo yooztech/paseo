@@ -1,9 +1,21 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { triggerForkAppEas } from "../../trigger-fork-app-eas.mjs";
+
+function sourceState() {
+  try {
+    return JSON.parse(
+      readFileSync(new URL("../../../.dev/fork-build-state.json", import.meta.url), "utf8"),
+    );
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
-    cwd: process.cwd(),
+    cwd: options.cwd ?? (command === "git" ? sourceState()?.sourceRoot : undefined),
     encoding: "utf8",
     stdio: options.capture ? ["ignore", "pipe", "inherit"] : "inherit",
   })?.trim();
@@ -67,6 +79,10 @@ export function createForkReleaseMetadata(channel, version, forkNumber) {
 
 function preflight(channel) {
   const label = channel === "daemon" ? "fork" : `fork ${channel}`;
+  const state = sourceState();
+  if (state && capture("git", ["rev-parse", "HEAD"]) !== state.sourceHead) {
+    throw new Error("Canonical source HEAD changed since the fork build was materialized.");
+  }
   const branch = capture("git", ["branch", "--show-current"]);
   if (branch !== "main") {
     throw new Error(
@@ -160,8 +176,6 @@ export function publish(metadata, { captureGit = capture, runGit = run } = {}) {
 
 export function releaseForkDaemon() {
   const metadata = preflight("daemon");
-  console.log("Installing locked release dependencies...");
-  run("npm", ["ci", "--loglevel=error", "--no-audit", "--no-fund"]);
   console.log(`Building server for ${metadata.sourceTag}...`);
   run("npm", ["run", "build:server"]);
   publish(metadata);
@@ -179,7 +193,5 @@ export function releaseForkDesktop() {
 export function releaseForkApp() {
   const metadata = preflight("app");
   publish(metadata);
-  console.log(
-    `Published ${metadata.sourceTag}. EAS iOS build and TestFlight upload are now queued.`,
-  );
+  triggerForkAppEas();
 }

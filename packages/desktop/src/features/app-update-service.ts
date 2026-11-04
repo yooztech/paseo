@@ -38,7 +38,6 @@ export interface AppUpdateRuntimeConfiguration {
   shouldAdmitUpdate(info: RuntimeUpdateInfo): boolean | Promise<boolean>;
   onUpdateAvailable(info: RuntimeUpdateInfo): void;
   onUpdateDownloaded(info: RuntimeUpdateInfo): void;
-  onUpdateNotAvailable(): void;
   onError(error: unknown): void;
 }
 
@@ -215,9 +214,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
         if (preparationError?.version === info.version) {
           preparationError = null;
         }
-      },
-      onUpdateNotAvailable() {
-        clearUpdateState();
       },
       onError(error) {
         if (preparingUpdateVersion) {

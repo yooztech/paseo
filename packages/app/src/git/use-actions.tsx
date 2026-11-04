@@ -10,8 +10,13 @@ import { ForgeBrandIcon, getForgeBrandColorMapping } from "@/git/forge-icon";
 import { type CheckoutGitActionStatus, useCheckoutGitActionsStore } from "@/git/actions-store";
 import { type CheckoutStatusPayload, useCheckoutStatusQuery } from "@/git/use-status-query";
 import { type CheckoutPrStatusPayload, useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
-import { narrowPullRequestState, type GitAction, type GitActions } from "@/git/policy";
-import { buildForkGitActions, type ForkBuildGitActionsInput } from "@/fork/git-action-policy";
+import {
+  buildGitActions,
+  narrowPullRequestState,
+  type BuildGitActionsInput,
+  type GitAction,
+  type GitActions,
+} from "@/git/policy";
 import { deriveMergeCapability } from "@/git/merge-capability";
 import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -117,7 +122,6 @@ interface DeriveGitActionsStateArgs {
 interface DerivedGitActionsState {
   actionsDisabled: boolean;
   aheadCount: number;
-  hasChangesFromBase: boolean;
   behindBaseCount: number;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
@@ -130,18 +134,14 @@ interface DerivedGitActionsState {
 
 interface GitCommitCounts {
   aheadCount: number;
-  hasChangesFromBase: boolean;
   behindBaseCount: number;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
 }
 
 function extractGitCommitCounts(gitStatus: CheckoutStatusPayload | null): GitCommitCounts {
-  const aheadCount = gitStatus?.aheadBehind?.ahead ?? 0;
   return {
-    aheadCount,
-    // COMPAT(gitContentDifference): added in v0.2.6, remove after 2027-02-03 once daemon floor >= v0.2.6.
-    hasChangesFromBase: gitStatus?.hasChangesFromBase ?? aheadCount > 0,
+    aheadCount: gitStatus?.aheadBehind?.ahead ?? 0,
     behindBaseCount: gitStatus?.aheadBehind?.behind ?? 0,
     aheadOfOrigin: gitStatus?.aheadOfOrigin ?? null,
     behindOfOrigin: gitStatus?.behindOfOrigin ?? null,
@@ -658,7 +658,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const {
     actionsDisabled,
     aheadCount,
-    hasChangesFromBase,
     behindBaseCount,
     aheadOfOrigin,
     behindOfOrigin,
@@ -678,7 +677,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   }, [prStatus?.url, handleCreatePr]);
 
   // Build actions
-  const gitActionsInput = useMemo<ForkBuildGitActionsInput>(() => {
+  const gitActionsInput = useMemo<BuildGitActionsInput>(() => {
     const presentation = getForgePresentation(forge);
     return {
       isGit,
@@ -700,7 +699,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       baseRefAvailable: Boolean(baseRef),
       baseRefLabel,
       aheadCount,
-      contentDiff: { hasChangesFromBase },
       behindBaseCount,
       aheadOfOrigin,
       behindOfOrigin,
@@ -811,7 +809,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     prStatus?.forgeSpecific,
     prStatus?.github,
     aheadCount,
-    hasChangesFromBase,
     behindBaseCount,
     isPaseoOwnedWorktree,
     isOnBaseBranch,
@@ -859,14 +856,13 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const gitActions: GitActions = useMemo(
     () =>
-      translateGitActions(buildForkGitActions(gitActionsInput), {
+      translateGitActions(buildGitActions(gitActionsInput), {
         baseRefLabel,
         hasPullRequest,
-        pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
         forge,
         t,
       }),
-    [gitActionsInput, baseRefLabel, hasPullRequest, prStatus?.mergeable, forge, t],
+    [gitActionsInput, baseRefLabel, hasPullRequest, forge, t],
   );
 
   return { gitActions, branchLabel, isGit };
@@ -877,7 +873,6 @@ function translateGitActions(
   input: {
     baseRefLabel: string;
     hasPullRequest: boolean;
-    pullRequestMergeable: "UNKNOWN" | "MERGEABLE" | "CONFLICTING";
     forge: Forge;
     t: (key: string, options?: Record<string, unknown>) => string;
   },
@@ -894,24 +889,16 @@ function translateGitAction(
   {
     baseRefLabel,
     hasPullRequest,
-    pullRequestMergeable,
     forge,
     t,
   }: {
     baseRefLabel: string;
     hasPullRequest: boolean;
-    pullRequestMergeable: "UNKNOWN" | "MERGEABLE" | "CONFLICTING";
     forge: Forge;
     t: (key: string, options?: Record<string, unknown>) => string;
   },
 ): GitAction {
-  const labels = getTranslatedGitActionLabels(action, {
-    baseRefLabel,
-    hasPullRequest,
-    pullRequestMergeable,
-    forge,
-    t,
-  });
+  const labels = getTranslatedGitActionLabels(action, { baseRefLabel, hasPullRequest, forge, t });
   return {
     ...action,
     ...labels,
@@ -927,13 +914,11 @@ function getTranslatedGitActionLabels(
   {
     baseRefLabel,
     hasPullRequest,
-    pullRequestMergeable,
     forge,
     t,
   }: {
     baseRefLabel: string;
     hasPullRequest: boolean;
-    pullRequestMergeable: "UNKNOWN" | "MERGEABLE" | "CONFLICTING";
     forge: Forge;
     t: (key: string, options?: Record<string, unknown>) => string;
   },
@@ -965,14 +950,11 @@ function getTranslatedGitActionLabels(
       };
     case "pr":
       return hasPullRequest
-        ? (() => {
-            const viewKey =
-              pullRequestMergeable === "CONFLICTING"
-                ? "workspace.git.actions.viewPrConflict"
-                : "workspace.git.actions.viewPr";
-            const label = t(viewKey, forgeVocabulary(forge));
-            return { label, pendingLabel: label, successLabel: label };
-          })()
+        ? {
+            label: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
+            pendingLabel: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
+            successLabel: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
+          }
         : {
             label: t("workspace.git.actions.createPr.label", forgeVocabulary(forge)),
             pendingLabel: t("workspace.git.actions.createPr.pending", forgeVocabulary(forge)),

@@ -191,13 +191,10 @@ test.describe("explorer pane tab placement", () => {
       await chip.click({ position: { x: 12, y: 13 }, timeout: 5_000 });
       await expect(chip).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
 
-      // Focus the New tab through its tab chip. Clicking an arbitrary content
-      // coordinate can hit the responsive launcher and replace New with a draft.
+      // Clicking inside the New tab pane (focuses it) must not lock anything. Aim
+      // above the vertically centred launcher, which would open a tab instead.
       const emptyPane = newTabPaneChild(page);
-      await emptyPane
-        .locator('[role="button"][aria-label="New tab"][aria-selected]')
-        .click({ timeout: 5_000 });
-      await expect(emptyPane.getByTestId("workspace-new-tab-panel")).toBeVisible();
+      await emptyPane.click({ position: { x: 40, y: 120 }, timeout: 5_000 });
 
       // A second drag must work: center-drop the agent tab back into the New pane.
       const target = await emptyPaneBox(page);
@@ -235,7 +232,7 @@ test.describe("explorer pane tab placement", () => {
 
 async function closeOnlyDraft(page: Page): Promise<void> {
   await draftTabChip(page).hover();
-  await page.locator('[data-testid^="workspace-draft-close-"]').filter({ visible: true }).click();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
 }
 
 async function moveOnlyDraftIntoRightSplit(page: Page): Promise<void> {

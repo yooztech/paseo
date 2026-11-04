@@ -24,8 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts
+          fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - name: Resolve release tag
         shell: bash
@@ -79,6 +84,11 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - name: Resolve release tag
         shell: bash

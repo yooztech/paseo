@@ -9,12 +9,6 @@ import { draftPanelRegistration } from "@/panels/draft-panel";
 import { filePanelRegistration } from "@/panels/file-panel";
 import { filesPanelRegistration } from "@/panels/files-panel";
 import { registerPanel } from "@/panels/panel-registry";
-// FORK(repository-graph): register fork-only graph and CI panels.
-import { repositoryGraphFileDiffPanelRegistration } from "@/fork/repository-graph/file-diff-panel";
-import {
-  branchCiPanelRegistration,
-  repositoryGraphPanelRegistration,
-} from "@/fork/explorer-tabs/panels";
 import { setupPanelRegistration } from "@/panels/setup-panel";
 import { terminalPanelRegistration } from "@/panels/terminal-panel";
 import { providerSubagentPanelRegistration } from "@/panels/provider-subagent-panel";
@@ -42,8 +36,5 @@ export function ensurePanelsRegistered(): void {
   registerPanel(workingDiffPanelRegistration);
   registerPanel(changesTreePanelRegistration);
   registerPanel(pluginPanelRegistration);
-  registerPanel(repositoryGraphFileDiffPanelRegistration);
-  registerPanel(repositoryGraphPanelRegistration);
-  registerPanel(branchCiPanelRegistration);
   panelsRegistered = true;
 }

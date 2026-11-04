@@ -216,7 +216,6 @@ function createService(
       getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
       getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
         ...current,
-        hasChangesFromBase: current.hasChangesFromBase ?? null,
         upstreamStatus: facts.upstreamStatus,
       })),
       getCheckoutStatus,
@@ -589,14 +588,9 @@ describe("WorkspaceGitService checkout observation", () => {
       resolvedBaseRef: "main",
       comparisonBaseRef: "origin/main",
     }));
-    const getCheckoutRefDerivedState = vi.fn(async (_cwd, _facts, current) => ({
+    const getCheckoutRefDerivedState = vi.fn(async (_cwd, facts, current) => ({
       ...current,
-      hasChangesFromBase: false,
-      upstreamStatus: {
-        ref: "origin/feature",
-        aheadBehind: { ahead: 1, behind: 0 },
-        hasChanges: true,
-      },
+      upstreamStatus: facts.upstreamStatus,
     }));
     const runGitFetch = vi.fn(async (_cwd, observer) => {
       observer?.onRefSnapshot("before");
@@ -613,8 +607,6 @@ describe("WorkspaceGitService checkout observation", () => {
       getCheckoutStatus: vi.fn(async (cwd: string) =>
         createCheckoutStatus(cwd, {
           currentBranch: "feature",
-          hasChangesFromBase: true,
-          hasChangesFromOrigin: false,
           baseRef: "main",
           hasRemote: true,
           remoteUrl: REMOTE_URL,
@@ -649,14 +641,6 @@ describe("WorkspaceGitService checkout observation", () => {
 
     expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledTimes(1);
-    expect((await service.getSnapshot(REPO_CWD, { includeForge: false })).git).toMatchObject({
-      hasChangesFromBase: false,
-      hasChangesFromOrigin: true,
-      upstreamRef: "origin/feature",
-    });
-    expect(getCheckoutRefDerivedState.mock.calls[0]?.[2]).toMatchObject({
-      hasChangesFromBase: true,
-    });
 
     subscription.unsubscribe();
     service.dispose();

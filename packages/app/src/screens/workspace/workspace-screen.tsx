@@ -225,7 +225,6 @@ import {
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useWorkspacePullRequestDiscovery } from "@/panels/pull-request";
-import { useShouldShowForkBranchCi } from "@/fork/branch-ci/use-visibility";
 
 const NO_SHEETS: readonly SheetTab[] = [];
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
@@ -1277,14 +1276,6 @@ function WorkspaceScreenContent({
     isGit: isGitCheckout,
     layoutMode,
     explorerOpen: isExplorerSidebarShowing,
-  });
-  const showBranchCi = useShouldShowForkBranchCi({
-    serverId: normalizedServerId,
-    cwd: workspaceDirectory,
-    branch: currentBranchName,
-    isRouteFocused,
-    isGitCheckout,
-    hasPullRequest,
   });
 
   const explorerSidebarToggleAccessibilityState = useMemo(
@@ -3298,8 +3289,6 @@ function WorkspaceScreenContent({
       showChanges: isGitCheckout,
       showPullRequest: hasPullRequest,
       showBrowser: showCreateBrowserTab,
-      showRepositoryGraph: isGitCheckout,
-      showBranchCi,
       terminalDisabled: createTerminalDisabled,
       launch: launchWorkspaceTab,
     }),
@@ -3307,7 +3296,6 @@ function WorkspaceScreenContent({
       createTerminalDisabled,
       hasPullRequest,
       isGitCheckout,
-      showBranchCi,
       launchWorkspaceTab,
       showCreateBrowserTab,
     ],

@@ -15,10 +15,6 @@ type CheckoutPrStatusWireStatus = Omit<CheckoutPrStatusPayloadStatus, "forge"> &
   forge?: string;
 };
 
-function toWireNullable<T>(value: T | null | undefined): T | null {
-  return value ?? null;
-}
-
 export function buildCheckoutStatusPayloadFromSnapshot({
   cwd,
   requestId,
@@ -40,8 +36,6 @@ export function buildCheckoutStatusPayloadFromSnapshot({
       upstreamRef: null,
       aheadOfOrigin: null,
       behindOfOrigin: null,
-      hasChangesFromBase: null,
-      hasChangesFromOrigin: null,
       hasRemote: false,
       remoteUrl: null,
       isPaseoOwnedWorktree: false,
@@ -64,15 +58,13 @@ export function buildCheckoutStatusPayloadFromSnapshot({
       isGit: true,
       repoRoot: snapshot.git.repoRoot,
       mainRepoRoot: snapshot.git.mainRepoRoot,
-      currentBranch: toWireNullable(snapshot.git.currentBranch),
+      currentBranch: snapshot.git.currentBranch ?? null,
       isDirty: snapshot.git.isDirty,
       baseRef: snapshot.git.baseRef,
-      aheadBehind: toWireNullable(snapshot.git.aheadBehind),
-      upstreamRef: toWireNullable(snapshot.git.upstreamRef),
-      aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
-      behindOfOrigin: toWireNullable(snapshot.git.behindOfOrigin),
-      hasChangesFromBase: toWireNullable(snapshot.git.hasChangesFromBase),
-      hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
+      aheadBehind: snapshot.git.aheadBehind ?? null,
+      upstreamRef: snapshot.git.upstreamRef ?? null,
+      aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
+      behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
       hasRemote: snapshot.git.hasRemote,
       remoteUrl: snapshot.git.remoteUrl,
       isPaseoOwnedWorktree: true,
@@ -86,15 +78,13 @@ export function buildCheckoutStatusPayloadFromSnapshot({
     isGit: true,
     repoRoot: snapshot.git.repoRoot,
     mainRepoRoot: snapshot.git.mainRepoRoot,
-    currentBranch: toWireNullable(snapshot.git.currentBranch),
+    currentBranch: snapshot.git.currentBranch ?? null,
     isDirty: snapshot.git.isDirty,
-    baseRef: toWireNullable(snapshot.git.baseRef),
-    aheadBehind: toWireNullable(snapshot.git.aheadBehind),
-    upstreamRef: toWireNullable(snapshot.git.upstreamRef),
-    aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
-    behindOfOrigin: toWireNullable(snapshot.git.behindOfOrigin),
-    hasChangesFromBase: toWireNullable(snapshot.git.hasChangesFromBase),
-    hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
+    baseRef: snapshot.git.baseRef ?? null,
+    aheadBehind: snapshot.git.aheadBehind ?? null,
+    upstreamRef: snapshot.git.upstreamRef ?? null,
+    aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
+    behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
     hasRemote: snapshot.git.hasRemote,
     remoteUrl: snapshot.git.remoteUrl,
     isPaseoOwnedWorktree: false,

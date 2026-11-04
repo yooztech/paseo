@@ -36,6 +36,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - name: Sync release body from changelog
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
