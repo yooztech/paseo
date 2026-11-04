@@ -142,7 +142,7 @@ function same(a, b) {
 }
 function sourceTree(index) {
   initIndex(index, "HEAD");
-  indexed(index, ["-c", "core.filemode=true", "add", "-A", "--", "."]);
+  indexed(index, ["add", "-A", "--", "."]);
   return tree(index);
 }
 function patchesFor(base, snapshot, index) {
@@ -393,7 +393,7 @@ function effective(base, snapshot, patches, index) {
 }
 function workspaceSnapshot(directory, start, index) {
   indexed(index, ["read-tree", "--reset", start]);
-  indexed(index, ["-C", directory, "-c", "core.filemode=true", "add", "-A", "--", "."]);
+  indexed(index, ["-C", directory, "add", "-A", "--", "."]);
   return tree(index);
 }
 function differences(a, b) {

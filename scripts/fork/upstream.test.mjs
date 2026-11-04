@@ -69,6 +69,8 @@ function fixture(t) {
   put("tools/config.txt", "base tooling\n");
   put("tools/delete.txt", "delete me\n");
   put("tools/execute.sh", "#!/bin/sh\necho base\n");
+  put("tools/tracked-executable.sh", "#!/bin/sh\necho tracked\n");
+  chmodSync(path.join(repo, "tools/tracked-executable.sh"), 0o755);
   put("assets/image.bin", Buffer.from([0, 1, 2, 255]));
   put("AGENTS.md", "official instructions\n");
   put("README.md", "official readme\n");
@@ -101,6 +103,7 @@ function fixture(t) {
     "const fs=require('fs');fs.mkdirSync('.dev',{recursive:true});fs.appendFileSync('.dev/install-count','install\\n');\n",
   );
   git("add", ".");
+  git("update-index", "--chmod=+x", "tools/tracked-executable.sh");
   git("commit", "-qm", "official base");
   git("tag", "upstream-base");
   const base = git("rev-parse", "HEAD");
@@ -429,6 +432,25 @@ test("check enforces pristine content, mode and presence except AGENTS", (t) => 
   chmodSync(path.join(f.repo, "tools/execute.sh"), 0o644);
   rmSync(path.join(f.repo, "tools/delete.txt"));
   assert.match(f.fail("check"), /tools\/delete\.txt/);
+});
+
+test("snapshots preserve tracked executable modes when Git cannot trust filesystem modes", (t) => {
+  const f = fixture(t);
+  f.git("config", "core.filemode", "false");
+  chmodSync(path.join(f.repo, "tools/tracked-executable.sh"), 0o644);
+  f.ok("check");
+  f.put("tools/tracked-executable.sh", "changed\n");
+  assert.match(f.fail("check"), /tools\/tracked-executable\.sh/);
+  f.put("tools/tracked-executable.sh", "#!/bin/sh\necho tracked\n");
+  rmSync(path.join(f.repo, "tools/tracked-executable.sh"));
+  assert.match(f.fail("check"), /tools\/tracked-executable\.sh/);
+  f.put("tools/tracked-executable.sh", "#!/bin/sh\necho tracked\n");
+  f.ok("materialize", "--directory", f.workspace);
+  chmodSync(path.join(f.workspace, "tools/tracked-executable.sh"), 0o644);
+  f.ok("materialize", "--directory", f.workspace);
+  f.ok("refresh", "--directory", f.workspace);
+  const result = f.runEnv({ GITHUB_ACTIONS: "true" }, "ci-apply");
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
 test("missing pin label is accepted but a moved label is rejected", (t) => {
