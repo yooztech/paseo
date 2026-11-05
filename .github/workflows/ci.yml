@@ -2,16 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [downstream/patch-build]
   # Every base branch, so stacked PRs and PRs into any base get the same checks.
   pull_request:
   merge_group:
   workflow_dispatch:
 
-# A newer push to the same ref cancels the run still in progress, main included.
+# A newer push to the same ref cancels the run still in progress.
 # A full run costs about 200 runner-minutes against the org's 20 concurrent
-# jobs, and a superseded main run only answers a question the newer commit
-# answers again.
+# jobs, and a superseded run only answers a question the newer commit answers again.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,6 +23,9 @@ env:
 jobs:
   changes:
     name: changes
+    # The pull request already validated GitHub's default merge commit. Keep push CI for direct
+    # changes to the patch branch without paying for the same full suite again after a PR merge.
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request #') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -45,12 +47,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate pristine fork sources
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          node scripts/fork/upstream.mjs check
+          node --test scripts/fork/upstream.test.mjs
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+      - name: Validate fork release wrappers
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node --test scripts/fork/release/release.test.mjs scripts/app-build.test.mjs scripts/trigger-fork-app-eas.test.mjs
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Detect affected CI contracts
         id: filter
+        if: ${{ github.event_name == 'pull_request' }}
         uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
         with:
           filters: .github/ci-paths.yml
@@ -61,10 +79,17 @@ jobs:
   quality:
     name: quality
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false' || needs.changes.outputs.quality != 'false' || needs.changes.outputs.relay != 'false' || needs.changes.outputs.sdk != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false' || needs.changes.outputs.quality != 'false' || needs.changes.outputs.relay != 'false' || needs.changes.outputs.sdk != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -137,10 +162,17 @@ jobs:
   typecheck:
     name: typecheck
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -180,7 +212,7 @@ jobs:
   server-tests-ubuntu:
     name: server-tests (ubuntu-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - &server_capacity
@@ -192,6 +224,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - &server_node
         uses: actions/setup-node@v4
@@ -238,11 +275,16 @@ jobs:
   server-tests-windows:
     name: server-tests (windows-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
     runs-on: windows-latest
     steps:
       - *server_capacity
       - *server_checkout
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - *server_node
       - *server_fetch
       - *server_install
@@ -261,11 +303,16 @@ jobs:
   server-integration-windows:
     name: server-integration (windows-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
     runs-on: windows-latest
     steps:
       - *server_capacity
       - *server_checkout
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - *server_node
       - *server_fetch
       - *server_install
@@ -283,10 +330,17 @@ jobs:
   server-tests-macos:
     name: server-tests (macos-latest, file observation)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -310,13 +364,20 @@ jobs:
   desktop-tests-ubuntu:
     name: desktop-tests (ubuntu-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
     steps: &desktop_test_steps
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -385,7 +446,7 @@ jobs:
   desktop-tests-windows:
     name: desktop-tests (windows-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
     runs-on: windows-latest
     timeout-minutes: 30
     permissions:
@@ -395,10 +456,17 @@ jobs:
   app-tests:
     name: app-tests
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -421,7 +489,7 @@ jobs:
   playwright-1:
     name: playwright (shard 1/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "1/8"
@@ -432,6 +500,13 @@ jobs:
           node -e "const os = require('node:os'); console.log(JSON.stringify({cpus: os.cpus().length, model: os.cpus()[0].model, ramGiB: os.totalmem() / 2 ** 30}))"
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -477,7 +552,7 @@ jobs:
   playwright-2:
     name: playwright (shard 2/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "2/8"
@@ -487,7 +562,7 @@ jobs:
   playwright-3:
     name: playwright (shard 3/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "3/8"
@@ -497,7 +572,7 @@ jobs:
   playwright-4:
     name: playwright (shard 4/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "4/8"
@@ -507,7 +582,7 @@ jobs:
   playwright-5:
     name: playwright (shard 5/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "5/8"
@@ -517,7 +592,7 @@ jobs:
   playwright-6:
     name: playwright (shard 6/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "6/8"
@@ -527,7 +602,7 @@ jobs:
   playwright-7:
     name: playwright (shard 7/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "7/8"
@@ -537,7 +612,7 @@ jobs:
   playwright-8:
     name: playwright (shard 8/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "8/8"
@@ -547,7 +622,7 @@ jobs:
   cli-tests-1:
     name: cli-tests (shard 1/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
@@ -557,6 +632,13 @@ jobs:
       PASEO_CLI_TEST_SHARD_TOTAL: "3"
     steps: &cli_test_steps
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -582,7 +664,7 @@ jobs:
   cli-tests-2:
     name: cli-tests (shard 2/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
@@ -595,7 +677,7 @@ jobs:
   cli-tests-3:
     name: cli-tests (shard 3/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"

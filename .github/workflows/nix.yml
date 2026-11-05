@@ -1,8 +1,8 @@
 name: Nix
 
 on:
-  push:
-    branches: [main]
+  # YOOZ DOWNSTREAM(sync): Nix packages are not part of fork CI or releases.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,6 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -104,6 +111,13 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: cachix/install-nix-action@v31
         with:

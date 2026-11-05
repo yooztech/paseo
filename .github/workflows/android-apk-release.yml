@@ -1,10 +1,7 @@
 name: Android APK Release
 
 on:
-  push:
-    tags:
-      - "v*"
-      - "android-v*"
+  # YOOZ DOWNSTREAM(sync): fork mobile releases ship iOS only through EAS.
   workflow_dispatch:
     inputs:
       tag:
@@ -27,12 +24,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts
+          fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - name: Resolve release tag
         shell: bash
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+
+      - name: Validate Android release source
+        shell: bash
+        run: |
+          if [[ "$RELEASE_CHANNEL" == "fork" && ! "$SOURCE_TAG" =~ ^app-v[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+$ && ! "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+-app$ ]]; then
+            echo "Fork Android builds require an app release tag, got $SOURCE_TAG."
+            exit 1
+          fi
 
       - name: Ensure GitHub release exists
         env:
@@ -41,16 +51,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          if node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG" >/dev/null 2>&1; then
+          if node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG" >/dev/null 2>&1; then
             exit 0
           fi
 
           release_args=(
-            release create "$RELEASE_TAG"
+            release create "$PUBLICATION_TAG"
             --repo "${{ github.repository }}"
-            --title "Paseo $RELEASE_TAG"
+            --title "Paseo $PUBLICATION_TAG"
             --notes ""
-            --draft
+            --verify-tag
           )
 
           if [[ "$IS_PRERELEASE" == "true" ]]; then
@@ -59,7 +69,7 @@ jobs:
 
           if ! gh "${release_args[@]}"; then
             echo "Release creation raced with another workflow; continuing."
-            node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG" >/dev/null
+            node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG" >/dev/null
           fi
 
   publish-android-apk:
@@ -75,10 +85,22 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - name: Resolve release tag
         shell: bash
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
+      - name: Validate Android release source
+        shell: bash
+        run: |
+          if [[ "$RELEASE_CHANNEL" == "fork" && ! "$SOURCE_TAG" =~ ^app-v[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+$ && ! "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-fork\.[0-9]+-app$ ]]; then
+            echo "Fork Android builds require an app release tag, got $SOURCE_TAG."
+            exit 1
+          fi
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -105,7 +127,7 @@ jobs:
           set -euo pipefail
           cd packages/app
 
-          build_json="$(npx eas build --platform android --profile production-apk --non-interactive --wait --json)"
+          build_json="$(PASEO_RELEASE_TAG="$SOURCE_TAG" npx eas build --platform android --profile production-apk --non-interactive --wait --json)"
           echo "$build_json" > "$RUNNER_TEMP/eas-build.json"
 
           build_id="$(jq -r 'if type == "array" then .[0].id // empty else .id // empty end' "$RUNNER_TEMP/eas-build.json")"
@@ -134,7 +156,7 @@ jobs:
             exit 1
           fi
 
-          asset_name="paseo-${RELEASE_TAG}-android.apk"
+          asset_name="paseo-${PUBLICATION_TAG}-android.apk"
           asset_path="$RUNNER_TEMP/$asset_name"
 
           curl --fail --location --output "$asset_path" "$artifact_url"
@@ -146,5 +168,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
+          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG")"
           gh release upload "$release_lookup" "${{ steps.artifact.outputs.asset_path }}" --clobber --repo "${{ github.repository }}"

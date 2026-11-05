@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 14.0.0",
+    "version": ">= 16.32.0",
     "appVersionSource": "local"
   },
   "build": {
@@ -39,7 +39,7 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "6758887924"
+        "ascAppId": "6797142550"
       },
       "android": {
         "track": "production",

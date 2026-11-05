@@ -1,12 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const pkg = require("./package.json");
-const withAndroidAsyncStorageSize = require("./plugins/with-android-async-storage-size");
-const withAndroidOptionalCamera = require("./plugins/with-android-optional-camera");
-const withAndroidProfileable = require("./plugins/with-android-profileable");
-const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
-const withPasteInput = require("./plugins/with-paste-input");
-const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
+const withAndroidAsyncStorageSize = "./plugins/with-android-async-storage-size";
+const withAndroidOptionalCamera = "./plugins/with-android-optional-camera";
+const withAndroidProfileable = "./plugins/with-android-profileable";
+const withFdroidAutolinking = "./plugins/with-fdroid-autolinking";
+const withPasteInput = "./plugins/with-paste-input";
+const withAndroidScroll = "./modules/paseo-scroll/app.plugin";
 const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
@@ -71,6 +71,7 @@ const variants = {
   production: {
     name: "Paseo",
     packageId: "sh.paseo",
+    iosBundleIdentifier: "com.yooztech.paseo",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_PROD",
       fallbackRelativePath: "./.secrets/google-services.prod.json",
@@ -83,6 +84,7 @@ const variants = {
   development: {
     name: "Paseo Debug",
     packageId: "sh.paseo.debug",
+    iosBundleIdentifier: "sh.paseo.debug",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_DEBUG",
       fallbackRelativePath: "./.secrets/google-services.debug.json",
@@ -95,25 +97,32 @@ const variants = {
 };
 
 const variant = variants[appVariant] ?? variants.production;
-const nativeReleaseVersion = getNativeReleaseVersion(pkg.version);
+const nativeReleaseVersion = getNativeReleaseVersion(pkg.version, process.env.PASEO_RELEASE_TAG);
 
-export default {
+module.exports = {
   expo: {
     name: variant.name,
-    slug: "voice-mobile",
+    slug: "paseo",
     version: nativeReleaseVersion.appVersion,
     orientation: "default",
     icon: "./assets/images/icon.png",
     scheme: "paseo",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
+    runtimeVersion: {
+      policy: "appVersion",
+    },
+    updates: {
+      url: "https://u.expo.dev/fbf5a457-e6af-4dce-a36e-6b79b413f734",
+      ...buildProfile.updates,
+    },
     ios: {
       supportsTablet: true,
       infoPlist: {
         NSMicrophoneUsageDescription: "This app needs access to the microphone for voice commands.",
         ITSAppUsesNonExemptEncryption: false,
       },
-      bundleIdentifier: variant.packageId,
+      bundleIdentifier: variant.iosBundleIdentifier,
       ...(variant.googleServiceInfoPlist
         ? { googleServicesFile: variant.googleServiceInfoPlist }
         : {}),
@@ -197,9 +206,9 @@ export default {
       diagnosticBuildTime: process.env.PASEO_DIAGNOSTIC_BUILD_TIME,
       router: {},
       eas: {
-        projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a",
+        projectId: "fbf5a457-e6af-4dce-a36e-6b79b413f734",
       },
     },
-    owner: "getpaseo",
+    owner: "yooztechs-team",
   },
 };

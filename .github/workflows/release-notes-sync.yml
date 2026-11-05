@@ -4,8 +4,10 @@ on:
   push:
     tags:
       - "v*"
+      - "!v*-fork.*"
+      - "desktop-v*-fork.*"
     branches:
-      - main
+      - downstream/patch-build
     paths:
       - "CHANGELOG.md"
   workflow_dispatch:
@@ -34,6 +36,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - name: Sync release body from changelog
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,7 +60,7 @@ jobs:
           fi
 
           create_if_missing="false"
-          if [[ "$EVENT_NAME" = "push" && "$REF" == refs/tags/v* ]]; then
+          if [[ "$EVENT_NAME" = "push" && ( "$REF" == refs/tags/v* || "$REF" == refs/tags/desktop-v*-fork.* ) ]]; then
             create_if_missing="true"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "${INPUT_CREATE_IF_MISSING:-false}" = "true" ]; then
             create_if_missing="true"

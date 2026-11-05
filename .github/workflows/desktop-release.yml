@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+      - "!v*-fork.*"
+      - "desktop-v*-fork.*"
+      - "!v*-fork.*-app"
       - "desktop-v*"
       - "desktop-macos-v*"
       - "desktop-linux-v*"
@@ -24,11 +27,6 @@ on:
           - macos
           - linux
           - windows
-      checkout_ref:
-        description: "Optional branch/ref to checkout while using tag for release metadata."
-        required: false
-        default: ""
-        type: string
       publish:
         description: "Publish built artifacts to GitHub Releases."
         required: false
@@ -37,11 +35,6 @@ on:
         options:
           - "true"
           - "false"
-      rollout_hours:
-        description: "Linear rollout duration in hours. Use 0 for instant rollout."
-        required: false
-        default: "36"
-        type: string
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -49,9 +42,9 @@ concurrency:
 
 env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.checkout_ref || github.ref_name) || github.ref_name }}
+  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
-  ROLLOUT_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rollout_hours || '36' }}
+  ROLLOUT_HOURS: "0"
   DESKTOP_PACKAGE_PATH: "packages/desktop"
 
 jobs:
@@ -63,37 +56,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts
+          fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - name: Resolve release metadata
         shell: bash
-        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" --verify-checkout >> "$GITHUB_ENV"
 
       - name: Create GitHub release
         if: env.IS_SMOKE_TAG != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG" > /dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists, skipping creation"
+          if node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG" > /dev/null 2>&1; then
+            echo "Release $PUBLICATION_TAG already exists, skipping creation"
           else
             prerelease_flag=""
             if [[ "$IS_PRERELEASE" == "true" ]]; then
               prerelease_flag="--prerelease"
             fi
-            gh release create "$RELEASE_TAG" \
+            gh release create "$PUBLICATION_TAG" \
               --repo "${{ github.repository }}" \
-              --title "Paseo $RELEASE_TAG" \
+              --title "Paseo $PUBLICATION_TAG" \
               --notes "" \
+              --verify-tag \
               --draft \
               $prerelease_flag || {
                 echo "Release creation raced with another workflow; continuing."
-                node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG" > /dev/null
+                node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG" > /dev/null
               }
           fi
 
   publish-macos:
+    environment: macos-release
     needs: [create-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v')))) }}
     strategy:
@@ -117,9 +117,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
 
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - name: Resolve release metadata
         shell: bash
-        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" --verify-checkout >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -245,7 +250,7 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="${DESKTOP_PACKAGE_PATH}/release"
-          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
+          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG")"
           node scripts/upload-release-assets.mjs "$release_lookup" "$release_dir" "${{ github.repository }}"
 
       - name: Upload desktop artifacts to workflow
@@ -266,7 +271,7 @@ jobs:
 
   publish-linux:
     needs: [create-release]
-    if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v')))) }}
+    if: ${{ false }}
     permissions:
       contents: write
       packages: read
@@ -278,9 +283,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
 
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - name: Resolve release metadata
         shell: bash
-        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" --verify-checkout >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -346,7 +356,7 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="${DESKTOP_PACKAGE_PATH}/release"
-          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
+          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG")"
           node scripts/upload-release-assets.mjs "$release_lookup" "$release_dir" "${{ github.repository }}"
 
       - name: Upload desktop artifacts to workflow
@@ -379,9 +389,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
 
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - name: Resolve release metadata
         shell: bash
-        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" --verify-checkout >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -444,7 +459,7 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="${DESKTOP_PACKAGE_PATH}/release"
-          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
+          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG")"
           node scripts/upload-release-assets.mjs "$release_lookup" "$release_dir" "${{ github.repository }}"
 
       - name: Upload desktop artifacts to workflow
@@ -463,28 +478,26 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
           retention-days: 1
 
-  finalize-rollout:
+  finalize-release:
     needs: [publish-macos, publish-linux, publish-windows]
     if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    concurrency:
-      group: desktop-rollout-${{ github.event.inputs.tag || github.ref_name }}
-      cancel-in-progress: false
-
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            package.json
-            package-lock.json
-            scripts
+          fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - name: Resolve release tag
         shell: bash
-        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" --verify-checkout >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -534,10 +547,9 @@ jobs:
 
           expected_manifests=(
             "${RELEASE_CHANNEL}-mac.yml"
-            "${RELEASE_CHANNEL}-linux.yml"
             "${RELEASE_CHANNEL}.yml"
           )
-          release_lookup="$(node ../scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG" --cleanup-duplicates)"
+          release_lookup="$(node ../scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$PUBLICATION_TAG" --cleanup-duplicates)"
           existing_assets="$(gh release view "$release_lookup" --repo "${{ github.repository }}" --json assets --jq '.assets[].name')"
           for manifest_name in "${expected_manifests[@]}"; do
             if grep -Fxq "$manifest_name" <<< "$existing_assets"; then
@@ -607,7 +619,7 @@ jobs:
             exit 1
           fi
 
-          publish_args=(release edit "$release_lookup" --tag "$RELEASE_TAG" --draft=false --repo "${{ github.repository }}")
+          publish_args=(release edit "$release_lookup" --tag "$PUBLICATION_TAG" --draft=false --repo "${{ github.repository }}")
           if [[ "$IS_PRERELEASE" == "true" ]]; then
             publish_args+=(--prerelease)
           fi
