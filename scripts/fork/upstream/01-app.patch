@@ -122,37 +122,81 @@ index e2e2cdb34f4863af7442f69fc4a001270d0e4b0d..2b8cf416a3407062bdcd14fd6952204c
 +  await expect(page.getByTestId("changes-header").filter({ visible: true })).toBeVisible();
 +});
 diff --git a/packages/app/e2e/browser/composer-diff-stat.spec.ts b/packages/app/e2e/browser/composer-diff-stat.spec.ts
-index 9b80222432842b2c258390da0aa2356e15a7b74a..e82ecf7979ef0fef85fc05b867bb9f6ca4e2df3b 100644
+index 959567f58b366f2af5d33cd07e04002ead80d51f..7060b3a9779d09005417efd7323d83fc981611f3 100644
 --- a/packages/app/e2e/browser/composer-diff-stat.spec.ts
 +++ b/packages/app/e2e/browser/composer-diff-stat.spec.ts
-@@ -10,6 +10,7 @@ import {
+@@ -10,6 +10,8 @@ import {
    attachFileFromMenu,
  } from "../support/helpers/composer";
  import { ensureExplorerSidebar, openFilesPanel } from "../support/helpers/workspace-tabs";
 +import { getServerId } from "../support/helpers/server-id";
++import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
  
  const APP_SETTINGS_KEY = "@paseo:app-settings";
  
-@@ -18,7 +19,11 @@ function visibleMainPane(page: Page) {
+@@ -17,8 +19,12 @@ function visibleMainPane(page: Page) {
+   return page.getByTestId("workspace-pane-main").filter({ visible: true });
  }
  
++function visibleWorkspace(page: Page) {
++  return page.locator('[data-testid^="workspace-deck-entry-"]').filter({ visible: true });
++}
++
  function composerChangesPill(page: Page) {
--  return page.getByTestId("composer-diff-stat-pill");
-+  return page
-+    .locator('[data-testid^="workspace-deck-entry-"]')
-+    .filter({ visible: true })
-+    .getByTestId("composer-diff-stat-pill")
-+    .filter({ visible: true });
+-  return page.getByRole("button", { name: "Open Changes tab", exact: true });
++  return visibleWorkspace(page).getByRole("button", { name: "Open Changes tab", exact: true });
  }
  
  async function revealComposerChangesInExplorer(page: Page) {
-@@ -506,6 +511,19 @@ test.describe("send review feedback", () => {
-       await test.step("Open two local tabs and a tab in another workspace", async () => {
-         await openReviewDiff(page, other);
-         await addSavedReview(page, "Other workspace review");
-+        await openAgentRoute(page, {
+@@ -171,7 +177,7 @@ test("composer diff stat reveals Changes, then opens the diff in the focused pan
+ 
+ async function tapFirstAddedDiffLine(
+   page: Page,
+-  surface: Locator = page.getByTestId("working-diff-panel"),
++  surface: Locator = visibleWorkspace(page).getByTestId("working-diff-panel"),
+ ) {
+   const body = surface.getByTestId("diff-file-0-body");
+   await expect(body).toBeVisible({ timeout: 30000 });
+@@ -282,7 +288,7 @@ async function sendReviewThroughComposer(page: Page, agentId: string) {
+ async function addSavedReview(
+   page: Page,
+   body: string,
+-  surface: Locator = page.getByTestId("working-diff-panel"),
++  surface: Locator = visibleWorkspace(page).getByTestId("working-diff-panel"),
+ ) {
+   await tapFirstAddedDiffLine(page, surface);
+   await saveReviewComment(page, body);
+@@ -292,7 +298,7 @@ async function addSavedReview(
+ async function expectSavedReview(
+   page: Page,
+   body: string,
+-  surface: Locator = page.getByTestId("working-diff-panel"),
++  surface: Locator = visibleWorkspace(page).getByTestId("working-diff-panel"),
+ ) {
+   await expect(surface.getByText(body, { exact: true })).toBeVisible();
+ }
+@@ -311,7 +317,7 @@ async function sendFeedback(page: Page, count: number) {
+ 
+ async function expectFeedbackSent(page: Page, recipient: string) {
+   await expect(page.getByTestId("app-toast")).toHaveText(`Feedback sent to ${recipient}`);
+-  await expect(page.getByTestId("working-diff-panel")).toBeVisible();
++  await expect(visibleWorkspace(page).getByTestId("working-diff-panel")).toBeVisible();
+ }
+ 
+ test.describe("send review feedback", () => {
+@@ -510,6 +516,26 @@ test.describe("send review feedback", () => {
+         await openReviewDiff(page, workspace);
+         await closeAgentTab(page, historical.id);
+         await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: second.id });
++        await switchWorkspaceViaSidebar({
++          page,
++          serverId: getServerId(),
++          workspaceId: other.workspaceId,
++        });
++        await switchWorkspaceViaSidebar({
++          page,
++          serverId: getServerId(),
 +          workspaceId: workspace.workspaceId,
-+          agentId: workspace.agentId,
 +        });
 +        const activeWorkspace = page.getByTestId(
 +          `workspace-deck-entry-${getServerId()}:${workspace.workspaceId}`,
@@ -161,11 +205,34 @@ index 9b80222432842b2c258390da0aa2356e15a7b74a..e82ecf7979ef0fef85fc05b867bb9f6c
 +          `workspace-deck-entry-${getServerId()}:${other.workspaceId}`,
 +        );
 +        await expect(activeWorkspace).toBeVisible();
++        await expect(retainedWorkspace).toHaveCount(1);
 +        await expect(retainedWorkspace).toBeHidden();
 +        await expect(composerChangesPill(page)).toBeVisible({ timeout: 30000 });
-         await openReviewDiff(page, workspace);
-         await closeAgentTab(page, historical.id);
-         await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: second.id });
+         await selectDiffTab(page);
+         await addSavedReview(page, "Review for second agent");
+       });
+@@ -631,15 +657,17 @@ async function selectAgentTab(page: Page, agentId: string) {
+   await page.getByTestId(`workspace-tab-agent_${agentId}`).click({ position: { x: 12, y: 13 } });
+ }
+ async function selectDiffTab(page: Page) {
+-  await page.getByTestId("workspace-tab-working_diff").click({ position: { x: 12, y: 13 } });
++  await visibleWorkspace(page)
++    .getByTestId("workspace-tab-working_diff")
++    .click({ position: { x: 12, y: 13 } });
+ }
+ async function fillReviewComment(page: Page, body: string) {
+   await page.getByRole("textbox", { name: "Review comment" }).fill(body);
+ }
+ async function expectReviewAbsent(page: Page, body: string) {
+-  await expect(page.getByTestId("working-diff-panel").getByText(body, { exact: true })).toHaveCount(
+-    0,
+-  );
++  await expect(
++    visibleWorkspace(page).getByTestId("working-diff-panel").getByText(body, { exact: true }),
++  ).toHaveCount(0);
+ }
+ async function reloadReview(page: Page) {
+   await page.reload();
 diff --git a/packages/app/e2e/browser/explorer-pane-placement.spec.ts b/packages/app/e2e/browser/explorer-pane-placement.spec.ts
 index 55f96cc0cf13aed37530ae2445fa33db4b128633..e4d0304ea3ab459af0f395695a5edffd89d024e5 100644
 --- a/packages/app/e2e/browser/explorer-pane-placement.spec.ts
@@ -349,7 +416,7 @@ index 909d16f4079631d3db45825f2295c682ee8a2976..339a18e9f4b85d590d488af569bea3b4
 -app_identifier("sh.paseo")
 +app_identifier("com.yooztech.paseo")
 diff --git a/packages/app/fastlane/Fastfile b/packages/app/fastlane/Fastfile
-index 065ca48b7f2449b1c3db30159bb39182c9400aed..77872918ea7280a5f7138a5d7f310fba2eb4bfab 100644
+index f9f11a0e9a19972a441cea7fcca4e4db5b9e2f62..4ef15da2f9bf8a3b8bcb05243a98656ecdb16fdb 100644
 --- a/packages/app/fastlane/Fastfile
 +++ b/packages/app/fastlane/Fastfile
 @@ -3,7 +3,7 @@ require "tmpdir"
@@ -1101,7 +1168,7 @@ index ccbfb8da461ac7b9ab603730e753a419b82d1e62..418eaae3acbb498a06d4cdd2002d275c
        interpolation: {
          escapeValue: false,
 diff --git a/packages/app/src/i18n/resources.test.ts b/packages/app/src/i18n/resources.test.ts
-index 18ba3f041e661767ad26241b0e8f495c04db4cb5..e9d0c11cf25b4639d217ff6283786b8ccf00244f 100644
+index b73b2c4fec8f36ec0620cc6d322f4f1d14475a50..d8d153bf72ff2cb654490f58a52e301cb0be220d 100644
 --- a/packages/app/src/i18n/resources.test.ts
 +++ b/packages/app/src/i18n/resources.test.ts
 @@ -1,6 +1,7 @@
@@ -1661,10 +1728,10 @@ index 16ca639c09e67b04eabe98483d9f1df3bbdf620c..6e031bfab603185f8fde9cc92ce0056c
            {group.accessory ? (
              <>
 diff --git a/packages/app/src/screens/workspace/workspace-screen.tsx b/packages/app/src/screens/workspace/workspace-screen.tsx
-index 0b1cfe07ab68f26345968c816f71bf8d7973f411..ca7f2299e8b8e3295fce2d090f9e33885a2c4b70 100644
+index dd806e1fa1619604e15e12900b6f99c07ea6664b..022a15ca35d6b5ec7a0652b447976ceb84867209 100644
 --- a/packages/app/src/screens/workspace/workspace-screen.tsx
 +++ b/packages/app/src/screens/workspace/workspace-screen.tsx
-@@ -225,6 +225,7 @@ import {
+@@ -224,6 +224,7 @@ import {
  import { RenderProfile } from "@/utils/render-profiler";
  import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
  import { useWorkspacePullRequestDiscovery } from "@/panels/pull-request";
@@ -1672,7 +1739,7 @@ index 0b1cfe07ab68f26345968c816f71bf8d7973f411..ca7f2299e8b8e3295fce2d090f9e3388
  
  const NO_SHEETS: readonly SheetTab[] = [];
  const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
-@@ -1277,6 +1278,14 @@ function WorkspaceScreenContent({
+@@ -1261,6 +1262,14 @@ function WorkspaceScreenContent({
      layoutMode,
      explorerOpen: isExplorerSidebarShowing,
    });
@@ -1687,7 +1754,7 @@ index 0b1cfe07ab68f26345968c816f71bf8d7973f411..ca7f2299e8b8e3295fce2d090f9e3388
  
    const explorerSidebarToggleAccessibilityState = useMemo(
      () => ({ expanded: isExplorerSidebarShowing }),
-@@ -3289,6 +3298,8 @@ function WorkspaceScreenContent({
+@@ -3273,6 +3282,8 @@ function WorkspaceScreenContent({
        showChanges: isGitCheckout,
        showPullRequest: hasPullRequest,
        showBrowser: showCreateBrowserTab,
@@ -1696,7 +1763,7 @@ index 0b1cfe07ab68f26345968c816f71bf8d7973f411..ca7f2299e8b8e3295fce2d090f9e3388
        terminalDisabled: createTerminalDisabled,
        launch: launchWorkspaceTab,
      }),
-@@ -3296,6 +3307,7 @@ function WorkspaceScreenContent({
+@@ -3280,6 +3291,7 @@ function WorkspaceScreenContent({
        createTerminalDisabled,
        hasPullRequest,
        isGitCheckout,
@@ -1849,7 +1916,7 @@ index c105d40a06dd9e43420a81f39ec82d0e058794b6..825ec6614f37b12d5f4df7a6337f6837
      kind: z.literal("file"),
      path: z.string(),
 diff --git a/packages/app/src/stores/workspace-layout-store.test.ts b/packages/app/src/stores/workspace-layout-store.test.ts
-index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a728cfd96d2 100644
+index 8b478b7d276615519ac09d9ade543fa9d4da0dde..5dd90c4061beb511ac5e9ec3769e614bc5479117 100644
 --- a/packages/app/src/stores/workspace-layout-store.test.ts
 +++ b/packages/app/src/stores/workspace-layout-store.test.ts
 @@ -22,6 +22,7 @@ import { setPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
@@ -1860,7 +1927,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
  import { defaultFileState, type FileState } from "@/panels/file/state";
  import {
    canDismissPaneInLayout,
-@@ -261,7 +262,9 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
+@@ -260,7 +261,9 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
      (tab) =>
        tab.target.kind !== "new_tab" &&
        tab.target.kind !== "files" &&
@@ -1871,7 +1938,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
    );
  }
  
-@@ -271,7 +274,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
+@@ -270,7 +273,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
  }
  
  describe("workspace-layout-store helpers", () => {
@@ -1880,7 +1947,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      const layout = createWorkspaceLayoutWithExplorerSidebar();
      const tabs = collectAllTabs(layout.root);
  
-@@ -279,6 +282,8 @@ describe("workspace-layout-store helpers", () => {
+@@ -278,6 +281,8 @@ describe("workspace-layout-store helpers", () => {
        { kind: "new_tab" },
        { kind: "files" },
        { kind: "changes_tree" },
@@ -1889,7 +1956,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      ]);
      expect(findPaneById(layout.root, "explorer")?.focusedTabId).toBe(
        tabs.find((tab) => tab.target.kind === "changes_tree")?.tabId,
-@@ -307,12 +312,59 @@ describe("workspace-layout-store helpers", () => {
+@@ -306,12 +311,59 @@ describe("workspace-layout-store helpers", () => {
        { kind: "new_tab" },
        { kind: "files" },
        { kind: "changes_tree" },
@@ -1949,7 +2016,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
    it("finds panes and tabs across nested groups", () => {
      const root: SplitNode = {
        kind: "group",
-@@ -533,6 +585,8 @@ describe("workspace-layout-store version 2 migration", () => {
+@@ -532,6 +584,8 @@ describe("workspace-layout-store version 2 migration", () => {
      expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
        { kind: "files" },
        { kind: "changes_tree" },
@@ -1958,7 +2025,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      ]);
  
      const sidePane = findPaneById(layout.root, sidePaneId);
-@@ -1348,6 +1402,8 @@ describe("workspace-layout-store actions", () => {
+@@ -1347,6 +1401,8 @@ describe("workspace-layout-store actions", () => {
      expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
        { kind: "files" },
        { kind: "changes_tree" },
@@ -1967,7 +2034,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      ]);
      expect(restored.getState().splitSizesByWorkspace).toEqual({});
      await expect(AsyncStorage.getItem("workspace-layout-state")).resolves.not.toBeNull();
-@@ -1421,6 +1477,8 @@ describe("workspace-layout-store actions", () => {
+@@ -1420,6 +1476,8 @@ describe("workspace-layout-store actions", () => {
        "agent",
        "files",
        "changes_tree",
@@ -1976,7 +2043,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
        "pull_request",
      ]);
      expect(state.explorerSidebarPaneIdByWorkspace[workspaceKey]).toBe(explorerSidebarPaneId);
-@@ -1457,7 +1515,14 @@ describe("workspace-layout-store actions", () => {
+@@ -1456,7 +1514,14 @@ describe("workspace-layout-store actions", () => {
        const persisted = await AsyncStorage.getItem("workspace-layout-state");
        expect(persisted).not.toBeNull();
        const root = JSON.parse(persisted ?? "{}").state.layoutByWorkspace[workspaceKey].root;
@@ -1992,7 +2059,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      });
  
      const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
-@@ -2407,7 +2472,7 @@ describe("workspace-layout-store actions", () => {
+@@ -2406,7 +2471,7 @@ describe("workspace-layout-store actions", () => {
      let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneById(layout.root, paneId)).toMatchObject({
        hidden: true,
@@ -2001,7 +2068,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      });
      expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
      expect(layout.focusedPaneId).toBe("main");
-@@ -2415,7 +2480,7 @@ describe("workspace-layout-store actions", () => {
+@@ -2414,7 +2479,7 @@ describe("workspace-layout-store actions", () => {
      store.showExplorerSidebar(workspaceKey);
      layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneById(layout.root, paneId)).toMatchObject({
@@ -2010,7 +2077,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      });
      expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
      expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
-@@ -2499,7 +2564,7 @@ describe("workspace-layout-store actions", () => {
+@@ -2498,7 +2563,7 @@ describe("workspace-layout-store actions", () => {
      expect(layout.focusedPaneId).toBe("main");
      expect(findPaneById(layout.root, paneId)).toMatchObject({
        focusedTabId: targetTabId,
@@ -2019,7 +2086,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      });
      expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
      expect(expectGroup(layout.root).group.sizes).toEqual(group.sizes);
-@@ -3051,6 +3116,8 @@ describe("workspace-layout-store actions", () => {
+@@ -3050,6 +3115,8 @@ describe("workspace-layout-store actions", () => {
      expect(findPaneById(layout.root, explorerSidebarPaneId)?.tabIds).toEqual([
        "files",
        "changes_tree",
@@ -2028,7 +2095,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      ]);
    });
  
-@@ -3151,7 +3218,7 @@ describe("workspace-layout-store actions", () => {
+@@ -3150,7 +3217,7 @@ describe("workspace-layout-store actions", () => {
      ]);
    });
  
@@ -2037,7 +2104,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      const workspaceKey = createWorkspaceKey();
      const store = workspaceLayoutStore.getState();
  
-@@ -3168,6 +3235,16 @@ describe("workspace-layout-store actions", () => {
+@@ -3167,6 +3234,16 @@ describe("workspace-layout-store actions", () => {
        target: { kind: "commit_diff", sha: "abc123" },
        intent: "reveal",
      });
@@ -2054,7 +2121,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
  
      const partialize = workspaceLayoutStore.persist.getOptions().partialize;
      expect(partialize).toBeTypeOf("function");
-@@ -3194,8 +3271,43 @@ describe("workspace-layout-store actions", () => {
+@@ -3193,8 +3270,43 @@ describe("workspace-layout-store actions", () => {
        },
        { kind: "files" },
        { kind: "changes_tree" },
@@ -2098,7 +2165,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
  
    it("hydrates duplicate Changes and Pull request instances without collapsing their ids or state", () => {
      const tabs = [
-@@ -3635,11 +3747,9 @@ describe("workspace-layout-store actions", () => {
+@@ -3634,11 +3746,9 @@ describe("workspace-layout-store actions", () => {
  
      const initialized = workspaceLayoutStore.getState();
      const layout = initialized.layoutByWorkspace[workspaceKey];
@@ -2113,7 +2180,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      expect(layout.focusedPaneId).toBe("main");
  
      store.reconcileTabs(workspaceKey, snapshot);
-@@ -4235,7 +4345,7 @@ describe("workspace-layout-store actions", () => {
+@@ -4234,7 +4344,7 @@ describe("workspace-layout-store actions", () => {
      let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      const hiddenPane = findPaneById(layout.root, paneId);
      expect(hiddenPane?.hidden).toBeUndefined();
@@ -2122,7 +2189,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      expect(
        collectAllTabs(layout.root).find((tab) => tab.tabId === hiddenPane?.focusedTabId)?.target,
      ).toEqual({ kind: "changes_tree" });
-@@ -4273,7 +4383,12 @@ describe("workspace-layout-store actions", () => {
+@@ -4272,7 +4382,12 @@ describe("workspace-layout-store actions", () => {
  
      const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
@@ -2136,7 +2203,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
    });
  
    it("closing Files keeps Changes on screen without removing the final ordinary pane", () => {
-@@ -4299,7 +4414,7 @@ describe("workspace-layout-store actions", () => {
+@@ -4298,7 +4413,7 @@ describe("workspace-layout-store actions", () => {
      expect(collectAllPanes(layout.root).map((pane) => pane.id)).toEqual(["main", paneId]);
      expect(findPaneById(layout.root, "main")?.tabIds).toHaveLength(1);
      const finalPane = findPaneById(layout.root, paneId);
@@ -2145,7 +2212,7 @@ index 1946586e845a183f8a15e42962d04fb803c86a1c..5662735e9ee6bd7f4bdda32da0a23a72
      expect(
        collectAllTabs(layout.root).find((tab) => tab.tabId === finalPane?.focusedTabId)?.target,
      ).toEqual({ kind: "changes_tree" });
-@@ -4392,7 +4507,7 @@ describe("workspace-layout-store actions", () => {
+@@ -4391,7 +4506,7 @@ describe("workspace-layout-store actions", () => {
      const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneContainingTab(layout.root, changesTabId)?.id).toBe("main");
      const sidePane = findPaneById(layout.root, paneId);
@@ -2170,10 +2237,10 @@ index 43387bc743ed9967ef76f98abcc3ab54c4157abe..95b642105e2113812a3b2f3f49714b3b
    const preservedSide = preserveVersionOneSideTabs({
      layout: strippedLayout,
 diff --git a/packages/app/src/timeline/replica.test.ts b/packages/app/src/timeline/replica.test.ts
-index 47bd36596a57343a3494c071ab77b57f820ff5cf..c5c50ede963b7ab6db05762c780f6f623e3c5021 100644
+index 859ae8e6b7bba566fcdc2bbeeed83b031768a89c..f73956512f15ebb5f3a995e3a586a16dffa7884b 100644
 --- a/packages/app/src/timeline/replica.test.ts
 +++ b/packages/app/src/timeline/replica.test.ts
-@@ -295,6 +295,7 @@ describe("viewed timeline persistence", () => {
+@@ -294,6 +294,7 @@ describe("viewed timeline persistence", () => {
      first.flushStreamAgent(AGENT_ID);
  
      expect(pending).toMatchObject({ range: null, hasOlder: false });
@@ -2181,7 +2248,7 @@ index 47bd36596a57343a3494c071ab77b57f820ff5cf..c5c50ede963b7ab6db05762c780f6f62
      expect(pending?.items.map((entry) => entry.id)).toEqual(["cached", expect.any(String)]);
      durable = pending;
      first.dispose();
-@@ -316,7 +317,6 @@ describe("viewed timeline persistence", () => {
+@@ -315,7 +316,6 @@ describe("viewed timeline persistence", () => {
        });
      reopened.dispose();
    });

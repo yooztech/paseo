@@ -103,8 +103,8 @@ module.exports = {
   expo: {
     name: variant.name,
     slug: "paseo",
-    version: pkg.version,
-    orientation: "portrait",
+    version: nativeReleaseVersion.appVersion,
+    orientation: "default",
     icon: "./assets/images/icon.png",
     scheme: "paseo",
     userInterfaceStyle: "automatic",

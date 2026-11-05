@@ -1,114 +1,8 @@
-diff --git a/packages/cli/tests/helpers/test-daemon.ts b/packages/cli/tests/helpers/test-daemon.ts
-index 5b5513d1a793195f2d14c32dd3b4dcbc4e7ed2d7..cfc9a87fb14acc52dd2de7980bc0b8331c8f6c64 100644
---- a/packages/cli/tests/helpers/test-daemon.ts
-+++ b/packages/cli/tests/helpers/test-daemon.ts
-@@ -18,7 +18,7 @@ import { tmpdir } from "os";
- import { join } from "path";
- import { fileURLToPath } from "url";
- import { ChildProcess, spawn } from "child_process";
--import { getAvailablePort } from "./network.ts";
-+import { readDaemonInstance } from "@getpaseo/server/daemon-control";
- 
- export interface TestDaemonContext {
-   /** Available local port for test daemon (never 6767) */
-@@ -195,17 +195,20 @@ async function probeDaemonReady(
- }
- 
- async function waitForDaemonReady(
--  port: number,
-   paseoHome: string,
-   timeout = 30000,
-   env?: NodeJS.ProcessEnv,
--): Promise<void> {
-+): Promise<number> {
-   const deadline = Date.now() + timeout;
- 
--  async function poll(): Promise<void> {
--    if (await probeDaemonReady(port, paseoHome, env)) return;
-+  async function poll(): Promise<number> {
-+    const instance = await readDaemonInstance(paseoHome);
-+    if (instance?.listen) {
-+      const port = Number(new URL(`http://${instance.listen}`).port);
-+      if (await probeDaemonReady(port, paseoHome, env)) return port;
-+    }
-     if (Date.now() >= deadline) {
--      throw new Error(`Daemon failed to become ready on port ${port} within ${timeout}ms`);
-+      throw new Error(`Daemon failed to publish a ready endpoint within ${timeout}ms`);
-     }
-     await sleep(100);
-     return poll();
-@@ -231,15 +234,14 @@ export async function startTestDaemon(options?: {
-   timeout?: number;
-   env?: NodeJS.ProcessEnv;
- }): Promise<TestDaemonContext> {
--  const port = options?.port ?? (await getAvailablePort());
-+  // Let the listening process allocate its port, without a reserve/release race.
-+  const requestedPort = options?.port ?? 0;
-   const { paseoHome, workDir } =
-     options?.paseoHome && options?.workDir
-       ? { paseoHome: options.paseoHome, workDir: options.workDir }
-       : await createTempDirs();
-   const timeout = options?.timeout ?? 30000;
- 
--  const wsUrl = `ws://${TEST_DAEMON_HOST}:${port}`;
--
-   // Find the CLI entry point - use the source file directly with tsx
-   const cliDir = join(import.meta.dirname, "..", "..");
-   const cliSrcPath = join(cliDir, "src", "index.ts");
-@@ -252,7 +254,7 @@ export async function startTestDaemon(options?: {
-       ),
-       ...TEST_DAEMON_ENV_DEFAULTS,
-       PASEO_HOME: paseoHome,
--      PASEO_LISTEN: `${TEST_DAEMON_HOST}:${port}`,
-+      PASEO_LISTEN: `${TEST_DAEMON_HOST}:${requestedPort}`,
-       // Force no TTY to prevent QR code output
-       CI: "true",
-       ...options?.env,
-@@ -312,20 +314,18 @@ export async function startTestDaemon(options?: {
-     }
-   });
- 
--  const ctx: TestDaemonContext = {
--    port,
--    wsUrl,
--    paseoHome,
--    workDir,
--    process: daemonProcess,
--    isReady: false,
--    stop: cleanup,
--  };
--
-   // Wait for daemon to be ready
-   try {
--    await waitForDaemonReady(port, paseoHome, timeout, options?.env);
--    ctx.isReady = true;
-+    const port = await waitForDaemonReady(paseoHome, timeout, options?.env);
-+    return {
-+      port,
-+      wsUrl: `ws://${TEST_DAEMON_HOST}:${port}`,
-+      paseoHome,
-+      workDir,
-+      process: daemonProcess,
-+      isReady: true,
-+      stop: cleanup,
-+    };
-   } catch (err) {
-     // Daemon failed to start - clean up and rethrow
-     await cleanup();
-@@ -335,8 +335,6 @@ export async function startTestDaemon(options?: {
-       { cause: err },
-     );
-   }
--
--  return ctx;
- }
- 
- /**
 diff --git a/packages/client/src/daemon-client.ts b/packages/client/src/daemon-client.ts
-index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174f828473e 100644
+index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd84b59b1d0 100644
 --- a/packages/client/src/daemon-client.ts
 +++ b/packages/client/src/daemon-client.ts
-@@ -16,6 +16,10 @@ import {
+@@ -20,6 +20,10 @@ import {
    type TimelineSubscription,
  } from "./connection/index.js";
  import { CreationClient } from "./creation/index.js";
@@ -119,7 +13,7 @@ index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174
  import type { CreationSnapshot } from "@getpaseo/protocol/messages";
  import type { z } from "zod";
  import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
-@@ -56,6 +60,9 @@ import type {
+@@ -60,6 +64,9 @@ import type {
    GitSetupOptions,
    CheckoutStatusResponse,
    CheckoutCommit,
@@ -129,7 +23,7 @@ index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174
    ParsedDiffFile,
    CheckoutCommitResponse,
    CheckoutMergeResponse,
-@@ -69,6 +76,7 @@ import type {
+@@ -73,6 +80,7 @@ import type {
    CheckoutForgeSetAutoMergeResponse,
    CheckoutGithubSetAutoMergeResponse,
    CheckoutForgeGetCheckDetailsResponse,
@@ -137,7 +31,7 @@ index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174
    CheckoutGithubGetCheckDetailsResponse,
    CheckoutPrStatusResponse,
    PullRequestTimelineResponse,
-@@ -535,6 +543,7 @@ type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
+@@ -552,6 +560,7 @@ type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
  type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
  type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
  type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
@@ -145,7 +39,7 @@ index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174
  type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
  type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
  type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
-@@ -927,6 +936,18 @@ export interface RenameBranchInput {
+@@ -947,6 +956,18 @@ export interface RenameBranchInput {
    branch: string;
    requestId?: string;
  }
@@ -164,7 +58,7 @@ index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174
  export interface RenameTerminalInput {
    terminalId: string;
    title: string;
-@@ -4499,6 +4520,7 @@ export class DaemonClient {
+@@ -4605,6 +4626,7 @@ export class DaemonClient {
          addAll: input.addAll,
        },
        responseType: "checkout_commit_response",
@@ -172,7 +66,7 @@ index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174
      });
    }
  
-@@ -4588,6 +4610,92 @@ export class DaemonClient {
+@@ -4694,6 +4716,92 @@ export class DaemonClient {
      }
      return { baseRef: payload.baseRef, commits: payload.commits };
    }
@@ -265,7 +159,7 @@ index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174
  
    async getCommitFileDiff(
      cwd: string,
-@@ -4706,6 +4814,25 @@ export class DaemonClient {
+@@ -4812,6 +4920,25 @@ export class DaemonClient {
        },
      );
    }
@@ -321,7 +215,7 @@ index d6b96f2eb4bd05c8437866c54adf8261f7f5d297..00000000000000000000000000000000
 -  });
 -});
 diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
-index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373c9d3d208 100644
+index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f797e413f 100644
 --- a/packages/protocol/src/messages.ts
 +++ b/packages/protocol/src/messages.ts
 @@ -110,6 +110,37 @@ import {
@@ -362,7 +256,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
  import {
    PaseoConfigRawSchema,
    PaseoLifecycleCommandRawSchema,
-@@ -2364,7 +2395,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
+@@ -2384,7 +2415,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
    cwd: z.string(),
    requestId: z.string(),
  });
@@ -370,7 +264,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
  export const CheckoutCommitFileDiffRequestSchema = z.object({
    type: z.literal("checkout.commits.file_diff.request"),
    cwd: z.string(),
-@@ -2407,6 +2437,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
+@@ -2427,6 +2457,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
    CheckoutCheckDetailsRequestPayloadSchema.extend({
      type: z.literal("checkout.github.get_check_details.request"),
    });
@@ -384,7 +278,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
  
  export const CheckoutPrStatusRequestSchema = z.object({
    type: z.literal("checkout_pr_status_request"),
-@@ -3381,9 +3418,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+@@ -3401,9 +3438,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeRequestSchema,
    CheckoutGithubSetAutoMergeRequestSchema,
    CheckoutCommitsListRequestSchema,
@@ -399,7 +293,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
    CheckoutPrStatusRequestSchema,
    PullRequestTimelineRequestSchema,
    CheckoutSwitchBranchRequestSchema,
-@@ -3685,6 +3727,8 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -3707,6 +3749,8 @@ export const ServerInfoStatusPayloadSchema = z
          // gate and githubCheckDetails fallback after 2027-01-17 once the
          // supported daemon floor is >= v0.2.0.
          forgeCheckDetails: z.boolean().optional(),
@@ -408,7 +302,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
          // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
          // and github_search fallback after 2027-01-17 once the supported daemon
          // floor is >= v0.2.0.
-@@ -3791,6 +3835,13 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -3819,6 +3863,13 @@ export const ServerInfoStatusPayloadSchema = z
          commitsList: z.boolean().optional(),
          // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
          commitBaseClassification: z.boolean().optional(),
@@ -422,7 +316,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
          // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
          providerRemoval: z.boolean().optional(),
          // COMPAT(hopliteProvider): added after v0.11.2, remove after 2027-04-15 once host floor includes the bundled adapter.
-@@ -4055,8 +4106,10 @@ const WorkspaceGitRuntimePayloadSchema = z
+@@ -4084,8 +4135,10 @@ const WorkspaceGitRuntimePayloadSchema = z
        })
        .nullable()
        .optional(),
@@ -433,7 +327,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
    })
    .optional()
    .nullable();
-@@ -5330,8 +5383,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
+@@ -5375,8 +5428,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.null(),
    baseRef: z.null(),
    aheadBehind: z.null(),
@@ -444,7 +338,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
    hasRemote: z.boolean(),
    remoteUrl: z.null(),
  });
-@@ -5345,8 +5400,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5390,8 +5445,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string().nullable(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -455,7 +349,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -5360,8 +5417,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5405,8 +5462,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -466,7 +360,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -5671,7 +5730,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
+@@ -5716,7 +5775,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -474,7 +368,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
  export const CheckoutCommitFileDiffResponseSchema = z.object({
    type: z.literal("checkout.commits.file_diff.response"),
    payload: z.object({
-@@ -5788,6 +5846,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
+@@ -5833,6 +5891,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -493,7 +387,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
  
  export const CheckoutPrStatusResponseSchema = z.object({
    type: z.literal("checkout_pr_status_response"),
-@@ -7113,9 +7183,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+@@ -7161,9 +7231,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeResponseSchema,
    CheckoutGithubSetAutoMergeResponseSchema,
    CheckoutCommitsListResponseSchema,
@@ -508,7 +402,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
    CheckoutPrStatusResponseSchema,
    PullRequestTimelineResponseSchema,
    CheckoutSwitchBranchResponseSchema,
-@@ -7480,6 +7555,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
+@@ -7528,6 +7603,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
  export type CheckoutCommit = z.infer<typeof CheckoutCommitSchema>;
  export type CheckoutCommitsListRequest = z.infer<typeof CheckoutCommitsListRequestSchema>;
  export type CheckoutCommitsListResponse = z.infer<typeof CheckoutCommitsListResponseSchema>;
@@ -539,7 +433,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
  export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
  export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
  export type ParsedDiffFile = z.infer<typeof ParsedDiffFileSchema>;
-@@ -7506,6 +7605,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
+@@ -7554,6 +7653,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
  export type CheckoutGithubGetCheckDetailsRequest = z.infer<
    typeof CheckoutGithubGetCheckDetailsRequestSchema
  >;
@@ -549,7 +443,7 @@ index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373
  export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
  export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
  export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
-@@ -7517,6 +7619,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
+@@ -7565,6 +7667,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
  export type CheckoutGithubGetCheckDetailsResponse = z.infer<
    typeof CheckoutGithubGetCheckDetailsResponseSchema
  >;
@@ -786,7 +680,7 @@ index 4046bd6747d977a38e3fbd0a7010f0d733b7e3ef..b75e57c9afa285c2d895b7be49f35fc0
      const daemonHandle = await createTestPaseoDaemon({
        auth: { password: CORRECT_PASSWORD_HASH },
 diff --git a/packages/server/src/server/bootstrap.smoke.test.ts b/packages/server/src/server/bootstrap.smoke.test.ts
-index f6304491ab29c997b2e090f5d874a5491727e79d..f219f669620a6dd3e3b80669617facf65fe053b4 100644
+index 76fa8cc7d19d4d98b4675946cc3b2140b4925f0c..32f255c7f4bd2c094bfeae0652f9c08498c432f8 100644
 --- a/packages/server/src/server/bootstrap.smoke.test.ts
 +++ b/packages/server/src/server/bootstrap.smoke.test.ts
 @@ -1,4 +1,4 @@
@@ -867,10 +761,10 @@ index f6304491ab29c997b2e090f5d874a5491727e79d..f219f669620a6dd3e3b80669617facf6
        );
        await writeFile(
 diff --git a/packages/server/src/server/bootstrap.ts b/packages/server/src/server/bootstrap.ts
-index 83ef2acb8356b66eada2e4b494eecb05a0b35c62..b361e7a1adf09eb39e828753eefe01bb099eb582 100644
+index cf62c525ba7495561616650275167ba982df1805..7f78dd7d514077e4947c604050378bfe046de515 100644
 --- a/packages/server/src/server/bootstrap.ts
 +++ b/packages/server/src/server/bootstrap.ts
-@@ -187,7 +187,7 @@ import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
+@@ -189,7 +189,7 @@ import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
  import { admitSecuredRelaySocket } from "./websocket/secure-relay-ingress.js";
  import type { PushNotificationSender } from "./push/index.js";
  import { getOrCreateServerId } from "./server-id.js";
@@ -879,7 +773,7 @@ index 83ef2acb8356b66eada2e4b494eecb05a0b35c62..b361e7a1adf09eb39e828753eefe01bb
  import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
  import type {
    AgentProfile,
-@@ -624,7 +624,7 @@ export async function createPaseoDaemon(
+@@ -635,7 +635,7 @@ export async function createPaseoDaemon(
    });
    const bootstrapStart = performance.now();
    const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
@@ -1043,17 +937,17 @@ index 80c9409ceff191325aae3a64e65049d74c137cd0..7d3ff6ddefebe3a1c309f50d34a62b2b
    );
    await writeFile(
 diff --git a/packages/server/src/server/daemon-worker.ts b/packages/server/src/server/daemon-worker.ts
-index bc5acbc404958d5a8843241398423253b4987510..75d399d0cee4a4bebff95e4a6a35380eb2ffaa50 100644
+index 8af60cd7bca88c004e2bf530d286d264bfca404a..af12fd34709ce6830869dea8b2a201ea3b18ec94 100644
 --- a/packages/server/src/server/daemon-worker.ts
 +++ b/packages/server/src/server/daemon-worker.ts
 @@ -1,5 +1,6 @@
  import { appendFileSync, mkdirSync } from "node:fs";
  import path from "node:path";
 +import type { Logger } from "pino";
+ import { initializeEnvironmentProxy } from "./network/index.js";
  import { createPaseoDaemon, formatListenTarget } from "./bootstrap.js";
  import { loadConfig } from "./config.js";
- import { resolvePaseoHome } from "./paseo-home.js";
-@@ -26,7 +27,7 @@ type SupervisorLifecycleMessage =
+@@ -29,7 +30,7 @@ type SupervisorLifecycleMessage =
  
  interface BootstrapResult {
    paseoHome: string;
@@ -1062,7 +956,7 @@ index bc5acbc404958d5a8843241398423253b4987510..75d399d0cee4a4bebff95e4a6a35380e
    config: ReturnType<typeof loadConfig>;
  }
  
-@@ -67,11 +68,11 @@ function writeWorkerLifecycleLog(
+@@ -70,11 +71,11 @@ function writeWorkerLifecycleLog(
    }
  }
  
@@ -1076,15 +970,15 @@ index bc5acbc404958d5a8843241398423253b4987510..75d399d0cee4a4bebff95e4a6a35380e
      return { paseoHome, logger, config };
    } catch (err) {
      const message = err instanceof Error ? err.message : String(err);
-@@ -129,7 +130,7 @@ function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
+@@ -132,7 +133,7 @@ function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
  }
  
  async function main() {
 -  const { paseoHome, logger, config } = bootstrapFromEnvironment();
 +  const { paseoHome, logger, config } = await bootstrapFromEnvironment();
-   let daemon: Awaited<ReturnType<typeof createPaseoDaemon>> | null = null;
-   let shutdownPromise: Promise<number> | null = null;
-   let exitHookInstalled = false;
+   for (const variable of initializeEnvironmentProxy()) {
+     writeWorkerLifecycleLog(paseoHome, "Ignoring invalid or unsupported HTTP proxy variable", {
+       variable,
 diff --git a/packages/server/src/server/file-observer/index.test.ts b/packages/server/src/server/file-observer/index.test.ts
 index 95fe416c5480531750d0b4b2d463b0727477c489..ac46456adffe53ff553381e3e186c82f51cef28f 100644
 --- a/packages/server/src/server/file-observer/index.test.ts
@@ -1220,19 +1114,19 @@ index 118ce9bbe9f3b3d4eb1219ab2c4725c4b8591f1d..06683e522e3edfc711a18d5d272e4bd3
  
  export function createChildLogger(parent: pino.Logger, name: string): pino.Logger {
 diff --git a/packages/server/src/server/plugins/lifecycle.e2e.test.ts b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
-index 9c75f63746d574bfd40e658ae3e69bf3eb3215b5..1abd9ac087868f39048e6a5c59b1275a2c1b5319 100644
+index bd1dfa88592095e165ff579316b3781ea096f38e..4514a92c9ece7ca93b253e9d53c710f013524722 100644
 --- a/packages/server/src/server/plugins/lifecycle.e2e.test.ts
 +++ b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
-@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
+@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
  import { expect, onTestFinished, test } from "vitest";
  import { DaemonClient } from "../test-utils/daemon-client.js";
  import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 -import { resolveDaemonVersion } from "../daemon-version.js";
 +import { resolveDaemonVersion } from "../fork/daemon-version.js";
+ import { BuiltinPluginLoader } from "./builtin/index.js";
  
  test("a plugin transforms workspace creation once across receipt replays and observes its committed lifecycle", async () => {
-   const directory = await mkdtemp(path.join(tmpdir(), "paseo-lifecycle-"));
-@@ -286,7 +286,7 @@ async function createProviderPlugin(
+@@ -364,7 +364,7 @@ async function createProviderPlugin(
      path.join(directory, "paseo-plugin.json"),
      JSON.stringify({
        id: "shutdown-provider-plugin",
@@ -1340,10 +1234,10 @@ index ef93a27f9a0d19ce027cd7820a53ba2a92041a07..4a231743cc60aca6a2567a3b56063742
    };
  }
 diff --git a/packages/server/src/server/session.test.ts b/packages/server/src/server/session.test.ts
-index 73213128267cd130499bcd8166530e50e4623728..103ef1e75e839717b1492f1961f6fb7c91ab2517 100644
+index d1408f988011a684fa7bd854d6436caa62c8e3ad..945057c921a4731d3026c9a09022baa79aa01dd8 100644
 --- a/packages/server/src/server/session.test.ts
 +++ b/packages/server/src/server/session.test.ts
-@@ -305,6 +305,7 @@ interface SessionForTestOptions {
+@@ -318,6 +318,7 @@ interface SessionForTestOptions {
      getCheckout?: ReturnType<typeof vi.fn>;
      getCheckoutDiff?: ReturnType<typeof vi.fn>;
      getSnapshot?: ReturnType<typeof vi.fn>;
@@ -1351,7 +1245,7 @@ index 73213128267cd130499bcd8166530e50e4623728..103ef1e75e839717b1492f1961f6fb7c
      suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
      listStashes?: ReturnType<typeof vi.fn>;
      validateBranchRef?: ReturnType<typeof vi.fn>;
-@@ -355,6 +356,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
+@@ -368,6 +369,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
      getCheckout: vi.fn(),
      getCheckoutDiff: vi.fn(),
      getSnapshot: vi.fn(),
@@ -1359,7 +1253,7 @@ index 73213128267cd130499bcd8166530e50e4623728..103ef1e75e839717b1492f1961f6fb7c
      suggestBranchesForCwd: vi.fn(),
      listStashes: vi.fn(),
  
-@@ -3933,6 +3935,8 @@ describe("session checkout status handling", () => {
+@@ -4092,6 +4094,8 @@ describe("session checkout status handling", () => {
          aheadOfOrigin: 2,
          behindOfOrigin: 1,
          upstreamRef: null,
@@ -1369,10 +1263,10 @@ index 73213128267cd130499bcd8166530e50e4623728..103ef1e75e839717b1492f1961f6fb7c
          remoteUrl: "https://github.com/getpaseo/paseo.git",
          isPaseoOwnedWorktree: false,
 diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
-index 3e7898279388b42c2ba6c0bd23ce2be5c3caf7ff..02110854ca632b833e45f9e5ec800e0076b78f1a 100644
+index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..b5f46de38f87a86860c8ff7b7b6b4ae0b5bb55bd 100644
 --- a/packages/server/src/server/session.ts
 +++ b/packages/server/src/server/session.ts
-@@ -2962,6 +2962,15 @@ export class Session {
+@@ -2994,6 +2994,15 @@ export class Session {
          return this.checkoutSession.handleStatusRequest(msg);
        case "checkout.commits.list.request":
          return this.checkoutSession.handleCommitsListRequest(msg);
@@ -1388,7 +1282,7 @@ index 3e7898279388b42c2ba6c0bd23ce2be5c3caf7ff..02110854ca632b833e45f9e5ec800e00
        case "checkout.commits.file_diff.request":
          return this.checkoutSession.handleCommitFileDiffRequest(msg, this.delivery.requestSignal);
        case "validate_branch_request":
-@@ -3004,6 +3013,8 @@ export class Session {
+@@ -3036,6 +3045,8 @@ export class Session {
        case "checkout.forge.get_check_details.request":
        case "checkout.github.get_check_details.request":
          return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);
@@ -1397,7 +1291,7 @@ index 3e7898279388b42c2ba6c0bd23ce2be5c3caf7ff..02110854ca632b833e45f9e5ec800e00
        case "checkout_pr_status_request":
          return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
        case "pull_request_timeline_request":
-@@ -5691,8 +5702,10 @@ export class Session {
+@@ -5735,8 +5746,10 @@ export class Session {
        isPaseoOwnedWorktree: snapshot.git.isPaseoOwnedWorktree,
        isDirty: snapshot.git.isDirty,
        aheadBehind: snapshot.git.aheadBehind,
@@ -1809,10 +1703,10 @@ index 722309213a4d8beb232ad4a9f94957973bb81a4d..c2cd1f5be97ec3892d8c6c0f7a7c9bf1
          persistSession: false,
          logger: deps.logger,
 diff --git a/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts b/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
-index 22e903b5f1a5485e130b4f6f40a4675205e07e38..adb78cabdf180c11b8976f35d0aa4484cfdae9d2 100644
+index 5526166d05d2749beda6e1b84dd7d2eea9bc7857..b5cbb4a153a33c9c1cc6b69dcb0333d16bd41303 100644
 --- a/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
 +++ b/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
-@@ -159,6 +159,12 @@ describe("workspace recovery", () => {
+@@ -160,6 +160,12 @@ describe("workspace recovery", () => {
      });
      const worktreeRoot = realpathSync(created.worktreePath);
      const workspaceCwd = join(worktreeRoot, "packages", "app");
@@ -1825,7 +1719,7 @@ index 22e903b5f1a5485e130b4f6f40a4675205e07e38..adb78cabdf180c11b8976f35d0aa4484
      rmSync(worktreeRoot, { recursive: true, force: true });
      execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
  
-@@ -175,6 +181,7 @@ describe("workspace recovery", () => {
+@@ -176,6 +182,7 @@ describe("workspace recovery", () => {
        cwd: workspaceCwd,
        branch,
        worktreeRoot,
@@ -1833,7 +1727,7 @@ index 22e903b5f1a5485e130b4f6f40a4675205e07e38..adb78cabdf180c11b8976f35d0aa4484
        mainRepoRoot: repoDir,
      });
      const unarchived: string[] = [];
-@@ -196,6 +203,10 @@ describe("workspace recovery", () => {
+@@ -197,6 +204,10 @@ describe("workspace recovery", () => {
      });
      expect(existsSync(worktreeRoot)).toBe(true);
      expect(existsSync(workspaceCwd)).toBe(true);
@@ -1882,7 +1776,7 @@ index c16a079628c406b8340093eed3e91062901f112b..31b17b0b384366d3468cf60ae9d0442c
      "srv-test",
      createStub<AgentManager>(agentManager),
 diff --git a/packages/server/src/server/websocket-server.relay-reconnect.test.ts b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
-index 2d48a93c87739a9d5f97442d8a94ce227c00ee35..3eefbba13feb1aa70adf6111284bb211e7ae69b5 100644
+index c99d5ac9cc95624c58e1a299ff18a412f5e750a5..4fe9006df8c4b1d755490dd811446795207ef09a 100644
 --- a/packages/server/src/server/websocket-server.relay-reconnect.test.ts
 +++ b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
 @@ -37,6 +37,11 @@ const wsModuleMock = vi.hoisted(() => {
@@ -1932,10 +1826,10 @@ index e22e5bf9a72baee67eca03a3f3752d64f0498630..8b7d335e19e04a7ad38c5bb595c555c7
      "srv-test",
      createStub<AgentManager>(agentManager),
 diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
-index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a62898ef7 100644
+index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158ccff8b7ae1 100644
 --- a/packages/server/src/server/websocket-server.ts
 +++ b/packages/server/src/server/websocket-server.ts
-@@ -17,6 +17,7 @@ import { CreationService } from "./creation/index.js";
+@@ -21,6 +21,7 @@ import { CreationService } from "./creation/index.js";
  import { MessageReceipts } from "./message-receipts/index.js";
  import { WebSocket, WebSocketServer } from "ws";
  import type { IncomingMessage, Server as HTTPServer } from "http";
@@ -1943,7 +1837,7 @@ index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a
  import { join } from "path";
  import { getHostName } from "./host-name.js";
  import { randomUUID } from "node:crypto";
-@@ -77,7 +78,7 @@ import {
+@@ -81,7 +82,7 @@ import {
    type PushNotificationSender,
  } from "./push/index.js";
  import type { ScriptHealthState } from "./script-health-monitor.js";
@@ -1952,7 +1846,7 @@ index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a
  import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
  import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
  import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
-@@ -272,6 +273,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
+@@ -276,6 +277,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
      resolveDefaultBranch: async () => "main",
      resolveRepoRemoteUrl: async () => null,
      refresh: async () => {},
@@ -1960,7 +1854,7 @@ index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a
      requestWorkingTreeWatch: async () => ({
        repoRoot: null,
        unsubscribe: () => {},
-@@ -874,7 +876,7 @@ export class VoiceAssistantWebSocketServer {
+@@ -879,7 +881,7 @@ export class VoiceAssistantWebSocketServer {
    ): WebSocketServer {
      const password = auth?.password;
      const wss = new WebSocketServer({
@@ -1969,7 +1863,7 @@ index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a
        path: "/ws",
        maxPayload: MAX_WEBSOCKET_MESSAGE_BYTES,
        handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
-@@ -887,6 +889,16 @@ export class VoiceAssistantWebSocketServer {
+@@ -892,6 +894,16 @@ export class VoiceAssistantWebSocketServer {
          );
        },
      });
@@ -1986,7 +1880,7 @@ index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a
      wss.on("connection", (ws, request) => {
        void this.attachAuthenticatedSocket(ws, request, password);
      });
-@@ -1984,6 +1996,8 @@ export class VoiceAssistantWebSocketServer {
+@@ -2041,6 +2053,8 @@ export class VoiceAssistantWebSocketServer {
          // gate and legacy fallback after 2027-01-17 once the supported daemon
          // floor is >= v0.2.0.
          forgeCheckDetails: true,
@@ -1995,7 +1889,7 @@ index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a
          // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
          // and legacy fallback after 2027-01-17 once the supported daemon floor
          // is >= v0.2.0.
-@@ -2081,6 +2095,12 @@ export class VoiceAssistantWebSocketServer {
+@@ -2143,6 +2157,12 @@ export class VoiceAssistantWebSocketServer {
          commitsList: true,
          // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
          commitBaseClassification: true,
@@ -2085,7 +1979,7 @@ index 1b43026c7d7e002f35eafd1bc045c45de4c6b8df..28073d4a74f5859790a58db52e036330
      service.dispose();
    });
 diff --git a/packages/server/src/server/workspace-git-service.test.ts b/packages/server/src/server/workspace-git-service.test.ts
-index 4b0b13b7a2435c44672c398e792af6d1ace29472..2968ba954e7cecb9b4671cd758ad24492f40875c 100644
+index 4e6acff9cd57145b16dfa42134735c8f5c3a9e80..bd8f8995862b4b8f0381493ff2ef4a24f489977f 100644
 --- a/packages/server/src/server/workspace-git-service.test.ts
 +++ b/packages/server/src/server/workspace-git-service.test.ts
 @@ -273,6 +273,7 @@ function buildDefaultTestServiceDeps() {
@@ -2096,7 +1990,7 @@ index 4b0b13b7a2435c44672c398e792af6d1ace29472..2968ba954e7cecb9b4671cd758ad2449
        upstreamStatus: facts.upstreamStatus,
      })),
      getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
-@@ -966,6 +967,7 @@ describe("WorkspaceGitServiceImpl", () => {
+@@ -972,6 +973,7 @@ describe("WorkspaceGitServiceImpl", () => {
      }));
      const getCheckoutRefDerivedState = vi.fn(async (_cwd, facts, current) => ({
        ...current,
@@ -2104,7 +1998,7 @@ index 4b0b13b7a2435c44672c398e792af6d1ace29472..2968ba954e7cecb9b4671cd758ad2449
        upstreamStatus: facts.upstreamStatus,
      }));
      const resolveAbsoluteGitDir = vi.fn(async () => join(REPO_CWD, ".git"));
-@@ -1011,6 +1013,75 @@ describe("WorkspaceGitServiceImpl", () => {
+@@ -1017,6 +1019,75 @@ describe("WorkspaceGitServiceImpl", () => {
      service.dispose();
    });
  
@@ -2180,7 +2074,7 @@ index 4b0b13b7a2435c44672c398e792af6d1ace29472..2968ba954e7cecb9b4671cd758ad2449
    test("remote ref name drift outside the fetch interval takes the structural fallback", async () => {
      const runGitFetch = vi
        .fn()
-@@ -1165,7 +1236,6 @@ describe("WorkspaceGitServiceImpl", () => {
+@@ -1186,7 +1257,6 @@ describe("WorkspaceGitServiceImpl", () => {
        expect(getCheckoutShortstat).toHaveBeenCalledTimes(2);
      });
      expect(listener.mock.lastCall?.[0].git.diffStat).toEqual({ additions: 2, deletions: 0 });
@@ -3990,10 +3884,10 @@ index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737
      writeFileSync(join(repoDir, "conflict.txt"), "base\n");
      execFileSync("git", ["add", "conflict.txt"], { cwd: repoDir });
 diff --git a/packages/server/src/utils/checkout-git.ts b/packages/server/src/utils/checkout-git.ts
-index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329af1d8bde 100644
+index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f59271713a49842a 100644
 --- a/packages/server/src/utils/checkout-git.ts
 +++ b/packages/server/src/utils/checkout-git.ts
-@@ -72,6 +72,8 @@ export type GitMutationRefreshReason =
+@@ -74,6 +74,8 @@ export type GitMutationRefreshReason =
    | "create-pr"
    | "switch-branch"
    | "rename-branch"
@@ -4002,7 +3896,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
    | "create-branch"
    | "stash-push"
    | "stash-pop"
-@@ -871,6 +873,10 @@ export interface AheadBehind {
+@@ -873,6 +875,10 @@ export interface AheadBehind {
    behind: number;
  }
  
@@ -4013,7 +3907,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
  export interface CheckoutStatus {
    isGit: false;
  }
-@@ -883,12 +889,14 @@ export interface CheckoutStatusGitNonPaseo {
+@@ -885,12 +891,14 @@ export interface CheckoutStatusGitNonPaseo {
    isDirty: boolean;
    baseRef: string | null;
    aheadBehind: AheadBehind | null;
@@ -4028,7 +3922,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
    hasRemote: boolean;
    remoteUrl: string | null;
    isPaseoOwnedWorktree: false;
-@@ -902,9 +910,11 @@ export interface CheckoutStatusGitPaseo {
+@@ -904,9 +912,11 @@ export interface CheckoutStatusGitPaseo {
    isDirty: boolean;
    baseRef: string;
    aheadBehind: AheadBehind | null;
@@ -4040,7 +3934,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
    hasRemote: boolean;
    remoteUrl: string | null;
    isPaseoOwnedWorktree: true;
-@@ -1769,43 +1779,48 @@ async function getAheadBehind(
+@@ -1779,43 +1789,48 @@ async function getAheadBehind(
    baseRef: string,
    currentBranch: string,
    context?: CheckoutContext,
@@ -4105,7 +3999,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
  }
  
  async function getUpstreamStatus(
-@@ -1828,12 +1843,24 @@ async function getUpstreamStatus(
+@@ -1838,12 +1853,24 @@ async function getUpstreamStatus(
      }
      const ahead = Number.parseInt(track.match(/ahead (\d+)/)?.[1] ?? "0", 10);
      const behind = Number.parseInt(track.match(/behind (\d+)/)?.[1] ?? "0", 10);
@@ -4131,7 +4025,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
  interface CheckoutInspectionContext {
    worktreeRoot: string;
    currentBranch: string | null;
-@@ -2328,16 +2355,11 @@ export async function getCheckoutStatus(
+@@ -2338,16 +2365,11 @@ export async function getCheckoutStatus(
      return { isGit: false };
    }
  
@@ -4149,7 +4043,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
      baseRef && currentBranch
        ? await getAheadBehind(cwd, baseRef, currentBranch, factsContext)
        : null;
-@@ -2349,19 +2371,64 @@ export async function getCheckoutStatus(
+@@ -2359,19 +2381,64 @@ export async function getCheckoutStatus(
    const upstreamRef = upstreamStatus?.ref ?? null;
    const aheadOfOrigin = upstreamStatus?.aheadBehind.ahead ?? null;
    const behindOfOrigin = upstreamStatus?.aheadBehind.behind ?? null;
@@ -4216,7 +4110,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
        hasRemote,
        remoteUrl,
        isPaseoOwnedWorktree: true,
-@@ -2377,9 +2444,11 @@ export async function getCheckoutStatus(
+@@ -2387,9 +2454,11 @@ export async function getCheckoutStatus(
      isDirty,
      baseRef: displayBaseRef,
      aheadBehind,
@@ -4228,7 +4122,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
      hasRemote,
      remoteUrl,
      isPaseoOwnedWorktree: false,
-@@ -2726,16 +2795,8 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
+@@ -2736,16 +2805,8 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
  }
  
  /**
@@ -4247,7 +4141,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
   */
  export async function getCommitFileDiff({
    cwd,
-@@ -2768,7 +2829,6 @@ export async function getCommitFileDiff({
+@@ -2778,7 +2839,6 @@ export async function getCommitFileDiff({
        envOverlay: READ_ONLY_GIT_ENV,
      },
    );
@@ -4255,7 +4149,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
    if (stdout.trim().length === 0) {
      return null;
    }
-@@ -2782,19 +2842,18 @@ export async function getCommitFileDiff({
+@@ -2792,19 +2852,18 @@ export async function getCommitFileDiff({
    // Including the rename source lets Git pair it with the destination. Select
    // the requested entry if another change also matches the source path.
    const file = parsedFiles.find((candidate) => candidate.path === path) ?? null;
@@ -4282,7 +4176,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
  export interface CheckoutShortstat {
    additions: number;
    deletions: number;
-@@ -3007,6 +3066,7 @@ export async function getCheckoutShortstat(
+@@ -3017,6 +3076,7 @@ export async function getCheckoutShortstat(
  
  export interface CheckoutRefDerivedState {
    aheadBehind: AheadBehind | null;
@@ -4290,7 +4184,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
    diffStat: CheckoutShortstat | null;
    upstreamStatus: UpstreamStatus | null;
  }
-@@ -3068,7 +3128,7 @@ function getCheckoutRefMovement(
+@@ -3078,7 +3138,7 @@ function getCheckoutRefMovement(
  export async function getCheckoutRefDerivedState(
    cwd: string,
    facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
@@ -4299,7 +4193,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
    movedRemoteRefs: ReadonlySet<string>,
    context?: CheckoutContext,
  ): Promise<CheckoutRefDerivedState> {
-@@ -3082,12 +3142,29 @@ export async function getCheckoutRefDerivedState(
+@@ -3092,12 +3152,29 @@ export async function getCheckoutRefDerivedState(
    } = getCheckoutRefMovement(facts, movedRemoteRefs);
  
    let aheadBehind = current.aheadBehind;
@@ -4333,7 +4227,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
    }
    if (baseMoved || (upstreamMoved && currentBranch === normalizedResolvedBase)) {
      diffStat = await getCheckoutShortstatUncached(
-@@ -3099,21 +3176,39 @@ export async function getCheckoutRefDerivedState(
+@@ -3109,21 +3186,39 @@ export async function getCheckoutRefDerivedState(
  
    let upstreamStatus = facts.upstreamStatus;
    if (upstreamMoved && currentBranch && upstreamRef) {
@@ -4383,7 +4277,7 @@ index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329
  }
  
  export interface CheckoutWorktreeState {
-@@ -3961,6 +4056,14 @@ export async function mergeFromBase(
+@@ -3971,6 +4066,14 @@ export async function mergeFromBase(
    if (bestBaseRef === currentBranch) {
      return;
    }

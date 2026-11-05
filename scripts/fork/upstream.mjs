@@ -36,8 +36,8 @@ no fork npm scripts in it. Build and develop through the generated fork worktree
   node scripts/fork/upstream.mjs run -- npm run dev
 The default worktree and build outputs are in .dev/fork-build. The run command installs
 dependencies with npm ci automatically when needed; --no-install skips installation.
-The versioned Lefthook override runs pre-commit typechecking in that effective
-worktree; upstream staged-file formatting and lint checks remain unchanged.
+The versioned Lefthook override runs pre-commit checks in that effective worktree;
+formatting and linting check the effective counterparts of the staged paths.
 
 Edit upstream files in the generated worktree, then run refresh --directory on that
 worktree to update patches. Edit fork-only files in the canonical checkout instead.

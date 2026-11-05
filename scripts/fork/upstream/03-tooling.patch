@@ -11,7 +11,7 @@ index a85ff1fd8c1f4c20760319a05953b4141cecb4f7..7da7e434a4642212f384b280e5c2c2e9
  # Environment variables
  .env
 diff --git a/package.json b/package.json
-index 938497a362b2f746803e1f8b1eb113c0e522f0a9..9ea1076e9a498d57feea58beda104d115549fa93 100644
+index fab5d3534675f988fc2d37fbccbab768508ed87b..86795edfc2ca79cfb550cd8fde2ae16339808c4d 100644
 --- a/package.json
 +++ b/package.json
 @@ -115,6 +115,9 @@
@@ -25,10 +25,10 @@ index 938497a362b2f746803e1f8b1eb113c0e522f0a9..9ea1076e9a498d57feea58beda104d11
      "release:beta:minor": "npm run release:check && npm run version:all:beta:minor && npm run release:publish:beta && npm run release:push",
      "release:beta:major": "npm run release:check && npm run version:all:beta:major && npm run release:publish:beta && npm run release:push",
 diff --git a/packages/desktop/e2e/browser-tabs.e2e.mjs b/packages/desktop/e2e/browser-tabs.e2e.mjs
-index 78d2fa978e7f5455fee8a05cdc5a7e1f7b744233..9ad67965f1c41cda24f41175ac02c5459c42ac50 100644
+index 28afbab94ff97f957f89371a9fa874d0e64fe64e..8bbc7a9d03e20128bdca0dd40580da38aaf8fd31 100644
 --- a/packages/desktop/e2e/browser-tabs.e2e.mjs
 +++ b/packages/desktop/e2e/browser-tabs.e2e.mjs
-@@ -777,7 +777,9 @@ async function runRegression({
+@@ -778,7 +778,9 @@ async function runRegression({
    await selectDeviceSize(page, "Responsive");
    const responsiveViewport = await readViewport(client, browserId);
  
@@ -39,7 +39,7 @@ index 78d2fa978e7f5455fee8a05cdc5a7e1f7b744233..9ad67965f1c41cda24f41175ac02c545
    await page.waitForFunction(
      ({ id, webContentsId }) => {
        const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
-@@ -791,6 +793,17 @@ async function runRegression({
+@@ -792,6 +794,17 @@ async function runRegression({
      { id: browserId, webContentsId: firstGuest.webContentsId },
      { timeout: timeoutMs },
    );
@@ -57,7 +57,7 @@ index 78d2fa978e7f5455fee8a05cdc5a7e1f7b744233..9ad67965f1c41cda24f41175ac02c545
    try {
      await callBrowserTool(client, "browser_screenshot", { browserId });
    } catch (error) {
-@@ -1080,6 +1093,7 @@ async function runRegression({
+@@ -1081,6 +1094,7 @@ async function runRegression({
      viewport: "passed",
      guestFocus: "passed",
      overlayPlane: "passed",
@@ -65,9 +65,9 @@ index 78d2fa978e7f5455fee8a05cdc5a7e1f7b744233..9ad67965f1c41cda24f41175ac02c545
      inactiveCapture: "passed",
      hiddenWindowCapture: "passed",
      list: "passed",
-@@ -1267,7 +1281,7 @@ async function main() {
-     const pluginLinks = await checkPluginLinks();
-     writeJson(path.join(artifactDir, "result.json"), { ...report, settingsMemory, pluginLinks });
+@@ -1274,7 +1288,7 @@ async function main() {
+       adaptiveTheme,
+     });
      console.log(
 -      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,
 +      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, background tab activation, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,
@@ -377,20 +377,6 @@ index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3
    }
  
    downloadUpdate(targetVersion: string): Promise<unknown> {
-diff --git a/packages/relay/src/e2e.test.ts b/packages/relay/src/e2e.test.ts
-index cbc19f57b65236027559712b92975efe85dd1ecb..9c9a8957e1b877d880b43b382647767cba7a285e 100644
---- a/packages/relay/src/e2e.test.ts
-+++ b/packages/relay/src/e2e.test.ts
-@@ -56,6 +56,9 @@ function spawnRelayDevServer(port: number): ChildProcess {
-       wranglerCliPath,
-       "dev",
-       "--local",
-+      // Local execution still inherits production vars; exercise the local Durable Object.
-+      "--var",
-+      "PASEO_RELAY_UPSTREAM:",
-       "--ip",
-       "127.0.0.1",
-       "--port",
 diff --git a/packages/website/e2e/plugins.spec.ts b/packages/website/e2e/plugins.spec.ts
 index 22baf9e7f1086007bbb5d42401643cbea88728f9..6477d1cb359fc8912e8049e3739e2f85fa18f981 100644
 --- a/packages/website/e2e/plugins.spec.ts
@@ -449,7 +435,7 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
-index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808b04d7a65 100644
+index 381f82654081217535440ea28f563c3e0fb9bd65..b5db82db83115d31514bb79e09aa4cd728b8e8a0 100644
 --- a/scripts/ci-workflow.test.mjs
 +++ b/scripts/ci-workflow.test.mjs
 @@ -11,6 +11,12 @@ const repoRoot = new URL("../", import.meta.url);
@@ -465,7 +451,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
  const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
  const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
  const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
-@@ -101,6 +107,16 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+@@ -104,6 +110,16 @@ test("gated checks are statically named jobs with real job-level gating", () =>
      const job = jobs.get(jobId)?.join("\n");
      assert.ok(job, `missing static job ${jobId}`);
      assert.match(job, new RegExp(`^    name: ${expected.name.replace(/[()]/g, "\\$&")}$`, "m"));
@@ -482,7 +468,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
      assert.match(job, /needs\.changes\.outputs\.full != 'false'/);
      for (const contract of expected.contracts ?? [expected.contract]) {
        assert.match(job, new RegExp(`needs\\.changes\\.outputs\\.${contract} != 'false'`));
-@@ -108,6 +124,17 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+@@ -111,6 +127,17 @@ test("gated checks are statically named jobs with real job-level gating", () =>
    }
  });
  
@@ -500,7 +486,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
  test("pull-request checks run for every base branch, including stacked PRs", () => {
    for (const workflowPath of [
      ciWorkflowPath,
-@@ -132,7 +159,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
+@@ -135,7 +162,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
      assert.doesNotMatch(
        source,
        /\$\{\{\s*always\(\)/,
@@ -509,7 +495,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
      );
    }
  });
-@@ -317,12 +344,14 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
+@@ -320,12 +347,14 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
    ]);
  });
  
@@ -528,7 +514,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
      assert.doesNotMatch(source, /dorny\/paths-filter/);
    }
  });
-@@ -339,32 +368,40 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
+@@ -342,32 +371,40 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
    }
  });
  
@@ -592,7 +578,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
  });
  
  test("eight Playwright shards share two-worker coverage", () => {
-@@ -421,12 +458,13 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -424,12 +461,13 @@ test("quality preserves commands and routes each domain independently after fail
      Object.values(commands).flat(),
    );
    const domains = Object.keys(commands);
@@ -611,7 +597,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
        steps: { install: { outcome: installed ? "success" : "failure" } },
        cancelled: () => cancelled,
        success: () => false,
-@@ -434,6 +472,7 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -437,6 +475,7 @@ test("quality preserves commands and routes each domain independently after fail
    }
    const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
    const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
@@ -619,7 +605,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
    assert.equal(accepts(jobCondition, disabled), false);
    for (const selected of domains) {
      const outputs = { ...disabled, [selected]: "true" };
-@@ -443,12 +482,24 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -446,12 +485,24 @@ test("quality preserves commands and routes each domain independently after fail
      }
    }
    for (const [, expression] of checks) {
@@ -645,7 +631,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
  });
  
  test("Windows units and integration run independently with complete routed coverage", () => {
-@@ -506,10 +557,9 @@ test("Windows units and integration run independently with complete routed cover
+@@ -509,10 +560,9 @@ test("Windows units and integration run independently with complete routed cover
    function condition(job) {
      return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
    }
@@ -658,7 +644,7 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
      });
    }
    const unitCondition = condition(windows);
-@@ -537,8 +587,10 @@ test("Windows units and integration run independently with complete routed cover
+@@ -540,8 +590,10 @@ test("Windows units and integration run independently with complete routed cover
      assert.equal(selected(unitStep, outputs), integrations);
      assert.equal(selected(pluginStep, outputs), integrations);
      assert.equal(selected(hubStep, outputs), hub);

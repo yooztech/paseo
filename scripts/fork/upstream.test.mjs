@@ -1034,7 +1034,7 @@ test("prepare rejects ancestor, destination collision and stale committed source
 test("pre-commit typecheck selects the effective worktree and clears Git hook environment", (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "fork-hook-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const hook = fileURLToPath(new URL("./hook-typecheck.mjs", import.meta.url));
+  const hook = fileURLToPath(new URL("./hook-check.mjs", import.meta.url));
   mkdirSync(path.join(dir, "scripts/fork"), { recursive: true });
   const record = `require('node:fs').writeFileSync('result.json', JSON.stringify({ args: process.argv.slice(2), git: process.env.GIT_INDEX_FILE }))`;
   writeFileSync(
@@ -1042,7 +1042,7 @@ test("pre-commit typecheck selects the effective worktree and clears Git hook en
     record.replace("require('node:fs')", "(await import('node:fs'))"),
   );
   const run = () =>
-    spawnSync(process.execPath, [hook], {
+    spawnSync(process.execPath, [hook, "typecheck"], {
       cwd: dir,
       encoding: "utf8",
       env: { ...process.env, GIT_INDEX_FILE: "/invalid/hook-index" },
@@ -1050,7 +1050,7 @@ test("pre-commit typecheck selects the effective worktree and clears Git hook en
   let result = run();
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(readFileSync(path.join(dir, "result.json"))), {
-    args: ["run", "--", "npm", "run", "typecheck"],
+    args: ["run", "--", "node", "scripts/fork/hook-check.mjs", "typecheck"],
   });
 
   mkdirSync(path.join(dir, ".dev"));

@@ -1,4 +1,9 @@
 pre-commit:
+  parallel: false
   jobs:
+    - name: format
+      run: node scripts/fork/hook-check.mjs format {staged_files}
+    - name: lint
+      run: node scripts/fork/hook-check.mjs lint {staged_files}
     - name: typecheck
-      run: node scripts/fork/hook-typecheck.mjs
+      run: node scripts/fork/hook-check.mjs typecheck
