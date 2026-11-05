@@ -115,6 +115,27 @@ index ca34fe8c16c6fb0afb47ee310bca7c28dcacf695..09ec8c185ca23f6f685fdd753fa87bc6
    test("keeps Electron in the runner process group", () => {
      const options = createElectronSpawnOptions({
        env: { PATH: "/usr/bin" },
+diff --git a/packages/desktop/scripts/dev-runner.mjs b/packages/desktop/scripts/dev-runner.mjs
+index 008b77d15f39f62b6b702429531fb41768d9af2c..657a7076a227551144ee9be83af2c813624de2d7 100644
+--- a/packages/desktop/scripts/dev-runner.mjs
++++ b/packages/desktop/scripts/dev-runner.mjs
+@@ -31,10 +31,12 @@ const colorEnv = {
+   FORCE_COLOR: process.env.FORCE_COLOR || "1",
+   npm_config_color: process.env.npm_config_color || "always",
+ };
+-const devBuildLabel = execFileSync("git", ["branch", "--show-current"], {
+-  cwd: rootDir,
+-  encoding: "utf8",
+-}).trim();
++const devBuildLabel =
++  process.env.PASEO_BRANCH_NAME ??
++  execFileSync("git", ["branch", "--show-current"], {
++    cwd: rootDir,
++    encoding: "utf8",
++  }).trim();
+ 
+ const children = new Map();
+ let stopping = false;
 diff --git a/packages/desktop/src/features/app-update-service.test.ts b/packages/desktop/src/features/app-update-service.test.ts
 index 5f55ff609916107d30beb0fa0df5dfa81188da34..8bffda0e2843fcb976327440b0b70ab5860035f8 100644
 --- a/packages/desktop/src/features/app-update-service.test.ts
@@ -427,43 +448,6 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          onClick={handleCopy}
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
-diff --git a/paseo.json b/paseo.json
-index 4e7b0e81167c9a27e01597c2a4d8d79ad6823c32..f5add06be40f5f1f4d9d9e7acf55787f4099d151 100644
---- a/paseo.json
-+++ b/paseo.json
-@@ -1,4 +1,9 @@
- {
-+  "metadataGeneration": {
-+    "commitMessage": {
-+      "instructions": "必须使用 Conventional Commits 格式：<type>[可选的 (scope)][破坏性变更时的 !]: <简体中文描述>，不得省略类型前缀。根据实际改动选择英文 type：feat、fix、docs、style、refactor、perf、test、build、ci、chore 或 revert；仅在范围明确时添加 scope，并保留其原文。描述简洁、准确，使用祈使语气，不加句末句号。代码标识符、文件名和专有名词保留原文。必要时添加简体中文正文解释原因与影响；若存在破坏性变更，添加 BREAKING CHANGE: 页脚说明不兼容之处及迁移方式，不得虚构。"
-+    }
-+  },
-   "worktree": {
-     "setup": [
-       "npm ci",
-@@ -27,6 +32,22 @@
-     },
-     "typecheck": {
-       "command": "npm run typecheck"
-+    },
-+    "release-fork-daemon": {
-+      "type": "script",
-+      "command": "node ./scripts/release-fork-daemon.mjs; status=$?; exit $status"
-+    },
-+    "release-fork-desktop": {
-+      "type": "script",
-+      "command": "node ./scripts/release-fork-desktop.mjs; status=$?; exit $status"
-+    },
-+    "release-fork-app": {
-+      "type": "script",
-+      "command": "node ./scripts/release-fork-app.mjs; status=$?; exit $status"
-+    },
-+    "release-fork-app-eas": {
-+      "type": "script",
-+      "command": "node ./scripts/trigger-fork-app-eas.mjs; status=$?; exit $status"
-     }
-   }
- }
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
 index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808b04d7a65 100644
 --- a/scripts/ci-workflow.test.mjs
@@ -687,6 +671,19 @@ index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808
    }
  });
  
+diff --git a/scripts/dev-app.sh b/scripts/dev-app.sh
+index a594f344fd310c46383d187537e7fbfdd62ec249..9efa05219b223233c1fa3a4dc5624193e7b37693 100755
+--- a/scripts/dev-app.sh
++++ b/scripts/dev-app.sh
+@@ -12,7 +12,7 @@ configure_dev_paseo_home
+ 
+ EXPO_PORT="${EXPO_PORT:-8081}"
+ DAEMON_ENDPOINT="$(resolve_dev_daemon_endpoint)"
+-DEV_BUILD_LABEL="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || true)"
++DEV_BUILD_LABEL="${PASEO_BRANCH_NAME-$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || true)}"
+ 
+ echo "══════════════════════════════════════════════════════"
+ echo "  Paseo App Dev"
 diff --git a/scripts/emit-release-env.mjs b/scripts/emit-release-env.mjs
 index 50327cade68faa09b4ef6fa4caf0fe01de53bc69..4da6e3f60e1c2fc68ff48d73d272c3910f951490 100644
 --- a/scripts/emit-release-env.mjs
@@ -876,6 +873,91 @@ index 6a435f6dd99adc8c63ffe9593c3a229a9220df3c..abdb6cecf17dde68b7816582ccb3a1fc
 +test("rejects unsupported prerelease versions", () => {
 +  assert.throws(() => parseReleaseVersion("0.1.60-canary.1"), /Expected prerelease versions/);
  });
+diff --git a/scripts/seed-ios-native-cache.mjs b/scripts/seed-ios-native-cache.mjs
+index cbd159c8cd25765b08fb29e940ac9bd8e42f48d3..ade50ecafa1d73e8be591ca27f7dcfcaeb67a534 100644
+--- a/scripts/seed-ios-native-cache.mjs
++++ b/scripts/seed-ios-native-cache.mjs
+@@ -5,27 +5,37 @@ import { basename, join } from "node:path";
+ 
+ const sourceRoot = process.env.PASEO_SOURCE_CHECKOUT_PATH;
+ const targetRoot = process.env.PASEO_WORKTREE_PATH || process.cwd();
++const runtimeRoot = process.env.PASEO_FORK_RUNTIME_ROOT || targetRoot;
++const sourceRuntimeRoot =
++  process.env.PASEO_FORK_RUNTIME_ROOT && sourceRoot && join(sourceRoot, ".dev/fork-build");
+ 
+ if (process.env.PASEO_SKIP_IOS_NATIVE_CACHE === "1") {
+   process.exit(0);
+ }
+ 
+-if (!sourceRoot || sourceRoot === targetRoot) {
++if (!sourceRoot || (sourceRoot === targetRoot && runtimeRoot === targetRoot)) {
+   process.exit(0);
+ }
+ 
+ seedDirectory({
+   label: "iOS project",
+-  source: join(sourceRoot, "packages/app/ios"),
+-  target: join(targetRoot, "packages/app/ios"),
++  source: existingSource("packages/app/ios"),
++  target: join(runtimeRoot, "packages/app/ios"),
+ });
+ 
+ seedDirectory({
+   label: "iOS derived data",
+-  source: newestDirectory(join(sourceRoot, ".dev/ios-build")),
+-  target: join(targetRoot, ".dev/ios-build", simulatorSlug()),
++  source:
++    (sourceRuntimeRoot && newestDirectory(join(sourceRuntimeRoot, ".dev/ios-build"))) ||
++    newestDirectory(join(sourceRoot, ".dev/ios-build")),
++  target: join(runtimeRoot, ".dev/ios-build", simulatorSlug()),
+ });
+ 
++function existingSource(relativePath) {
++  const runtime = sourceRuntimeRoot && join(sourceRuntimeRoot, relativePath);
++  return runtime && existsSync(runtime) ? runtime : join(sourceRoot, relativePath);
++}
++
+ function seedDirectory({ label, source, target }) {
+   if (!source || !existsSync(source) || existsSync(target)) {
+     return;
+diff --git a/scripts/seed-worktree-dev-state.mjs b/scripts/seed-worktree-dev-state.mjs
+index d645789596f967754f02b89f72898e902bf60cf6..ccda6a43de68d3882f5179d5eb6eacf5727484c2 100644
+--- a/scripts/seed-worktree-dev-state.mjs
++++ b/scripts/seed-worktree-dev-state.mjs
+@@ -9,8 +9,9 @@ import { dirname, join } from "node:path";
+ 
+ const sourceRoot = process.env.PASEO_SOURCE_CHECKOUT_PATH;
+ const targetRoot = process.env.PASEO_WORKTREE_PATH || process.cwd();
++const runtimeRoot = process.env.PASEO_FORK_RUNTIME_ROOT || targetRoot;
+ 
+-if (!sourceRoot || sourceRoot === targetRoot) {
++if (!sourceRoot || (sourceRoot === targetRoot && runtimeRoot === targetRoot)) {
+   process.exit(0);
+ }
+ 
+@@ -64,14 +65,20 @@ function copyJsonTree(source, target) {
+ }
+ 
+ function copyServerEnv() {
+-  const source = join(sourceRoot, "packages/server/.env");
+-  const target = join(targetRoot, "packages/server/.env");
++  const runtimeSource =
++    process.env.PASEO_FORK_RUNTIME_ROOT && join(sourceRoot, ".dev/fork-build/packages/server/.env");
++  const source =
++    runtimeSource && existsSync(runtimeSource)
++      ? runtimeSource
++      : join(sourceRoot, "packages/server/.env");
++  const target = join(runtimeRoot, "packages/server/.env");
+ 
+   // Untracked local config. A checkout without one is normal, so this is not a setup failure.
+   if (!existsSync(source)) {
+     console.log(`  Env:     skipped (${source} missing)`);
+     return;
+   }
++  if (source === target) return;
+ 
+   mkdirSync(dirname(target), { recursive: true });
+   cpSync(source, target);
 diff --git a/scripts/sync-release-notes-from-changelog.mjs b/scripts/sync-release-notes-from-changelog.mjs
 index 95c9baec4c28bc2a111e38fa705fd897bf824060..4e98392088a2d2b3488aa96c4984f4f508a768c3 100644
 --- a/scripts/sync-release-notes-from-changelog.mjs

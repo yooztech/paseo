@@ -27,8 +27,9 @@ const HELP = `Usage:
 
 Upstream files remain pristine except AGENTS.md, non-Markdown CI definitions in
 .github/workflows, .github/actions, packages/app/.eas/workflows, and .github/ci-paths.yml,
-and the three EAS bootstrap files packages/app/app.config.js, packages/app/eas.json,
-and packages/app/native-release-version.js. The root package is the original
+the root paseo.json configuration, and the three EAS bootstrap files
+packages/app/app.config.js, packages/app/eas.json, and packages/app/native-release-version.js.
+The root package is the original
 upstream package: plain npm commands there run official code, not the fork; there are
 no fork npm scripts in it. Build and develop through the generated fork worktree:
   node scripts/fork/upstream.mjs run -- npm run build:server
@@ -123,6 +124,7 @@ function isOverride(name) {
   return (
     isCI(name) ||
     [
+      "paseo.json",
       "packages/app/app.config.js",
       "packages/app/eas.json",
       "packages/app/native-release-version.js",
@@ -585,7 +587,7 @@ function refresh(options, base, snapshot, patches, index) {
     changed = entries(edited);
   const ciChanges = differences(state.tree, edited).filter(isOverride);
   if (ciChanges.length)
-    fail(`Edit CI/bootstrap files in the canonical checkout first:\n${ciChanges.join("\n")}`);
+    fail(`Edit direct override files in the canonical checkout first:\n${ciChanges.join("\n")}`);
   const forkChanges = [...new Set([...current.keys(), ...changed.keys()])].filter(
     (name) =>
       !baseEntries.has(name) && !isStore(name) && !same(current.get(name), changed.get(name)),
@@ -628,6 +630,11 @@ async function runWorkspace(command, options, rest, resultTree, base, index) {
   const cwd = path.resolve(directory, options.cwd || ".");
   if (cwd !== directory && !cwd.startsWith(`${directory}${path.sep}`))
     fail("--cwd must remain within the worktree");
+  const childEnv = {
+    ...process.env,
+    PASEO_FORK_RUNTIME_ROOT: directory,
+    PASEO_BRANCH_NAME: process.env.PASEO_BRANCH_NAME ?? git("branch", "--show-current"),
+  };
   let activeChild, interrupted;
   const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
   const handlers = new Map(
@@ -653,6 +660,7 @@ async function runWorkspace(command, options, rest, resultTree, base, index) {
     new Promise((resolveChild, rejectChild) => {
       const child = spawn(file, args, {
         cwd: workingDirectory,
+        env: childEnv,
         stdio: "inherit",
         detached: process.platform !== "win32",
         shell: process.platform === "win32",
@@ -699,11 +707,24 @@ async function runWorkspace(command, options, rest, resultTree, base, index) {
   }
 }
 
+function resolveRunSource(command, options) {
+  if (command === "run" && existsSync(marker(root))) {
+    const state = readState(root);
+    if (typeof state.sourceRoot !== "string" || !path.isAbsolute(state.sourceRoot))
+      fail(`Invalid managed fork worktree source: ${root}`);
+    if (state.sourceRoot !== root) {
+      options.directory ||= root;
+      root = realpathSync(state.sourceRoot);
+    }
+  }
+}
+
 async function main() {
   const { command, options, rest } = parse(process.argv.slice(2));
   root = realpathSync(
     execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim(),
   );
+  resolveRunSource(command, options);
   temporary = mkdtempSync(path.join(tmpdir(), "paseo-upstream-"));
   const index = path.join(temporary, "index"),
     snapshot = sourceTree(index);

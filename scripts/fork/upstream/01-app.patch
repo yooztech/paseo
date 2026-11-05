@@ -121,6 +121,51 @@ index e2e2cdb34f4863af7442f69fc4a001270d0e4b0d..2b8cf416a3407062bdcd14fd6952204c
 +  );
 +  await expect(page.getByTestId("changes-header").filter({ visible: true })).toBeVisible();
 +});
+diff --git a/packages/app/e2e/browser/composer-diff-stat.spec.ts b/packages/app/e2e/browser/composer-diff-stat.spec.ts
+index 9b80222432842b2c258390da0aa2356e15a7b74a..e82ecf7979ef0fef85fc05b867bb9f6ca4e2df3b 100644
+--- a/packages/app/e2e/browser/composer-diff-stat.spec.ts
++++ b/packages/app/e2e/browser/composer-diff-stat.spec.ts
+@@ -10,6 +10,7 @@ import {
+   attachFileFromMenu,
+ } from "../support/helpers/composer";
+ import { ensureExplorerSidebar, openFilesPanel } from "../support/helpers/workspace-tabs";
++import { getServerId } from "../support/helpers/server-id";
+ 
+ const APP_SETTINGS_KEY = "@paseo:app-settings";
+ 
+@@ -18,7 +19,11 @@ function visibleMainPane(page: Page) {
+ }
+ 
+ function composerChangesPill(page: Page) {
+-  return page.getByTestId("composer-diff-stat-pill");
++  return page
++    .locator('[data-testid^="workspace-deck-entry-"]')
++    .filter({ visible: true })
++    .getByTestId("composer-diff-stat-pill")
++    .filter({ visible: true });
+ }
+ 
+ async function revealComposerChangesInExplorer(page: Page) {
+@@ -506,6 +511,19 @@ test.describe("send review feedback", () => {
+       await test.step("Open two local tabs and a tab in another workspace", async () => {
+         await openReviewDiff(page, other);
+         await addSavedReview(page, "Other workspace review");
++        await openAgentRoute(page, {
++          workspaceId: workspace.workspaceId,
++          agentId: workspace.agentId,
++        });
++        const activeWorkspace = page.getByTestId(
++          `workspace-deck-entry-${getServerId()}:${workspace.workspaceId}`,
++        );
++        const retainedWorkspace = page.getByTestId(
++          `workspace-deck-entry-${getServerId()}:${other.workspaceId}`,
++        );
++        await expect(activeWorkspace).toBeVisible();
++        await expect(retainedWorkspace).toBeHidden();
++        await expect(composerChangesPill(page)).toBeVisible({ timeout: 30000 });
+         await openReviewDiff(page, workspace);
+         await closeAgentTab(page, historical.id);
+         await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: second.id });
 diff --git a/packages/app/e2e/browser/explorer-pane-placement.spec.ts b/packages/app/e2e/browser/explorer-pane-placement.spec.ts
 index 55f96cc0cf13aed37530ae2445fa33db4b128633..e4d0304ea3ab459af0f395695a5edffd89d024e5 100644
 --- a/packages/app/e2e/browser/explorer-pane-placement.spec.ts
@@ -763,7 +808,7 @@ index e6caa3cc308719e56f9db1681fb6ae7a436a3cb3..a253d2db4633b5c970128f29e73d0c81
      queryClient.setQueryData(prPaneTimelineQueryKey({ serverId, cwd, prNumber: 12 }), {
        items: [],
      });
-@@ -142,9 +205,24 @@ describe("checkout query keys", () => {
+@@ -142,10 +205,25 @@ describe("checkout query keys", () => {
      expect(queryClient.getQueryState(checkoutCommitsQueryKey(serverId, cwd))?.isInvalidated).toBe(
        true,
      );
@@ -777,7 +822,7 @@ index e6caa3cc308719e56f9db1681fb6ae7a436a3cb3..a253d2db4633b5c970128f29e73d0c81
      expect(
        queryClient.getQueryState(checkoutCommitsQueryKey(otherServerId, cwd))?.isInvalidated,
      ).toBe(false);
-+    expect(
+     expect(
 +      queryClient.getQueryState(repositoryGraphQueryKey(otherServerId, cwd))?.isInvalidated,
 +    ).toBe(false);
 +    expect(
@@ -785,9 +830,10 @@ index e6caa3cc308719e56f9db1681fb6ae7a436a3cb3..a253d2db4633b5c970128f29e73d0c81
 +        branchCiPipelineQueryKey({ serverId: otherServerId, cwd, branch: "feature" }),
 +      )?.isInvalidated,
 +    ).toBe(false);
-     expect(
++    expect(
        queryClient.getQueryState(prPaneTimelineQueryKey({ serverId, cwd, prNumber: 12 }))
          ?.isInvalidated,
+     ).toBe(true);
 diff --git a/packages/app/src/git/query-keys.ts b/packages/app/src/git/query-keys.ts
 index 08a0a1cb4a21c48f5a1b7612dc51a357f2c4d5fc..3adc338471cf2844124497f70da08b4c30853d02 100644
 --- a/packages/app/src/git/query-keys.ts
