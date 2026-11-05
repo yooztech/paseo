@@ -31,6 +31,8 @@ and exact official documentation snapshots. Runtime source is generated from the
 pinned upstream tree and patches. npm commands route through the generated tree.
 The default worktree and build outputs are in .dev/fork-build. The run command installs
 dependencies with npm ci automatically when needed; --no-install skips installation.
+Direct dev-daemon.sh launches with PASEO_SKIP_DEV_SERVER_BUILD=1 build server
+dependencies before starting the daemon, including when --no-install is used.
 The versioned Lefthook override checks staged control files in the canonical checkout;
 other staged files are checked in the effective worktree.
 
@@ -748,6 +750,21 @@ async function runWorkspace(command, options, rest, resultTree, base, index) {
         if (install.status !== 0) fail(`npm ci failed (${install.status})`);
         mkdirSync(path.join(directory, "node_modules"), { recursive: true });
         writeFileSync(stamp, expected);
+      }
+      if (
+        !interrupted &&
+        !exitSignal &&
+        cwd === directory &&
+        process.env.PASEO_SKIP_DEV_SERVER_BUILD === "1" &&
+        path.resolve(cwd, rest[0]) === path.join(directory, "scripts/dev-daemon.sh")
+      ) {
+        const build = await execute("npm", ["run", "build:server-deps"], directory);
+        if (interrupted) return;
+        if (build.signal) {
+          exitSignal = build.signal;
+          return;
+        }
+        if (build.status !== 0) fail(`npm run build:server-deps failed (${build.status})`);
       }
     });
     if (command === "materialize" && !interrupted) console.log(directory);

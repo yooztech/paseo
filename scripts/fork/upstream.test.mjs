@@ -593,6 +593,63 @@ test("the configured desktop release uses the real fork runtime and canonical Gi
   );
 });
 
+test("skipped-build daemon prepares server dependencies on every launch", (t) => {
+  const f = fixture(t);
+  const bin = path.join(f.root, "bin");
+  const log = path.join(f.root, "launch.log");
+  const built = path.join(f.root, "built");
+  f.put(
+    "npm",
+    '#!/bin/sh\n[ "$*" = "run build:server-deps" ] || exit 90\necho build >> "$TEST_LOG"\n[ "${FAIL_BUILD:-0}" != 1 ] || exit 42\ntouch "$TEST_BUILT"\n',
+    bin,
+  );
+  chmodSync(path.join(bin, "npm"), 0o755);
+  f.put(
+    "scripts/dev-daemon.sh",
+    '#!/bin/sh\nif [ "$PASEO_SKIP_DEV_SERVER_BUILD" = 1 ]; then [ -f "$TEST_BUILT" ] || exit 91; fi\necho "daemon:$PASEO_SKIP_DEV_SERVER_BUILD:$PASEO_HOME" >> "$TEST_LOG"\n',
+  );
+  chmodSync(path.join(f.repo, "scripts/dev-daemon.sh"), 0o755);
+  f.git("add", "scripts/dev-daemon.sh");
+  f.git("commit", "-qm", "add daemon fixture");
+  const env = {
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    TEST_LOG: log,
+    TEST_BUILT: built,
+    PASEO_HOME: path.join(f.root, "home"),
+    PASEO_SKIP_DEV_SERVER_BUILD: "1",
+  };
+  const launch = (overrides = {}, ...command) =>
+    f.runEnv(
+      { ...env, ...overrides },
+      "run",
+      "--directory",
+      f.workspace,
+      "--no-install",
+      "--",
+      ...(command.length ? command : ["./scripts/dev-daemon.sh"]),
+    );
+  for (let i = 0; i < 2; i++) {
+    rmSync(built, { force: true });
+    const result = launch();
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const failure = launch({ FAIL_BUILD: "1" });
+  assert.notEqual(failure.status, 0);
+  assert.match(failure.stderr, /npm run build:server-deps failed \(42\)/);
+  const normal = launch({ PASEO_SKIP_DEV_SERVER_BUILD: "0" });
+  assert.equal(normal.status, 0, normal.stderr);
+  const unrelated = launch({}, process.execPath, "-e", "process.exit(0)");
+  assert.equal(unrelated.status, 0, unrelated.stderr);
+  assert.deepEqual(readFileSync(log, "utf8").trim().split("\n"), [
+    "build",
+    `daemon:1:${env.PASEO_HOME}`,
+    "build",
+    `daemon:1:${env.PASEO_HOME}`,
+    "build",
+    `daemon:0:${env.PASEO_HOME}`,
+  ]);
+});
+
 test("run from a managed worktree uses its canonical source without nesting", (t) => {
   const f = fixture(t);
   f.ok("materialize", "--directory", f.workspace);
