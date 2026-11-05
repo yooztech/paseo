@@ -22,7 +22,6 @@ import { setPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { createViewedTimelineSync } from "@/timeline/viewed-timeline-sync";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/workspace-tabs/model";
 import { defaultChangesState, type ChangesState } from "@/panels/changes/state";
-import { openTabInLayoutBackground } from "@/stores/workspace-layout-actions";
 import { defaultFileState, type FileState } from "@/panels/file/state";
 import {
   canDismissPaneInLayout,
@@ -262,9 +261,7 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
     (tab) =>
       tab.target.kind !== "new_tab" &&
       tab.target.kind !== "files" &&
-      tab.target.kind !== "changes_tree" &&
-      tab.target.kind !== "repository_graph" &&
-      tab.target.kind !== "branch_ci",
+      tab.target.kind !== "changes_tree",
   );
 }
 
@@ -274,7 +271,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
 }
 
 describe("workspace-layout-store helpers", () => {
-  it("seeds fork panels alongside Files and Changes in the default Explorer sidebar", () => {
+  it("seeds Files and Changes in the default Explorer sidebar", () => {
     const layout = createWorkspaceLayoutWithExplorerSidebar();
     const tabs = collectAllTabs(layout.root);
 
@@ -282,8 +279,6 @@ describe("workspace-layout-store helpers", () => {
       { kind: "new_tab" },
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "repository_graph" },
-      { kind: "branch_ci" },
     ]);
     expect(findPaneById(layout.root, "explorer")?.focusedTabId).toBe(
       tabs.find((tab) => tab.target.kind === "changes_tree")?.tabId,
@@ -312,57 +307,10 @@ describe("workspace-layout-store helpers", () => {
       { kind: "new_tab" },
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "repository_graph" },
-      { kind: "branch_ci" },
     ]);
     const restoredNewTab = restoredTabs.find((tab) => tab.target.kind === "new_tab");
     expect(restoredNewTab).toBeTruthy();
     expect(persistedIds.has(restoredNewTab?.tabId ?? "")).toBe(false);
-  });
-
-  it("restores saved tabs when an ephemeral graph diff was open", async () => {
-    const defaultLayout = createWorkspaceLayoutWithExplorerSidebar();
-    const fileTarget = { kind: "file" as const, path: "notes.txt" };
-    const withFile = openTabInLayoutBackground({
-      layout: defaultLayout,
-      target: fileTarget,
-      now: Date.now(),
-      placement: { mode: "pane", paneId: defaultLayout.focusedPaneId! },
-      explorerSidebarPaneId: "explorer",
-    })?.layout;
-    if (!withFile) throw new Error("Could not open file tab");
-    const graphDiffTarget = {
-      kind: "repository_graph_file_diff" as const,
-      sha: "abc123",
-      path: "src/file.ts",
-    };
-    const persisted = openTabInLayoutBackground({
-      layout: withFile,
-      target: graphDiffTarget,
-      now: Date.now(),
-      placement: { mode: "pane", paneId: withFile.focusedPaneId! },
-      explorerSidebarPaneId: "explorer",
-    })?.layout;
-    if (!persisted) throw new Error("Could not open graph diff tab");
-    await AsyncStorage.setItem(
-      "workspace-layout-state",
-      JSON.stringify({
-        state: {
-          layoutByWorkspace: { workspace: persisted },
-          splitSizesByWorkspace: {},
-          explorerPaneIdByWorkspace: { workspace: "explorer" },
-        },
-        version: 1,
-      }),
-    );
-    const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
-    await restored.persist.rehydrate();
-
-    const restoredTabs = collectAllTabs(restored.getState().layoutByWorkspace.workspace.root);
-    expect(restoredTabs.map((tab) => tab.target)).toContainEqual(fileTarget);
-    expect(restoredTabs.map((tab) => tab.target)).not.toContainEqual(graphDiffTarget);
-    expect(restoredTabs.map((tab) => tab.target)).toContainEqual({ kind: "repository_graph" });
-    expect(restoredTabs.map((tab) => tab.target)).toContainEqual({ kind: "branch_ci" });
   });
 
   it("finds panes and tabs across nested groups", () => {
@@ -585,8 +533,6 @@ describe("workspace-layout-store version 2 migration", () => {
     expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "repository_graph" },
-      { kind: "branch_ci" },
     ]);
 
     const sidePane = findPaneById(layout.root, sidePaneId);
@@ -1402,8 +1348,6 @@ describe("workspace-layout-store actions", () => {
     expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "repository_graph" },
-      { kind: "branch_ci" },
     ]);
     expect(restored.getState().splitSizesByWorkspace).toEqual({});
     await expect(AsyncStorage.getItem("workspace-layout-state")).resolves.not.toBeNull();
@@ -1477,8 +1421,6 @@ describe("workspace-layout-store actions", () => {
       "agent",
       "files",
       "changes_tree",
-      "repository_graph",
-      "branch_ci",
       "pull_request",
     ]);
     expect(state.explorerSidebarPaneIdByWorkspace[workspaceKey]).toBe(explorerSidebarPaneId);
@@ -1515,14 +1457,7 @@ describe("workspace-layout-store actions", () => {
       const persisted = await AsyncStorage.getItem("workspace-layout-state");
       expect(persisted).not.toBeNull();
       const root = JSON.parse(persisted ?? "{}").state.layoutByWorkspace[workspaceKey].root;
-      expect(collectTabIds(root)).toEqual([
-        first,
-        second,
-        "files",
-        "changes_tree",
-        "repository_graph",
-        "branch_ci",
-      ]);
+      expect(collectTabIds(root)).toEqual([first, second, "files", "changes_tree"]);
     });
 
     const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
@@ -2472,7 +2407,7 @@ describe("workspace-layout-store actions", () => {
     let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       hidden: true,
-      tabIds: ["files", "changes_tree", "repository_graph", "branch_ci"],
+      tabIds: ["files", "changes_tree"],
     });
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
     expect(layout.focusedPaneId).toBe("main");
@@ -2480,7 +2415,7 @@ describe("workspace-layout-store actions", () => {
     store.showExplorerSidebar(workspaceKey);
     layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
-      tabIds: ["files", "changes_tree", "repository_graph", "branch_ci"],
+      tabIds: ["files", "changes_tree"],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
@@ -2564,7 +2499,7 @@ describe("workspace-layout-store actions", () => {
     expect(layout.focusedPaneId).toBe("main");
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       focusedTabId: targetTabId,
-      tabIds: ["files", "changes_tree", "repository_graph", "branch_ci", targetTabId],
+      tabIds: ["files", "changes_tree", targetTabId],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(group.sizes);
@@ -3116,8 +3051,6 @@ describe("workspace-layout-store actions", () => {
     expect(findPaneById(layout.root, explorerSidebarPaneId)?.tabIds).toEqual([
       "files",
       "changes_tree",
-      "repository_graph",
-      "branch_ci",
     ]);
   });
 
@@ -3218,7 +3151,7 @@ describe("workspace-layout-store actions", () => {
     ]);
   });
 
-  it("persists stable companion tabs while stripping commit diff tabs", () => {
+  it("persists working diff tabs while stripping commit diff tabs", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();
 
@@ -3233,16 +3166,6 @@ describe("workspace-layout-store actions", () => {
     store.openTab({
       workspaceKey: workspaceKey,
       target: { kind: "commit_diff", sha: "abc123" },
-      intent: "reveal",
-    });
-    store.openTab({
-      workspaceKey,
-      target: { kind: "repository_graph" },
-      intent: "reveal",
-    });
-    store.openTab({
-      workspaceKey,
-      target: { kind: "branch_ci" },
       intent: "reveal",
     });
 
@@ -3271,42 +3194,7 @@ describe("workspace-layout-store actions", () => {
       },
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "repository_graph" },
-      { kind: "branch_ci" },
     ]);
-  });
-  it("retargets an open repository graph diff tab to a selected file", () => {
-    const workspaceKey = createWorkspaceKey();
-    const store = workspaceLayoutStore.getState();
-    const tabId = store.openTab({
-      workspaceKey,
-      target: {
-        kind: "repository_graph_file_diff",
-        sha: "abc123",
-        path: "src/first.ts",
-      },
-      intent: "reveal",
-      placement: { mode: "focused" },
-    });
-
-    const nextTabId = store.replaceTab(workspaceKey, tabId!, {
-      kind: "repository_graph_file_diff",
-      sha: "abc123",
-      path: "src/file.ts",
-      requestId: 42,
-    });
-
-    const tabs = collectAllTabs(
-      workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
-    ).filter((tab) => tab.target.kind === "repository_graph_file_diff");
-    expect(nextTabId).toBe(tabs[0]?.tabId);
-    expect(tabs).toHaveLength(1);
-    expect(tabs[0]?.target).toEqual({
-      kind: "repository_graph_file_diff",
-      sha: "abc123",
-      path: "src/file.ts",
-      requestId: 42,
-    });
   });
 
   it("hydrates duplicate Changes and Pull request instances without collapsing their ids or state", () => {
@@ -3747,9 +3635,11 @@ describe("workspace-layout-store actions", () => {
 
     const initialized = workspaceLayoutStore.getState();
     const layout = initialized.layoutByWorkspace[workspaceKey];
-    expect(collectAllTabs(layout.root).filter((tab) => tab.target.kind === "new_tab")).toHaveLength(
-      1,
-    );
+    expect(collectAllTabs(layout.root).map((tab) => tab.target)).toEqual([
+      { kind: "new_tab" },
+      { kind: "files" },
+      { kind: "changes_tree" },
+    ]);
     expect(layout.focusedPaneId).toBe("main");
 
     store.reconcileTabs(workspaceKey, snapshot);
@@ -4345,7 +4235,7 @@ describe("workspace-layout-store actions", () => {
     let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     const hiddenPane = findPaneById(layout.root, paneId);
     expect(hiddenPane?.hidden).toBeUndefined();
-    expect(hiddenPane?.tabIds).toHaveLength(3);
+    expect(hiddenPane?.tabIds).toHaveLength(1);
     expect(
       collectAllTabs(layout.root).find((tab) => tab.tabId === hiddenPane?.focusedTabId)?.target,
     ).toEqual({ kind: "changes_tree" });
@@ -4383,12 +4273,7 @@ describe("workspace-layout-store actions", () => {
 
     const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
-    expect(findPaneById(layout.root, paneId)?.tabIds).toEqual([
-      "changes_tree",
-      "repository_graph",
-      "branch_ci",
-      "working_diff",
-    ]);
+    expect(findPaneById(layout.root, paneId)?.tabIds).toEqual(["changes_tree", "working_diff"]);
   });
 
   it("closing Files keeps Changes on screen without removing the final ordinary pane", () => {
@@ -4414,7 +4299,7 @@ describe("workspace-layout-store actions", () => {
     expect(collectAllPanes(layout.root).map((pane) => pane.id)).toEqual(["main", paneId]);
     expect(findPaneById(layout.root, "main")?.tabIds).toHaveLength(1);
     const finalPane = findPaneById(layout.root, paneId);
-    expect(finalPane?.tabIds).toHaveLength(3);
+    expect(finalPane?.tabIds).toHaveLength(1);
     expect(
       collectAllTabs(layout.root).find((tab) => tab.tabId === finalPane?.focusedTabId)?.target,
     ).toEqual({ kind: "changes_tree" });
@@ -4507,7 +4392,7 @@ describe("workspace-layout-store actions", () => {
     const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneContainingTab(layout.root, changesTabId)?.id).toBe("main");
     const sidePane = findPaneById(layout.root, paneId);
-    expect(sidePane?.tabIds).toEqual(["files", "changes_tree", "repository_graph", "branch_ci"]);
+    expect(sidePane?.tabIds).toEqual(["files", "changes_tree"]);
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
   });
   it("keeps the final ordinary pane when Explorer is visible", () => {

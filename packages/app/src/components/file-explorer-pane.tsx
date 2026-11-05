@@ -891,11 +891,9 @@ export function FileExplorerPane({
     [expandedPaths, hasWorkspaceScope, requestDirectoryListing],
   );
   const { refetch: refetchExplorer, isFetching: isRefreshFetching } = useQuery({
-    queryKey: ["fileExplorerRefresh", serverId, normalizedWorkspaceRoot, workspaceStateKey],
+    queryKey: ["fileExplorerRefresh", serverId, workspaceStateKey],
     queryFn: refreshExplorer,
-    enabled: hasWorkspaceScope,
-    initialData: null,
-    staleTime: Infinity,
+    enabled: false,
   });
 
   const handleRefresh = useCallback(() => {

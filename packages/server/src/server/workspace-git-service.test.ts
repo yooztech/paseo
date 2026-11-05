@@ -273,7 +273,6 @@ function buildDefaultTestServiceDeps() {
     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutSnapshotFacts(cwd)),
     getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
       ...current,
-      hasChangesFromBase: current.hasChangesFromBase ?? null,
       upstreamStatus: facts.upstreamStatus,
     })),
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
@@ -967,7 +966,6 @@ describe("WorkspaceGitServiceImpl", () => {
     }));
     const getCheckoutRefDerivedState = vi.fn(async (_cwd, facts, current) => ({
       ...current,
-      hasChangesFromBase: current.hasChangesFromBase ?? null,
       upstreamStatus: facts.upstreamStatus,
     }));
     const resolveAbsoluteGitDir = vi.fn(async () => join(REPO_CWD, ".git"));
@@ -1010,75 +1008,6 @@ describe("WorkspaceGitServiceImpl", () => {
 
     first.unsubscribe();
     second.unsubscribe();
-    service.dispose();
-  });
-
-  test("manual requests queue one fresh fetch after background work", async () => {
-    const firstFetch = createDeferred<{ changes: []; error: null }>();
-    const secondFetch = createDeferred<{ changes: []; error: null }>();
-    const runGitFetch = vi
-      .fn()
-      .mockImplementationOnce(() => firstFetch.promise)
-      .mockImplementationOnce(() => secondFetch.promise);
-    const service = createService({ runGitFetch });
-    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
-
-    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(1));
-    const firstRequest = service.requestFetch(REPO_CWD);
-    const secondRequest = service.requestFetch(REPO_CWD);
-    await flushPromises();
-    expect(runGitFetch).toHaveBeenCalledTimes(1);
-
-    firstFetch.resolve({ changes: [], error: null });
-    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(2));
-    let settled = false;
-    void firstRequest.then(() => {
-      settled = true;
-      return undefined;
-    });
-    await flushPromises();
-    expect(settled).toBe(false);
-
-    secondFetch.resolve({ changes: [], error: null });
-    await Promise.all([firstRequest, secondRequest]);
-    expect(runGitFetch).toHaveBeenCalledTimes(2);
-    subscription.unsubscribe();
-    service.dispose();
-  });
-
-  test("manual fetch works without an observed workspace or background polling", async () => {
-    const runGitFetch = vi.fn(async () => ({ changes: [], error: null }));
-    const service = createService({ runGitFetch });
-
-    await service.requestFetch(REPO_CWD);
-
-    expect(runGitFetch).toHaveBeenCalledTimes(1);
-    expect(service.getMetrics().repositoryTargetCount).toBe(0);
-    await vi.advanceTimersByTimeAsync(180_000);
-    expect(runGitFetch).toHaveBeenCalledTimes(1);
-    service.dispose();
-  });
-
-  test("concurrent cold requests share a single fetch", async () => {
-    const pending = createDeferred<{ changes: []; error: null }>();
-    const runGitFetch = vi.fn(() => pending.promise);
-    const service = createService({ runGitFetch });
-
-    const first = service.requestFetch(REPO_CWD);
-    const second = service.requestFetch(REPO_CWD);
-    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(1));
-    pending.resolve({ changes: [], error: null });
-    await Promise.all([first, second]);
-    expect(runGitFetch).toHaveBeenCalledTimes(1);
-    service.dispose();
-  });
-
-  test("manual fetch rejects network failure while background fetch remains best-effort", async () => {
-    const failure = new Error("remote unavailable");
-    const runGitFetch = vi.fn(async () => ({ changes: [], error: failure }));
-    const service = createService({ runGitFetch });
-
-    await expect(service.requestFetch(REPO_CWD)).rejects.toBe(failure);
     service.dispose();
   });
 
@@ -1236,6 +1165,7 @@ describe("WorkspaceGitServiceImpl", () => {
       expect(getCheckoutShortstat).toHaveBeenCalledTimes(2);
     });
     expect(listener.mock.lastCall?.[0].git.diffStat).toEqual({ additions: 2, deletions: 0 });
+
     subscription.unsubscribe();
     service.dispose();
   });

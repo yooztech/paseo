@@ -12,7 +12,6 @@
  */
 import { getForgeDefinition } from "@getpaseo/protocol/forge-manifest";
 import { normalizeHost, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
-import { getForkForgeWebAuthority } from "@getpaseo/protocol/fork/forges/self-hosted";
 import { getClientForgeLogicModule } from "@/git/forges";
 
 export interface ForgeBlobUrlInput {
@@ -80,17 +79,14 @@ function resolveForgeWebLocation(
   }
   const cloudHosts = (getForgeDefinition(forge)?.cloudHosts ?? []).map(normalizeHost);
   const isCloudHost = cloudHosts.includes(location.host);
-  const configuredAuthority = getForkForgeWebAuthority(forge, location.host);
-  const [configuredHost, configuredPort] = configuredAuthority?.split(":") ?? [];
-  const webHost = configuredHost ?? (isCloudHost ? cloudHosts[0] : location.host);
+  const webHost = isCloudHost ? cloudHosts[0] : location.host;
   // Carry a non-default port only for a self-hosted http(s) origin (e.g.
   // `:60443`): the web UI shares that origin. An SSH/scp remote's port is not the
   // web port, and a canonicalized cloud host always serves on the default port.
   const port =
-    configuredPort ??
-    (!isCloudHost && (location.transport === "http" || location.transport === "https")
+    !isCloudHost && (location.transport === "http" || location.transport === "https")
       ? location.port
-      : undefined);
+      : undefined;
   return { host: webHost, port, repo: location.path };
 }
 

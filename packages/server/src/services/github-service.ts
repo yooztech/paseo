@@ -12,7 +12,6 @@ import {
 } from "../utils/change-request-checkout.js";
 import { execCommand } from "../utils/spawn.js";
 import { resolveSshHostname } from "../utils/ssh-hostname.js";
-import { getGitHubPollParentFallback } from "../server/fork/github-poll-policy.js";
 import {
   CLI_AUTH_PROBE_TIMEOUT_MS,
   createForgeCliRunner,
@@ -1089,6 +1088,8 @@ interface GitHubPollTarget {
 interface GitHubBatchPollEntry {
   target: GitHubPollTarget;
   host: string;
+  originOwner: string;
+  originName: string;
   owner: string;
   name: string;
   headRepositoryOwner?: string;
@@ -1160,6 +1161,10 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
   // Rollup nodes for merged/closed PRs keyed by repo#number@headOid: their
   // checks can no longer change, so each is fetched at most once per daemon run.
   const frozenPullRequestChecksCache = new Map<string, unknown[]>();
+  const pollRepositoryRedirects = new Map<
+    string,
+    { owner: string; name: string; headRepositoryOwner: string }
+  >();
   const pollPausedUntilByHost = new Map<string, number>();
   const rateLimitResetLoads = new Map<string, Promise<number | null>>();
   let githubPollTimer: NodeJS.Timeout | null = null;
@@ -1516,6 +1521,8 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       group.push({
         target,
         host: key,
+        originOwner: owner,
+        originName: name,
         owner,
         name,
       });
@@ -1614,12 +1621,13 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     entries: GitHubBatchPollEntry[],
     startedAt: number,
   ): Promise<void> {
-    const firstEntry = entries[0];
+    const addressedEntries = entries.map(addressGitHubBatchEntry);
+    const firstEntry = addressedEntries[0];
     if (!firstEntry) {
       return;
     }
     const query = buildBatchPullRequestStatusQuery(
-      entries.map((entry) => ({
+      addressedEntries.map((entry) => ({
         owner: entry.owner,
         name: entry.name,
         headRef: entry.target.headRef,
@@ -1627,7 +1635,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     );
     const args = ["api", "graphql", "-f", `query=${query}`];
     const response = await loadGitHubPollBatchResponse({
-      entries,
+      entries: addressedEntries,
       firstEntry,
       args,
     });
@@ -1637,12 +1645,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     const rateLimit = parseGraphqlBatchRateLimit(response.stdout);
     if (rateLimit && pauseGitHubPollsAtReserve(firstEntry.host, rateLimit)) {
       const error = new GitHubGraphqlPollPausedError(rateLimit);
-      reportGitHubBatchError(entries, error);
+      reportGitHubBatchError(addressedEntries, error);
       return;
     }
 
     const distribution = distributeGitHubPollBatch({
-      entries,
+      entries: addressedEntries,
       aliases: response.aliases,
       args,
       startedAt,
@@ -1708,12 +1716,17 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         );
         continue;
       }
-      const node = selectBatchPollNode(entry, repository.data);
-      const parentFallback = !node && getGitHubPollParentFallback(entry, repository.data);
-      if (parentFallback) {
-        distribution.redirected.push({ ...entry, ...parentFallback });
+      if (repository.data.isFork && repository.data.parent) {
+        const forkOwner = repository.data.owner?.login ?? entry.owner;
+        pollRepositoryRedirects.set(batchRepositoryRedirectKey(entry), {
+          owner: repository.data.parent.owner.login,
+          name: repository.data.parent.name,
+          headRepositoryOwner: forkOwner,
+        });
+        distribution.redirected.push(entry);
         continue;
       }
+      const node = selectBatchPollNode(entry, repository.data);
       if (!node) {
         // Legacy fallback covers the two ways "no match" can be wrong: a fork
         // whose PR lives in the parent repository, and a full candidate page —
@@ -1759,6 +1772,22 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       }
     }
     return distribution;
+  }
+
+  function addressGitHubBatchEntry(entry: GitHubBatchPollEntry): GitHubBatchPollEntry {
+    const redirect = pollRepositoryRedirects.get(batchRepositoryRedirectKey(entry));
+    return redirect
+      ? {
+          ...entry,
+          owner: redirect.owner,
+          name: redirect.name,
+          headRepositoryOwner: redirect.headRepositoryOwner,
+        }
+      : entry;
+  }
+
+  function batchRepositoryRedirectKey(entry: GitHubBatchPollEntry): string {
+    return `${entry.host}\n${entry.originOwner}/${entry.originName}`;
   }
 
   function selectBatchPollNode(
@@ -2141,7 +2170,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
             headSha: input.headSha,
             headRepositoryOwner: input.headRepositoryOwner,
             run,
-            resolveOriginRepo: deps.resolveRepoSlug,
           });
           return addCurrentPullRequestGithubFacts({ cwd: input.cwd, status, run });
         },
@@ -2486,59 +2514,28 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
 
     async mergePullRequest(input) {
       assertDirectPullRequestMergeReady(input);
-      await run(
-        [
-          "pr",
-          "merge",
-          String(input.prNumber),
-          "--repo",
-          getPullRequestRepository(input.status),
-          `--${input.mergeMethod}`,
-        ],
-        {
-          cwd: input.cwd,
-          envOverlay: { GH_PROMPT_DISABLED: "1" },
-        },
-      );
+      await run(["pr", "merge", String(input.prNumber), `--${input.mergeMethod}`], {
+        cwd: input.cwd,
+        envOverlay: { GH_PROMPT_DISABLED: "1" },
+      });
       return { success: true };
     },
 
     async enablePullRequestAutoMerge(input) {
       assertPullRequestAutoMergeEnableReady(input);
-      await run(
-        [
-          "pr",
-          "merge",
-          String(input.prNumber),
-          "--repo",
-          getPullRequestRepository(input.status),
-          "--auto",
-          `--${input.mergeMethod}`,
-        ],
-        {
-          cwd: input.cwd,
-          envOverlay: { GH_PROMPT_DISABLED: "1" },
-        },
-      );
+      await run(["pr", "merge", String(input.prNumber), "--auto", `--${input.mergeMethod}`], {
+        cwd: input.cwd,
+        envOverlay: { GH_PROMPT_DISABLED: "1" },
+      });
       return { success: true };
     },
 
     async disablePullRequestAutoMerge(input) {
       assertPullRequestAutoMergeDisableReady(input);
-      await run(
-        [
-          "pr",
-          "merge",
-          String(input.prNumber),
-          "--repo",
-          getPullRequestRepository(input.status),
-          "--disable-auto",
-        ],
-        {
-          cwd: input.cwd,
-          envOverlay: { GH_PROMPT_DISABLED: "1" },
-        },
-      );
+      await run(["pr", "merge", String(input.prNumber), "--disable-auto"], {
+        cwd: input.cwd,
+        envOverlay: { GH_PROMPT_DISABLED: "1" },
+      });
       return { success: true };
     },
 
@@ -2588,6 +2585,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         void resolveRepoHostCached(input.cwd).catch(() => {});
         void resolveRepoSlugCached(input.cwd);
       }
+
       const isNewlyRetained = target.retainCount === 0;
       target.retainCount += 1;
       if (input.onStatus) {
@@ -2654,6 +2652,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         closeGitHubPollTarget(target);
       }
       pollTargets.clear();
+      pollRepositoryRedirects.clear();
       pollPausedUntilByHost.clear();
       rateLimitResetLoads.clear();
     },
@@ -2667,13 +2666,6 @@ function getGithubStatusFacts(
 ): GitHubPullRequestStatusFacts | null {
   const forgeSpecific = status?.forgeSpecific;
   return isGitHubPullRequestStatusFacts(forgeSpecific) ? forgeSpecific : null;
-}
-
-function getPullRequestRepository(status: PullRequestCommandStatus | null | undefined): string {
-  if (!status?.repoOwner || !status.repoName) {
-    throw new Error("GitHub pull request repository identity is unavailable");
-  }
-  return `${status.repoOwner}/${status.repoName}`;
 }
 
 function assertDirectPullRequestMergeReady(input: MergePullRequestOptions): void {
@@ -2966,13 +2958,8 @@ async function resolveCurrentPullRequestView(options: {
   headSha?: string;
   headRepositoryOwner?: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-  resolveOriginRepo: (cwd: string) => Promise<string | null>;
 }): Promise<CurrentPullRequestStatus | null> {
-  const originRepo = await options.resolveOriginRepo(options.cwd);
-  const viewCandidate = await tryCurrentPullRequestView({
-    ...options,
-    repo: originRepo ?? undefined,
-  });
+  const viewCandidate = await tryCurrentPullRequestView(options);
   const viewMatch = viewCandidate
     ? pickPullRequestCandidate({
         candidates: [viewCandidate],
@@ -2984,56 +2971,31 @@ async function resolveCurrentPullRequestView(options: {
   if (viewMatch) {
     return viewMatch.status;
   }
-  // An explicit head owner lets the origin candidate list disambiguate reused
-  // branch names without probing repository metadata first. In particular, an
-  // open PR must win over an older merged PR for the same branch.
-  if (options.headRepositoryOwner) {
-    const originMatch = await resolveOriginPullRequestView({
-      ...options,
-      originRepo,
-      headRepositoryOwner: options.headRepositoryOwner,
-    });
-    if (originMatch) return originMatch;
+
+  let headRepositoryOwner = options.headRepositoryOwner;
+
+  if (!headRepositoryOwner) {
+    const repo = await getGitHubRepoView(options);
+    const forkOwner = repo?.owner?.login;
+    const parentOwner = repo?.parent?.owner?.login;
+    const parentName = repo?.parent?.name;
+    if (!forkOwner) {
+      return null;
+    }
+    if (parentOwner && parentName) {
+      return resolveForkPullRequestView({
+        ...options,
+        forkOwner,
+        repo: `${parentOwner}/${parentName}`,
+      });
+    }
+    headRepositoryOwner = forkOwner;
   }
-
-  const repo = await getGitHubRepoView({ ...options, repo: originRepo ?? undefined });
-  const headRepositoryOwner = options.headRepositoryOwner;
-
-  const forkOwner = repo?.owner?.login;
-  const parentOwner = repo?.parent?.owner?.login;
-  const parentName = repo?.parent?.name;
-  if (
-    forkOwner &&
-    parentOwner &&
-    parentName &&
-    (!headRepositoryOwner || headRepositoryOwner.toLowerCase() === forkOwner.toLowerCase())
-  ) {
-    return resolveForkPullRequestView({
-      ...options,
-      forkOwner,
-      repo: `${parentOwner}/${parentName}`,
-    });
-  }
-  return resolveOriginPullRequestView({ ...options, originRepo, forkOwner, headRepositoryOwner });
-}
-
-async function resolveOriginPullRequestView(options: {
-  cwd: string;
-  headRef: string;
-  headSha?: string;
-  headRepositoryOwner?: string;
-  forkOwner?: string;
-  originRepo: string | null;
-  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-}): Promise<CurrentPullRequestStatus | null> {
-  const headRepositoryOwner = options.headRepositoryOwner ?? options.forkOwner;
-  if (!headRepositoryOwner) return null;
 
   const candidates = await listCurrentPullRequestCandidates({
     cwd: options.cwd,
     headRef: options.headRef,
     run: options.run,
-    repo: options.originRepo ?? undefined,
   });
   const match = pickPullRequestCandidate({
     candidates,
@@ -3176,13 +3138,8 @@ async function tryCurrentPullRequestView(options: {
   headRef: string;
   args?: string[];
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-  repo?: string;
 }): Promise<ResolvedPullRequestCandidate | null> {
-  const args = options.args ?? [
-    "pr",
-    "view",
-    ...(options.repo ? [options.headRef, "--repo", options.repo] : []),
-  ];
+  const args = options.args ?? ["pr", "view"];
   try {
     const stdout = await runCurrentPullRequestStatusCommand({
       cwd: options.cwd,
@@ -3205,12 +3162,8 @@ async function listCurrentPullRequestCandidates(options: {
   cwd: string;
   headRef: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-  repo?: string;
 }): Promise<ResolvedPullRequestCandidate[]> {
   const args = ["pr", "list", "--state", "all", "--head", options.headRef, "--limit", "10"];
-  if (options.repo) {
-    args.push("--repo", options.repo);
-  }
   try {
     const stdout = await runCurrentPullRequestStatusCommand({
       cwd: options.cwd,
@@ -3265,13 +3218,8 @@ async function resolveGitHubSlugFromOrigin(cwd: string): Promise<string | null> 
 async function getGitHubRepoView(options: {
   cwd: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-  repo?: string;
 }): Promise<z.infer<typeof GitHubRepoViewSchema> | null> {
-  const args = ["repo", "view"];
-  if (options.repo) {
-    args.push(options.repo);
-  }
-  args.push("--json", "owner,name,parent");
+  const args = ["repo", "view", "--json", "owner,name,parent"];
   try {
     const stdout = await options.run(args, {
       cwd: options.cwd,

@@ -68,7 +68,7 @@ export function setMobilePanelTarget(
   return { target, revision: selection.revision + 1 };
 }
 
-const ExplorerTabSchema = z.enum(["changes", "files", "pr", "repository_graph", "branch_ci"]);
+const ExplorerTabSchema = z.enum(["changes", "files", "pr"]);
 const DesktopSidebarStorageSchema = z.strictObject({
   agentListOpen: z.boolean().optional(),
   focusModeEnabled: z.boolean().optional(),

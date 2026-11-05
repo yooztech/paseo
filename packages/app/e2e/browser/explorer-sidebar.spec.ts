@@ -3,7 +3,11 @@ import { writeFile } from "node:fs/promises";
 import { openFileFromExplorer } from "../support/helpers/file-explorer";
 import { openSettingsSection, clickSettingsBackToWorkspace } from "../support/helpers/settings";
 import { expect, test } from "../support/fixtures";
-import { gotoWorkspace, pressNewTabShortcut } from "../support/helpers/launcher";
+import {
+  gotoWorkspace,
+  pressNewTabShortcut,
+  expectTabTitleFits,
+} from "../support/helpers/launcher";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import {
   ensureExplorerSidebar,
@@ -68,43 +72,6 @@ test.describe("Explorer sidebar", () => {
       await workspace.cleanup();
     }
   });
-  test("restores Files from the Explorer menu after closing it and hiding the sidebar", async ({
-    page,
-  }) => {
-    const workspace = await seedWorkspace({ repoPrefix: "explorer-sidebar-restore-files-" });
-
-    try {
-      await gotoWorkspace(page, workspace.workspaceId);
-      await waitForWorkspaceTabsVisible(page);
-      const explorer = await ensureExplorerSidebar(page);
-      const menuButton = explorer.getByRole("button", { name: "New tab", exact: true });
-      const menu = page.getByTestId("workspace-new-tab-menu").filter({ visible: true });
-      const files = explorer.getByTestId("workspace-tab-files");
-
-      await menuButton.click();
-      await expect(menu.getByRole("menuitem", { name: /^Files/ })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-      await menu.getByRole("menuitem", { name: /^Files/ }).click();
-      await expect(files).toHaveCount(0);
-
-      await page.getByTestId("workspace-explorer-toggle").first().click();
-      await expect(explorerSidebar(page)).toHaveCount(0);
-      await ensureExplorerSidebar(page);
-      await expect(files).toHaveCount(0);
-
-      await menuButton.click();
-      await expect(menu.getByRole("menuitem", { name: /^Files/ })).toHaveAttribute(
-        "aria-checked",
-        "false",
-      );
-      await menu.getByRole("menuitem", { name: /^Files/ }).click();
-      await expect(files).toBeVisible();
-    } finally {
-      await workspace.cleanup();
-    }
-  });
 });
 
 async function launchExplorerPanel(
@@ -115,10 +82,7 @@ async function launchExplorerPanel(
   await explorer.getByRole("button", { name: "New tab", exact: true }).click();
   await page.getByRole("menuitem", { name: new RegExp(`^${name}`) }).click();
   await explorer.getByRole("button", { name: "New tab", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: new RegExp(`^${name}`) })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(page.getByRole("menuitem", { name: new RegExp(`^${name}`) })).toHaveCount(0);
   await page.keyboard.press("Escape");
 }
 
@@ -153,7 +117,7 @@ async function closeOtherExplorerTabs(page: Parameters<typeof ensureExplorerSide
   });
   await files.click({ button: "right", position: { x: 12, y: 13 } });
   const confirmation = page.waitForEvent("dialog").then((dialog) => {
-    expect(dialog.message()).toContain("Close other tabs?");
+    expect(dialog.message()).toContain("close 1 tab");
     return dialog.accept();
   });
   await page.getByRole("menuitem", { name: "Close other tabs", exact: true }).click();
@@ -170,20 +134,15 @@ test("Explorer keeps Files and Changes close actions in the context menu", async
     const main = page.getByTestId("workspace-pane-main");
     const mainTabsBefore = await main.getByTestId("workspace-tabs-row").getByRole("button").count();
     const explorer = await ensureExplorerSidebar(page);
+    await expectTabTitleFits(page, "Files", { min: 64, max: 90 });
 
-    await test.step("Explorer's + menu includes Agent and checked Files and Changes", async () => {
+    await test.step("Explorer's + menu excludes Agent and terminal profiles", async () => {
       await explorer.getByRole("button", { name: "New tab", exact: true }).click();
       const menu = page.getByTestId("workspace-new-tab-menu").filter({ visible: true });
       await expect(menu).toBeVisible();
       await expect(menu.getByRole("menuitem", { name: /^Agent/ })).toHaveCount(1);
-      await expect(menu.getByRole("menuitem", { name: /^Files/ })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-      await expect(menu.getByRole("menuitem", { name: /^Changes/ })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
+      await expect(menu.getByRole("menuitem", { name: /^Files/ })).toHaveCount(0);
+      await expect(menu.getByRole("menuitem", { name: /^Changes/ })).toHaveCount(0);
       await expect(menu.getByRole("menuitem", { name: /^Terminal/ })).toBeVisible();
       const entries = await menu.getByRole("menuitem").allTextContents();
       expect(entries.findIndex((entry) => entry.startsWith("Terminal"))).toBeLessThan(

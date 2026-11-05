@@ -11,15 +11,6 @@ const repoRoot = new URL("../", import.meta.url);
 const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
 const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
 const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
-const websiteWorkflowPath = new URL(".github/workflows/deploy-website.yml", repoRoot);
-const desktopReleaseWorkflowPath = new URL(".github/workflows/desktop-release.yml", repoRoot);
-const releaseNotesWorkflowPath = new URL(".github/workflows/release-notes-sync.yml", repoRoot);
-const androidReleaseWorkflowPath = new URL(".github/workflows/android-apk-release.yml", repoRoot);
-const easReleaseWorkflowPath = new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot);
-const packagePath = new URL("package.json", repoRoot);
-const daemonReleaseScriptPath = new URL("scripts/release-fork-daemon.mjs", repoRoot);
-const desktopReleaseScriptPath = new URL("scripts/release-fork-desktop.mjs", repoRoot);
-const appReleaseScriptPath = new URL("scripts/release-fork-app.mjs", repoRoot);
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
@@ -110,32 +101,11 @@ test("gated checks are statically named jobs with real job-level gating", () => 
     const job = jobs.get(jobId)?.join("\n");
     assert.ok(job, `missing static job ${jobId}`);
     assert.match(job, new RegExp(`^    name: ${expected.name.replace(/[()]/g, "\\$&")}$`, "m"));
-    const condition = /^    if: \$\{\{ (.+) \}\}$/m.exec(job)?.[1];
-    assert.ok(condition, `missing job-level condition for ${jobId}`);
-    assert.match(condition, /needs\.changes\.result == 'success'/);
-    for (const result of ["skipped", "failure", "cancelled"]) {
-      assert.equal(
-        runInNewContext(condition, { needs: { changes: { outputs: {}, result } } }),
-        false,
-        `${jobId} must not run after changes is ${result}`,
-      );
-    }
     assert.match(job, /needs\.changes\.outputs\.full != 'false'/);
     for (const contract of expected.contracts ?? [expected.contract]) {
       assert.match(job, new RegExp(`needs\\.changes\\.outputs\\.${contract} != 'false'`));
     }
   }
-});
-
-test("main push CI skips GitHub pull-request merge commits", () => {
-  const changes = jobBlocks(readFileSync(ciWorkflowPath, "utf8")).get("changes")?.join("\n") ?? "";
-
-  assert.ok(
-    changes.includes(
-      `    if: "\${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request #') }}"`,
-    ),
-    "merge-commit guard must quote the complete expression so YAML does not treat # as a comment",
-  );
 });
 
 test("pull-request checks run for every base branch, including stacked PRs", () => {
@@ -162,7 +132,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
     assert.doesNotMatch(
       source,
       /\$\{\{\s*always\(\)/,
-      "always() keeps jobs alive after concurrency cancellation",
+      "always() keeps jobs alive after concurrency cancellation; use !cancelled() for fail-open gating",
     );
   }
 });
@@ -347,45 +317,14 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
   ]);
 });
 
-test("non-required publish workflows avoid runners with path filters or manual dispatch", () => {
-  for (const workflowPath of [dockerWorkflowPath, nixWorkflowPath, websiteWorkflowPath]) {
+test("packaging runs on main without allocating pull-request runners", () => {
+  for (const workflowPath of [dockerWorkflowPath, nixWorkflowPath]) {
     const source = readFileSync(workflowPath, "utf8");
     const trigger = source.split("jobs:", 1)[0];
-    const hasPathFilter = /^\s+paths:\s*$/m.test(trigger);
-    const isManualOnly =
-      /^\s+workflow_dispatch:\s*$/m.test(trigger) && !/^\s+pull_request:\s*$/m.test(trigger);
-    assert.ok(hasPathFilter || isManualOnly, "workflow must use path filters or be manual-only");
+    assert.match(trigger, /push:\s*\n\s+branches: \[main\]/);
+    assert.doesNotMatch(trigger, /pull_request/);
     assert.doesNotMatch(source, /dorny\/paths-filter/);
   }
-});
-
-test("EAS iOS releases are manual and require a dedicated app tag input", () => {
-  const workflow = readFileSync(easReleaseWorkflowPath, "utf8");
-  const trigger = workflow.split("jobs:", 1)[0];
-  assert.match(trigger, /^\s+workflow_dispatch:\s*$/m);
-  assert.doesNotMatch(trigger, /^\s+push:\s*$/m);
-  assert.match(
-    trigger,
-    /      release_tag:\n        type: string\n        required: true\n        description: "App release tag \(app-vX\.Y\.Z-fork\.N\)"/,
-  );
-  assert.match(workflow, /PASEO_RELEASE_TAG: \$\{\{ inputs\.release_tag \}\}/);
-  assert.match(
-    workflow,
-    /EAS_BUILD_COMMIT: \$\{\{ needs\.build_ios\.outputs\.git_commit_hash \}\}/,
-  );
-  assert.match(workflow, /git rev-parse "\$PASEO_RELEASE_TAG\^\{commit\}"/);
-  assert.match(workflow, /needs: \[build_ios, verify_tag_checkout\]/);
-
-  const desktopTrigger = readFileSync(desktopReleaseWorkflowPath, "utf8").split("jobs:", 1)[0];
-  assert.match(desktopTrigger, /^\s+- "!v\*-fork\.\*-app"$/m);
-  assert.match(desktopTrigger, /^\s+- "!v\*-fork\.\*"$/m);
-  assert.match(desktopTrigger, /^\s+- "desktop-v\*-fork\.\*"$/m);
-
-  const releaseNotesWorkflow = readFileSync(releaseNotesWorkflowPath, "utf8");
-  const releaseNotesTrigger = releaseNotesWorkflow.split("jobs:", 1)[0];
-  assert.match(releaseNotesTrigger, /^\s+- "!v\*-fork\.\*"$/m);
-  assert.match(releaseNotesTrigger, /^\s+- "desktop-v\*-fork\.\*"$/m);
-  assert.match(releaseNotesWorkflow, /refs\/tags\/desktop-v\*-fork\.\*/);
 });
 
 test("desktop packaging smokes main pushes and only the pull requests that touch packaging", () => {
@@ -400,97 +339,32 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
   }
 });
 
-test("fork daemon, desktop, and app releases use separate commands and tags", () => {
-  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-  const paseoJson = JSON.parse(readFileSync(new URL("paseo.json", repoRoot), "utf8"));
-  assert.equal(packageJson.scripts["release:fork:daemon"], "node scripts/release-fork-daemon.mjs");
-  assert.equal(
-    packageJson.scripts["release:fork:desktop"],
-    "node scripts/release-fork-desktop.mjs",
+test("stable iOS releases upload once and distribute to external testers before App Store review", () => {
+  const source = readFileSync(
+    new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot),
+    "utf8",
   );
-  assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
-  assert.match(
-    paseoJson.scripts["release-fork-app-eas"].command,
-    /^node \.\/scripts\/trigger-fork-app-eas\.mjs(?:;|$)/,
-  );
-
-  const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
-  assert.match(daemonScript, /releaseForkDaemon/);
-
-  const desktopScript = readFileSync(desktopReleaseScriptPath, "utf8");
-  assert.match(desktopScript, /releaseForkDesktop/);
-
-  const appScript = readFileSync(appReleaseScriptPath, "utf8");
-  assert.match(appScript, /releaseForkApp/);
-});
-
-test("manual Android releases preserve the app source tag", () => {
-  const workflow = readFileSync(androidReleaseWorkflowPath, "utf8");
-  const trigger = workflow.split("jobs:", 1)[0];
-  assert.match(trigger, /workflow_dispatch:/);
-  assert.doesNotMatch(trigger, /\bpush:/);
-  assert.match(workflow, /PASEO_RELEASE_TAG="\$SOURCE_TAG"/);
-  assert.match(workflow, /Fork Android builds require an app release tag/);
-  assert.match(workflow, /--verify-tag/);
-
-  const easWorkflow = readFileSync(easReleaseWorkflowPath, "utf8");
-  assert.match(easWorkflow, /platform: ios/);
-  assert.doesNotMatch(easWorkflow, /platform: android/);
-});
-
-test("desktop fork publication uses pre-created same-commit tags", () => {
-  const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
-  assert.doesNotMatch(workflow, /checkout_ref:/);
-  assert.match(workflow, /CHECKOUT_REF: .*github\.event\.inputs\.tag.*github\.ref_name/);
-  assert.match(workflow, /--verify-checkout/g);
-  assert.match(workflow, /--verify-tag/);
-  assert.equal(
-    workflow.match(/uses: actions\/checkout@v4/g)?.length,
-    workflow.match(/fetch-depth: 0/g)?.length,
-  );
-});
-
-test("fork iOS releases upload once to TestFlight only after verifying the release tag", () => {
-  const source = readFileSync(easReleaseWorkflowPath, "utf8");
   const jobs = jobBlocks(source);
-  assert.deepEqual([...jobs.keys()], ["build_ios", "verify_tag_checkout", "submit_ios"]);
-
-  const build = jobs.get("build_ios").join("\n");
-  assert.match(build, /^    type: build$/m);
-  assert.match(build, /^      PASEO_RELEASE_TAG: \$\{\{ inputs\.release_tag \}\}$/m);
-  assert.match(build, /^      platform: ios$/m);
-  assert.match(build, /^      profile: production$/m);
-
-  const verification = jobs.get("verify_tag_checkout").join("\n");
-  assert.match(verification, /^    needs: \[build_ios\]$/m);
-  assert.match(verification, /^      PASEO_RELEASE_TAG: \$\{\{ inputs\.release_tag \}\}$/m);
-  assert.match(
-    verification,
-    /EAS_BUILD_COMMIT: \$\{\{ needs\.build_ios\.outputs\.git_commit_hash \}\}/,
-  );
-  assert.match(
-    verification,
-    /git fetch --no-tags origin "refs\/tags\/\$PASEO_RELEASE_TAG:refs\/tags\/\$PASEO_RELEASE_TAG"/,
-  );
-  assert.match(verification, /tag_commit="\$\(git rev-parse "\$PASEO_RELEASE_TAG\^\{commit\}"\)"/);
-  assert.match(verification, /test "\$EAS_BUILD_COMMIT" = "\$tag_commit" \|\| \{[\s\S]*exit 1/);
-
-  const uploads = [...jobs.entries()].filter(([, lines]) =>
-    lines.some((line) => /^    type: (submit|testflight)$/.test(line)),
+  const uploads = [...jobs.entries()].filter(
+    ([, lines]) =>
+      lines.some((line) => /^    type: (submit|testflight)$/.test(line)) &&
+      lines.some((line) => line.includes("needs.build_ios.outputs.build_id")),
   );
   assert.equal(uploads.length, 1, "the iOS binary must be uploaded exactly once");
-  const [uploadId, uploadLines] = uploads[0];
-  assert.equal(uploadId, "submit_ios");
-  const upload = uploadLines.join("\n");
-  assert.match(upload, /^    name: Upload iOS to TestFlight$/m);
-  assert.match(upload, /^    needs: \[build_ios, verify_tag_checkout\]$/m);
-  assert.match(upload, /^    type: submit$/m);
-  assert.match(upload, /^      build_id: \$\{\{ needs\.build_ios\.outputs\.build_id \}\}$/m);
-  assert.match(upload, /^      profile: production$/m);
-  assert.doesNotMatch(
-    source,
-    /external_groups:|Paseo Beta|submit_beta_review:|submit_to_app_store:|submit_review|changes_not_sent_for_review:/,
+  const [distributionId, distributionLines] = uploads[0];
+  const distribution = distributionLines.join("\n");
+  assert.match(distribution, /^    type: testflight$/m);
+  assert.match(distribution, /external_groups:\s*\n\s+- Paseo Beta/);
+  assert.match(distribution, /^      submit_beta_review: true$/m);
+
+  const review = jobs.get("submit_ios_for_review").join("\n");
+  assert.match(review, new RegExp(`needs: \\[build_ios, ${distributionId}\\]`));
+  assert.match(review, /APP_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_version \}\}"/);
+  assert.match(
+    review,
+    /APP_BUILD_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_build_version \}\}"/,
   );
+  assert.match(review, /bundle exec fastlane ios submit_review/);
 });
 
 test("eight Playwright shards share two-worker coverage", () => {
@@ -547,13 +421,12 @@ test("quality preserves commands and routes each domain independently after fail
     Object.values(commands).flat(),
   );
   const domains = Object.keys(commands);
-  function accepts(
-    expression,
-    outputs,
-    { cancelled = false, installed = true, result = "success" } = {},
-  ) {
+  function accepts(expression, outputs, { cancelled = false, installed = true } = {}) {
+    // Prior checks have failed: success() is false. Explicit !cancelled() must
+    // override Actions' default success condition so later domains still run.
+    assert.match(expression, /!cancelled\(\)/);
     return runInNewContext(expression, {
-      needs: { changes: { outputs, result } },
+      needs: { changes: { outputs } },
       steps: { install: { outcome: installed ? "success" : "failure" } },
       cancelled: () => cancelled,
       success: () => false,
@@ -561,7 +434,6 @@ test("quality preserves commands and routes each domain independently after fail
   }
   const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
   const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
-  assert.match(jobCondition, /needs\.changes\.result == 'success'/);
   assert.equal(accepts(jobCondition, disabled), false);
   for (const selected of domains) {
     const outputs = { ...disabled, [selected]: "true" };
@@ -571,24 +443,12 @@ test("quality preserves commands and routes each domain independently after fail
     }
   }
   for (const [, expression] of checks) {
-    // Prior checks have failed: success() is false. Explicit !cancelled() must
-    // override Actions' default success condition so later domains still run.
-    assert.match(expression, /!cancelled\(\)/);
     assert.equal(accepts(expression, { ...disabled, full: "true" }), true);
     assert.equal(accepts(expression, {}), true, "missing routing outputs fail open");
     assert.equal(accepts(expression, {}, { cancelled: true }), false);
     assert.equal(accepts(expression, {}, { installed: false }), false);
   }
-  assert.equal(
-    accepts(jobCondition, {}),
-    true,
-    "successful changes with missing outputs fail open",
-  );
-  assert.equal(accepts(jobCondition, { ...disabled, full: "true" }), true);
-  for (const result of ["skipped", "failure", "cancelled"]) {
-    assert.equal(accepts(jobCondition, {}, { result }), false);
-    assert.equal(accepts(jobCondition, { ...disabled, full: "true" }, { result }), false);
-  }
+  assert.equal(accepts(jobCondition, {}, { cancelled: true }), false);
 });
 
 test("Windows units and integration run independently with complete routed coverage", () => {
@@ -646,9 +506,10 @@ test("Windows units and integration run independently with complete routed cover
   function condition(job) {
     return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
   }
-  function selected(expression, outputs, result = "success") {
+  function selected(expression, outputs, cancelled = false) {
     return runInNewContext(expression, {
-      needs: { changes: { outputs, result } },
+      needs: { changes: { outputs } },
+      cancelled: () => cancelled,
     });
   }
   const unitCondition = condition(windows);
@@ -676,10 +537,8 @@ test("Windows units and integration run independently with complete routed cover
     assert.equal(selected(unitStep, outputs), integrations);
     assert.equal(selected(pluginStep, outputs), integrations);
     assert.equal(selected(hubStep, outputs), hub);
-    for (const result of ["skipped", "failure", "cancelled"]) {
-      assert.equal(selected(unitCondition, outputs, result), false);
-      assert.equal(selected(integrationCondition, outputs, result), false);
-    }
+    assert.equal(selected(unitCondition, outputs, true), false);
+    assert.equal(selected(integrationCondition, outputs, true), false);
   }
 });
 

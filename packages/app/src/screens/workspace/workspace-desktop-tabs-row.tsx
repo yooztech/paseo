@@ -28,7 +28,6 @@ import {
   X,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import Animated from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import { SortableInlineList } from "@/components/sortable-inline-list";
@@ -228,9 +227,6 @@ interface WorkspaceNewTabButtonProps {
   paneId?: string;
   shortcutKeys: ShortcutKey[][] | null;
   placement: "inline" | "toolbar";
-  explorerTabs?: readonly WorkspaceTabDescriptor[];
-  onCloseExplorerTab?: (tabId: string) => Promise<void> | void;
-  onCreateExplorerTab?: () => void;
 }
 
 function WorkspaceNewTabButton({
@@ -241,9 +237,6 @@ function WorkspaceNewTabButton({
   paneId,
   shortcutKeys,
   placement,
-  explorerTabs,
-  onCloseExplorerTab,
-  onCreateExplorerTab,
 }: WorkspaceNewTabButtonProps) {
   const { t } = useTranslation();
   const tooltipText = t("workspace.tabs.actions.newTab");
@@ -264,9 +257,6 @@ function WorkspaceNewTabButton({
         host={host}
         panePanelKinds={panePanelKinds}
         paneId={paneId}
-        explorerTabs={explorerTabs}
-        onCloseExplorerTab={onCloseExplorerTab}
-        onCreateNewTab={onCreateExplorerTab}
       />
     </DropdownMenu>
   );
@@ -285,9 +275,6 @@ function WorkspacePaneToolbarActions({
   serverId,
   paneId,
   newTabShortcutKeys,
-  explorerTabs,
-  onCloseExplorerTab,
-  onCreateExplorerTab,
   onSplitRight,
   onSplitDown,
   onTogglePaneMaximized,
@@ -300,9 +287,6 @@ function WorkspacePaneToolbarActions({
   showMaximizeAction: boolean;
   paneMaximized: boolean;
   serverId: string;
-  explorerTabs?: readonly WorkspaceTabDescriptor[];
-  onCloseExplorerTab?: (tabId: string) => Promise<void> | void;
-  onCreateExplorerTab?: () => void;
   paneId?: string;
   newTabShortcutKeys: ShortcutKey[][] | null;
   onSplitRight?: () => void;
@@ -343,9 +327,6 @@ function WorkspacePaneToolbarActions({
           serverId={serverId}
           paneId={paneId}
           shortcutKeys={newTabShortcutKeys}
-          explorerTabs={explorerTabs}
-          onCloseExplorerTab={onCloseExplorerTab}
-          onCreateExplorerTab={onCreateExplorerTab}
         />
       ) : null}
       {maximizeActionVisible && onTogglePaneMaximized ? (
@@ -540,8 +521,6 @@ function sameWidths(left: number[], right: number[]): boolean {
 export interface WorkspaceDesktopTabsRowProps {
   host?: PaneHost;
   launchPurpose?: WorkspaceTabLaunchPurpose;
-  /** Fork Explorer: keep resize geometry out of the shared Unistyles registry. */
-  inlineTabGeometry?: boolean;
   paneId?: string;
   isFocused?: boolean;
   ownsKeyboardShortcuts?: boolean;
@@ -741,7 +720,6 @@ function TabChip({
   isDragging,
   isFocused,
   resolvedTabWidth,
-  inlineTabGeometry = false,
   showLabel,
   showCloseButton,
   rail,
@@ -763,7 +741,6 @@ function TabChip({
   isDragging: boolean;
   isFocused: boolean;
   resolvedTabWidth: number;
-  inlineTabGeometry?: boolean;
   showLabel: boolean;
   showCloseButton: boolean;
   /** The surface the row paints, so chip fills and their knockouts match the host. */
@@ -818,19 +795,13 @@ function TabChip({
       styles.tab,
       isFilled && styles.tabFill(chipBackdrop),
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
-      inlineTabGeometry
-        ? inlineUnistylesStyle({
-            minWidth: resolvedTabWidth,
-            width: resolvedTabWidth,
-            maxWidth: resolvedTabWidth,
-          })
-        : {
-            minWidth: resolvedTabWidth,
-            width: resolvedTabWidth,
-            maxWidth: resolvedTabWidth,
-          },
+      {
+        minWidth: resolvedTabWidth,
+        width: resolvedTabWidth,
+        maxWidth: resolvedTabWidth,
+      },
     ],
-    [chipBackdrop, inlineTabGeometry, isDragging, isFilled, resolvedTabWidth],
+    [chipBackdrop, isDragging, isFilled, resolvedTabWidth],
   );
 
   const handleTabPointerEnter = useCallback(() => {
@@ -1048,7 +1019,6 @@ export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
 
 function ResolvedWorkspaceDesktopTabsRow({
   host = "main",
-  inlineTabGeometry,
   launchPurpose = "primary",
   paneId,
   isFocused = false,
@@ -1125,10 +1095,6 @@ function ResolvedWorkspaceDesktopTabsRow({
   );
 
   const panePanelKinds = useMemo(() => tabs.map(({ tab }) => tab.kind), [tabs]);
-  const explorerTabs = useMemo(
-    () => (host === "explorer" ? tabs.map(({ tab }) => tab) : undefined),
-    [host, tabs],
-  );
 
   const fallbackTabLabels = useMemo(
     () => ({
@@ -1279,8 +1245,6 @@ function ResolvedWorkspaceDesktopTabsRow({
   }, [paneId]);
 
   const createNewTab = useCallback(() => onCreateNewTab({ paneId }), [onCreateNewTab, paneId]);
-  const closeExplorerTab = host === "explorer" ? onCloseTab : undefined;
-  const createExplorerTab = host === "explorer" ? createNewTab : undefined;
 
   const handleNewTabKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
@@ -1348,7 +1312,6 @@ function ResolvedWorkspaceDesktopTabsRow({
           onCloseTabsToRight={onCloseTabsToRight}
           onCloseOtherTabs={onCloseOtherTabs}
           resolvedTabWidth={resolvedTabWidth}
-          inlineTabGeometry={inlineTabGeometry}
           showLabel={showLabel}
           showCloseButton={shouldShowCloseButton}
           rail={rail}
@@ -1364,7 +1327,6 @@ function ResolvedWorkspaceDesktopTabsRow({
     },
     [
       activeDragTabId,
-      inlineTabGeometry,
       isFocused,
       layout.closeButtonPolicy,
       layout.items,
@@ -1459,9 +1421,6 @@ function ResolvedWorkspaceDesktopTabsRow({
               serverId={normalizedServerId}
               paneId={paneId}
               shortcutKeys={newTabKeys}
-              explorerTabs={explorerTabs}
-              onCloseExplorerTab={closeExplorerTab}
-              onCreateExplorerTab={createExplorerTab}
             />
           ) : null}
         </Animated.ScrollView>
@@ -1484,9 +1443,6 @@ function ResolvedWorkspaceDesktopTabsRow({
         serverId={normalizedServerId}
         paneId={paneId}
         newTabShortcutKeys={newTabKeys}
-        explorerTabs={explorerTabs}
-        onCloseExplorerTab={closeExplorerTab}
-        onCreateExplorerTab={createExplorerTab}
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}
         onTogglePaneMaximized={onTogglePaneMaximized}
@@ -1514,7 +1470,6 @@ function ResolvedDesktopTabChip({
   onCloseTabsToRight,
   onCloseOtherTabs,
   resolvedTabWidth,
-  inlineTabGeometry,
   showLabel,
   showCloseButton,
   rail,
@@ -1543,7 +1498,6 @@ function ResolvedDesktopTabChip({
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   resolvedTabWidth: number;
-  inlineTabGeometry?: boolean;
   showLabel: boolean;
   showCloseButton: boolean;
   rail: WorkspaceTabRailSurface;
@@ -1617,7 +1571,6 @@ function ResolvedDesktopTabChip({
         isDragging={isDragging}
         isFocused={isFocused}
         resolvedTabWidth={resolvedTabWidth}
-        inlineTabGeometry={inlineTabGeometry}
         showLabel={showLabel}
         showCloseButton={showCloseButton}
         rail={rail}

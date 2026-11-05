@@ -203,19 +203,15 @@ describe("autoOpenWorkspacePullRequest", () => {
     });
     const before = useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY];
     const input = { workspaceKey: WORKSPACE_KEY, destination: "explorer" as const };
-    const previousExplorerTabs = findPaneById(before.root, "explorer")!.tabIds;
-    const changesIndex = previousExplorerTabs.indexOf("changes_tree");
-    expect(changesIndex).toBeGreaterThanOrEqual(0);
     autoOpenWorkspacePullRequest(input);
     const after = useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY];
     const explorer = findPaneById(after.root, "explorer")!;
     expect(explorer.tabIds).toEqual([
-      ...previousExplorerTabs.slice(0, changesIndex + 1),
+      "files",
+      "changes_tree",
       "pull_request",
-      ...previousExplorerTabs.slice(changesIndex + 1),
+      "terminal_terminal-1",
     ]);
-    autoOpenWorkspacePullRequest(input);
-    expect(useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY]).toEqual(after);
     expect(explorer.hidden).toBe(true);
     expect(explorer.focusedTabId).toBe(findPaneById(before.root, "explorer")!.focusedTabId);
     expect(after.focusedPaneId).toBe(before.focusedPaneId);
@@ -330,15 +326,12 @@ describe("automatic PR placement", () => {
       intent: "reveal",
     });
     store.closeTab(WORKSPACE_KEY, "changes_tree");
-    const before = useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY];
-    const previousExplorerTabs = findPaneById(before.root, "explorer")!.tabIds;
-    expect(previousExplorerTabs).not.toContain("changes_tree");
     autoOpenWorkspacePullRequest({ workspaceKey: WORKSPACE_KEY, destination: "explorer" });
     expect(
       findPaneById(
         useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY].root,
         "explorer",
       )!.tabIds,
-    ).toEqual([...previousExplorerTabs, "pull_request"]);
+    ).toEqual(["files", "pull_request"]);
   });
 });

@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import pino from "pino";
 import pretty from "pino-pretty";
-import { resolveDaemonVersion } from "./fork/daemon-version.js";
+import { resolveDaemonVersion } from "./daemon-version.js";
 import type { PersistedConfig } from "./persisted-config.js";
 import { resolvePaseoHome } from "./paseo-home.js";
 
@@ -162,10 +162,10 @@ export function resolveLogConfig(
   };
 }
 
-export async function createRootLogger(
+export function createRootLogger(
   configInput: LoggerConfigInput,
   options?: ResolveLogConfigOptions,
-): Promise<pino.Logger> {
+): pino.Logger {
   const config = resolveLogConfig(configInput, options);
   if (config.file) {
     mkdirSync(path.dirname(config.file.path), { recursive: true });
@@ -189,7 +189,7 @@ export async function createRootLogger(
     stream,
   );
 
-  return logger.child({ daemonVersion: await resolveDaemonVersion() });
+  return logger.child({ daemonVersion: resolveDaemonVersion() });
 }
 
 export function createChildLogger(parent: pino.Logger, name: string): pino.Logger {

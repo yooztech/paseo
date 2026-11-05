@@ -1,0 +1,4400 @@
+diff --git a/packages/cli/tests/helpers/test-daemon.ts b/packages/cli/tests/helpers/test-daemon.ts
+index 5b5513d1a793195f2d14c32dd3b4dcbc4e7ed2d7..cfc9a87fb14acc52dd2de7980bc0b8331c8f6c64 100644
+--- a/packages/cli/tests/helpers/test-daemon.ts
++++ b/packages/cli/tests/helpers/test-daemon.ts
+@@ -18,7 +18,7 @@ import { tmpdir } from "os";
+ import { join } from "path";
+ import { fileURLToPath } from "url";
+ import { ChildProcess, spawn } from "child_process";
+-import { getAvailablePort } from "./network.ts";
++import { readDaemonInstance } from "@getpaseo/server/daemon-control";
+ 
+ export interface TestDaemonContext {
+   /** Available local port for test daemon (never 6767) */
+@@ -195,17 +195,20 @@ async function probeDaemonReady(
+ }
+ 
+ async function waitForDaemonReady(
+-  port: number,
+   paseoHome: string,
+   timeout = 30000,
+   env?: NodeJS.ProcessEnv,
+-): Promise<void> {
++): Promise<number> {
+   const deadline = Date.now() + timeout;
+ 
+-  async function poll(): Promise<void> {
+-    if (await probeDaemonReady(port, paseoHome, env)) return;
++  async function poll(): Promise<number> {
++    const instance = await readDaemonInstance(paseoHome);
++    if (instance?.listen) {
++      const port = Number(new URL(`http://${instance.listen}`).port);
++      if (await probeDaemonReady(port, paseoHome, env)) return port;
++    }
+     if (Date.now() >= deadline) {
+-      throw new Error(`Daemon failed to become ready on port ${port} within ${timeout}ms`);
++      throw new Error(`Daemon failed to publish a ready endpoint within ${timeout}ms`);
+     }
+     await sleep(100);
+     return poll();
+@@ -231,15 +234,14 @@ export async function startTestDaemon(options?: {
+   timeout?: number;
+   env?: NodeJS.ProcessEnv;
+ }): Promise<TestDaemonContext> {
+-  const port = options?.port ?? (await getAvailablePort());
++  // Let the listening process allocate its port, without a reserve/release race.
++  const requestedPort = options?.port ?? 0;
+   const { paseoHome, workDir } =
+     options?.paseoHome && options?.workDir
+       ? { paseoHome: options.paseoHome, workDir: options.workDir }
+       : await createTempDirs();
+   const timeout = options?.timeout ?? 30000;
+ 
+-  const wsUrl = `ws://${TEST_DAEMON_HOST}:${port}`;
+-
+   // Find the CLI entry point - use the source file directly with tsx
+   const cliDir = join(import.meta.dirname, "..", "..");
+   const cliSrcPath = join(cliDir, "src", "index.ts");
+@@ -252,7 +254,7 @@ export async function startTestDaemon(options?: {
+       ),
+       ...TEST_DAEMON_ENV_DEFAULTS,
+       PASEO_HOME: paseoHome,
+-      PASEO_LISTEN: `${TEST_DAEMON_HOST}:${port}`,
++      PASEO_LISTEN: `${TEST_DAEMON_HOST}:${requestedPort}`,
+       // Force no TTY to prevent QR code output
+       CI: "true",
+       ...options?.env,
+@@ -312,20 +314,18 @@ export async function startTestDaemon(options?: {
+     }
+   });
+ 
+-  const ctx: TestDaemonContext = {
+-    port,
+-    wsUrl,
+-    paseoHome,
+-    workDir,
+-    process: daemonProcess,
+-    isReady: false,
+-    stop: cleanup,
+-  };
+-
+   // Wait for daemon to be ready
+   try {
+-    await waitForDaemonReady(port, paseoHome, timeout, options?.env);
+-    ctx.isReady = true;
++    const port = await waitForDaemonReady(paseoHome, timeout, options?.env);
++    return {
++      port,
++      wsUrl: `ws://${TEST_DAEMON_HOST}:${port}`,
++      paseoHome,
++      workDir,
++      process: daemonProcess,
++      isReady: true,
++      stop: cleanup,
++    };
+   } catch (err) {
+     // Daemon failed to start - clean up and rethrow
+     await cleanup();
+@@ -335,8 +335,6 @@ export async function startTestDaemon(options?: {
+       { cause: err },
+     );
+   }
+-
+-  return ctx;
+ }
+ 
+ /**
+diff --git a/packages/client/src/daemon-client.ts b/packages/client/src/daemon-client.ts
+index 524c3e264a97c2c89b32cdf449e988c74ec0134e..831bba6ee3100ff3d3c951a68e0c3174f828473e 100644
+--- a/packages/client/src/daemon-client.ts
++++ b/packages/client/src/daemon-client.ts
+@@ -16,6 +16,10 @@ import {
+   type TimelineSubscription,
+ } from "./connection/index.js";
+ import { CreationClient } from "./creation/index.js";
++import {
++  checkoutRepositoryGraph,
++  type RepositoryGraphCheckoutInput,
++} from "./fork/repository-graph.js";
+ import type { CreationSnapshot } from "@getpaseo/protocol/messages";
+ import type { z } from "zod";
+ import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
+@@ -56,6 +60,9 @@ import type {
+   GitSetupOptions,
+   CheckoutStatusResponse,
+   CheckoutCommit,
++  RepositoryGraphCommit,
++  RepositoryGraphCommitDetails,
++  RepositoryGraphCheckout,
+   ParsedDiffFile,
+   CheckoutCommitResponse,
+   CheckoutMergeResponse,
+@@ -69,6 +76,7 @@ import type {
+   CheckoutForgeSetAutoMergeResponse,
+   CheckoutGithubSetAutoMergeResponse,
+   CheckoutForgeGetCheckDetailsResponse,
++  CheckoutForgeGetBranchPipelineResponse,
+   CheckoutGithubGetCheckDetailsResponse,
+   CheckoutPrStatusResponse,
+   PullRequestTimelineResponse,
+@@ -535,6 +543,7 @@ type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
+ type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
+ type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
+ type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
++type CheckoutForgeGetBranchPipelinePayload = CheckoutForgeGetBranchPipelineResponse["payload"];
+ type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
+ type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
+ type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
+@@ -927,6 +936,18 @@ export interface RenameBranchInput {
+   branch: string;
+   requestId?: string;
+ }
++export interface RepositoryGraphRefMutationInput {
++  cwd: string;
++  action: "rename" | "delete" | "create";
++  refKind: "head" | "remote" | "tag";
++  name: string;
++  newName?: string;
++  targetSha?: string;
++  force?: boolean;
++  deleteOnRemote?: boolean;
++  pushToRemote?: boolean;
++  requestId?: string;
++}
+ export interface RenameTerminalInput {
+   terminalId: string;
+   title: string;
+@@ -4499,6 +4520,7 @@ export class DaemonClient {
+         addAll: input.addAll,
+       },
+       responseType: "checkout_commit_response",
++      timeout: 120_000,
+     });
+   }
+ 
+@@ -4588,6 +4610,92 @@ export class DaemonClient {
+     }
+     return { baseRef: payload.baseRef, commits: payload.commits };
+   }
++  // FORK(repository-graph): thin client entry points for fork-only RPCs.
++  async getRepositoryGraphHistory(
++    cwd: string,
++    limit?: number,
++    requestId?: string,
++  ): Promise<{
++    commits: RepositoryGraphCommit[];
++    hasMore: boolean;
++    checkout?: RepositoryGraphCheckout;
++  }> {
++    const payload =
++      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.get_history.response">(
++        {
++          requestId,
++          message: {
++            type: "checkout.repository_graph.get_history.request",
++            cwd,
++            limit,
++          },
++          timeout: 60000,
++        },
++      );
++    if (payload.error) {
++      throw new Error(payload.error.message);
++    }
++    return { commits: payload.commits, hasMore: payload.hasMore, checkout: payload.checkout };
++  }
++
++  async getRepositoryGraphCommitDetails(
++    cwd: string,
++    sha: string,
++    requestId?: string,
++  ): Promise<RepositoryGraphCommitDetails> {
++    const payload =
++      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.get_commit_details.response">(
++        {
++          requestId,
++          message: {
++            type: "checkout.repository_graph.get_commit_details.request",
++            cwd,
++            sha,
++          },
++          timeout: 60000,
++        },
++      );
++    if (payload.error) {
++      throw new Error(payload.error.message);
++    }
++    if (!payload.details) {
++      throw new Error(`Commit details missing for ${sha}`);
++    }
++    return payload.details;
++  }
++
++  async mutateRepositoryGraphRef(input: RepositoryGraphRefMutationInput): Promise<void> {
++    const payload =
++      await this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.mutate_ref.response">(
++        {
++          requestId: input.requestId,
++          message: {
++            type: "checkout.repository_graph.mutate_ref.request",
++            cwd: input.cwd,
++            action: input.action,
++            refKind: input.refKind,
++            name: input.name,
++            newName: input.newName,
++            targetSha: input.targetSha,
++            force: input.force,
++            deleteOnRemote: input.deleteOnRemote,
++            pushToRemote: input.pushToRemote,
++          },
++          timeout: 60000,
++        },
++      );
++    if (payload.error) {
++      throw new Error(payload.error.message);
++    }
++  }
++
++  async checkoutRepositoryGraph(input: RepositoryGraphCheckoutInput): Promise<void> {
++    return checkoutRepositoryGraph(input, (params) =>
++      this.sendNamespacedCorrelatedSessionRequest<"checkout.repository_graph.checkout.response">(
++        params,
++      ),
++    );
++  }
+ 
+   async getCommitFileDiff(
+     cwd: string,
+@@ -4706,6 +4814,25 @@ export class DaemonClient {
+       },
+     );
+   }
++  async checkoutForgeGetBranchPipeline(
++    input: {
++      cwd: string;
++      branch?: string;
++    },
++    requestId?: string,
++  ): Promise<CheckoutForgeGetBranchPipelinePayload> {
++    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.get_branch_pipeline.response">(
++      {
++        requestId,
++        message: {
++          type: "checkout.forge.get_branch_pipeline.request",
++          cwd: input.cwd,
++          branch: input.branch,
++        },
++        timeout: 60000,
++      },
++    );
++  }
+ 
+   async checkoutGithubGetCheckDetails(
+     input: {
+diff --git a/packages/plugin/src/migration-doc.test.ts b/packages/plugin/src/migration-doc.test.ts
+deleted file mode 100644
+index d6b96f2eb4bd05c8437866c54adf8261f7f5d297..0000000000000000000000000000000000000000
+--- a/packages/plugin/src/migration-doc.test.ts
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import { readFile } from "node:fs/promises";
+-import { fileURLToPath } from "node:url";
+-import { describe, expect, it } from "vitest";
+-
+-describe("plugin runtime-entry migration guide", () => {
+-  it("maps every client registration method", async () => {
+-    const contracts = await readFile(new URL("./client/contracts.ts", import.meta.url), "utf8");
+-    const context = /export interface PluginClientContext[^{]*{([\s\S]*?)\n}/.exec(contracts)?.[1];
+-    if (!context) throw new Error("PluginClientContext was not found");
+-    const methods = [...context.matchAll(/^\s+(add[A-Z]\w*)\(/gm)].map((match) => match[1]);
+-    const migration = await readFile(
+-      fileURLToPath(new URL("../../../public-docs/plugins/migration.md", import.meta.url)),
+-      "utf8",
+-    );
+-    const table = migration.slice(
+-      migration.indexOf("| Old registration and location"),
+-      migration.indexOf("## 4. Separate imports"),
+-    );
+-
+-    expect(methods).not.toEqual([]);
+-    for (const method of methods) expect(table).toContain(`client.${method}(`);
+-  });
+-});
+diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
+index 704c7ad2775c41b1f77d507c5f8eb3b54d547f51..151668f782e17d41a37719487862e373c9d3d208 100644
+--- a/packages/protocol/src/messages.ts
++++ b/packages/protocol/src/messages.ts
+@@ -110,6 +110,37 @@ import {
+   BrowserAutomationExecuteResponseSchema,
+ } from "./browser-automation/rpc-schemas.js";
+ import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
++// FORK(repository-graph): register fork-only schemas in the central wire unions.
++import {
++  CheckoutRepositoryGraphCheckoutRequestSchema,
++  CheckoutRepositoryGraphCheckoutResponseSchema,
++  type RepositoryGraphCheckout,
++  type RepositoryGraphCheckoutTarget,
++  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
++  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
++  CheckoutRepositoryGraphGetHistoryRequestSchema,
++  CheckoutRepositoryGraphGetHistoryResponseSchema,
++  CheckoutRepositoryGraphMutateRefRequestSchema,
++  CheckoutRepositoryGraphMutateRefResponseSchema,
++  type RepositoryGraphCommit,
++  type RepositoryGraphCommitDetails,
++} from "./fork/repository-graph/messages.js";
++export type {
++  RepositoryGraphCommit,
++  RepositoryGraphCommitDetails,
++  RepositoryGraphCheckout,
++  RepositoryGraphCheckoutTarget,
++};
++export {
++  CheckoutRepositoryGraphCheckoutRequestSchema,
++  CheckoutRepositoryGraphCheckoutResponseSchema,
++  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
++  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
++  CheckoutRepositoryGraphGetHistoryRequestSchema,
++  CheckoutRepositoryGraphGetHistoryResponseSchema,
++  CheckoutRepositoryGraphMutateRefRequestSchema,
++  CheckoutRepositoryGraphMutateRefResponseSchema,
++};
+ import {
+   PaseoConfigRawSchema,
+   PaseoLifecycleCommandRawSchema,
+@@ -2364,7 +2395,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
+   cwd: z.string(),
+   requestId: z.string(),
+ });
+-
+ export const CheckoutCommitFileDiffRequestSchema = z.object({
+   type: z.literal("checkout.commits.file_diff.request"),
+   cwd: z.string(),
+@@ -2407,6 +2437,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
+   CheckoutCheckDetailsRequestPayloadSchema.extend({
+     type: z.literal("checkout.github.get_check_details.request"),
+   });
++/** Latest pipeline for a branch when there is no open PR/MR. */
++export const CheckoutForgeGetBranchPipelineRequestSchema = z.object({
++  type: z.literal("checkout.forge.get_branch_pipeline.request"),
++  cwd: z.string(),
++  branch: z.string().optional(),
++  requestId: z.string(),
++});
+ 
+ export const CheckoutPrStatusRequestSchema = z.object({
+   type: z.literal("checkout_pr_status_request"),
+@@ -3381,9 +3418,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+   CheckoutForgeSetAutoMergeRequestSchema,
+   CheckoutGithubSetAutoMergeRequestSchema,
+   CheckoutCommitsListRequestSchema,
++  CheckoutRepositoryGraphGetHistoryRequestSchema,
++  CheckoutRepositoryGraphGetCommitDetailsRequestSchema,
++  CheckoutRepositoryGraphMutateRefRequestSchema,
++  CheckoutRepositoryGraphCheckoutRequestSchema,
+   CheckoutCommitFileDiffRequestSchema,
+   CheckoutForgeGetCheckDetailsRequestSchema,
+   CheckoutGithubGetCheckDetailsRequestSchema,
++  CheckoutForgeGetBranchPipelineRequestSchema,
+   CheckoutPrStatusRequestSchema,
+   PullRequestTimelineRequestSchema,
+   CheckoutSwitchBranchRequestSchema,
+@@ -3685,6 +3727,8 @@ export const ServerInfoStatusPayloadSchema = z
+         // gate and githubCheckDetails fallback after 2027-01-17 once the
+         // supported daemon floor is >= v0.2.0.
+         forgeCheckDetails: z.boolean().optional(),
++        // COMPAT(forgeBranchPipeline): added in v0.2.5, remove gate after 2027-02-08.
++        forgeBranchPipeline: z.boolean().optional(),
+         // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
+         // and github_search fallback after 2027-01-17 once the supported daemon
+         // floor is >= v0.2.0.
+@@ -3791,6 +3835,13 @@ export const ServerInfoStatusPayloadSchema = z
+         commitsList: z.boolean().optional(),
+         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
+         commitBaseClassification: z.boolean().optional(),
++        // FORK(repository-graph): optional across app/host versions.
++        repositoryGraph: z.boolean().optional(),
++        repositoryGraphCommitDetails: z.boolean().optional(),
++        repositoryGraphRefActions: z.boolean().optional(),
++        repositoryGraphCheckout: z.boolean().optional(),
++        // COMPAT(repositoryGraphTagActions): added in v0.7.3, remove after 2027-03-04.
++        repositoryGraphTagActions: z.boolean().optional(),
+         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
+         providerRemoval: z.boolean().optional(),
+         // COMPAT(hopliteProvider): added after v0.11.2, remove after 2027-04-15 once host floor includes the bundled adapter.
+@@ -4055,8 +4106,10 @@ const WorkspaceGitRuntimePayloadSchema = z
+       })
+       .nullable()
+       .optional(),
++    hasChangesFromBase: z.boolean().nullable().optional(),
+     aheadOfOrigin: z.number().nullable().optional(),
+     behindOfOrigin: z.number().nullable().optional(),
++    hasChangesFromOrigin: z.boolean().nullable().optional(),
+   })
+   .optional()
+   .nullable();
+@@ -5330,8 +5383,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
+   isDirty: z.null(),
+   baseRef: z.null(),
+   aheadBehind: z.null(),
++  hasChangesFromBase: z.null().optional(),
+   aheadOfOrigin: z.null(),
+   behindOfOrigin: z.null(),
++  hasChangesFromOrigin: z.null().optional(),
+   hasRemote: z.boolean(),
+   remoteUrl: z.null(),
+ });
+@@ -5345,8 +5400,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
+   isDirty: z.boolean(),
+   baseRef: z.string().nullable(),
+   aheadBehind: AheadBehindSchema.nullable(),
++  hasChangesFromBase: z.boolean().nullable().optional(),
+   aheadOfOrigin: z.number().nullable(),
+   behindOfOrigin: z.number().nullable(),
++  hasChangesFromOrigin: z.boolean().nullable().optional(),
+   hasRemote: z.boolean(),
+   remoteUrl: z.string().nullable(),
+ });
+@@ -5360,8 +5417,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
+   isDirty: z.boolean(),
+   baseRef: z.string(),
+   aheadBehind: AheadBehindSchema.nullable(),
++  hasChangesFromBase: z.boolean().nullable().optional(),
+   aheadOfOrigin: z.number().nullable(),
+   behindOfOrigin: z.number().nullable(),
++  hasChangesFromOrigin: z.boolean().nullable().optional(),
+   hasRemote: z.boolean(),
+   remoteUrl: z.string().nullable(),
+ });
+@@ -5671,7 +5730,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
+     requestId: z.string(),
+   }),
+ });
+-
+ export const CheckoutCommitFileDiffResponseSchema = z.object({
+   type: z.literal("checkout.commits.file_diff.response"),
+   payload: z.object({
+@@ -5788,6 +5846,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
+     requestId: z.string(),
+   }),
+ });
++export const CheckoutForgeGetBranchPipelineResponseSchema = z.object({
++  type: z.literal("checkout.forge.get_branch_pipeline.response"),
++  payload: z.object({
++    cwd: z.string(),
++    branch: z.string().nullable(),
++    success: z.boolean(),
++    pipeline: CheckoutPipelineSchema.nullable().optional().default(null),
++    supported: z.boolean(),
++    error: CheckoutErrorSchema.nullable(),
++    requestId: z.string(),
++  }),
++});
+ 
+ export const CheckoutPrStatusResponseSchema = z.object({
+   type: z.literal("checkout_pr_status_response"),
+@@ -7113,9 +7183,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+   CheckoutForgeSetAutoMergeResponseSchema,
+   CheckoutGithubSetAutoMergeResponseSchema,
+   CheckoutCommitsListResponseSchema,
++  CheckoutRepositoryGraphGetHistoryResponseSchema,
++  CheckoutRepositoryGraphGetCommitDetailsResponseSchema,
++  CheckoutRepositoryGraphMutateRefResponseSchema,
++  CheckoutRepositoryGraphCheckoutResponseSchema,
+   CheckoutCommitFileDiffResponseSchema,
+   CheckoutForgeGetCheckDetailsResponseSchema,
+   CheckoutGithubGetCheckDetailsResponseSchema,
++  CheckoutForgeGetBranchPipelineResponseSchema,
+   CheckoutPrStatusResponseSchema,
+   PullRequestTimelineResponseSchema,
+   CheckoutSwitchBranchResponseSchema,
+@@ -7480,6 +7555,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
+ export type CheckoutCommit = z.infer<typeof CheckoutCommitSchema>;
+ export type CheckoutCommitsListRequest = z.infer<typeof CheckoutCommitsListRequestSchema>;
+ export type CheckoutCommitsListResponse = z.infer<typeof CheckoutCommitsListResponseSchema>;
++export type CheckoutRepositoryGraphGetHistoryRequest = z.infer<
++  typeof CheckoutRepositoryGraphGetHistoryRequestSchema
++>;
++export type CheckoutRepositoryGraphGetHistoryResponse = z.infer<
++  typeof CheckoutRepositoryGraphGetHistoryResponseSchema
++>;
++export type CheckoutRepositoryGraphGetCommitDetailsRequest = z.infer<
++  typeof CheckoutRepositoryGraphGetCommitDetailsRequestSchema
++>;
++export type CheckoutRepositoryGraphGetCommitDetailsResponse = z.infer<
++  typeof CheckoutRepositoryGraphGetCommitDetailsResponseSchema
++>;
++export type CheckoutRepositoryGraphMutateRefRequest = z.infer<
++  typeof CheckoutRepositoryGraphMutateRefRequestSchema
++>;
++export type CheckoutRepositoryGraphMutateRefResponse = z.infer<
++  typeof CheckoutRepositoryGraphMutateRefResponseSchema
++>;
++export type CheckoutRepositoryGraphCheckoutRequest = z.infer<
++  typeof CheckoutRepositoryGraphCheckoutRequestSchema
++>;
++export type CheckoutRepositoryGraphCheckoutResponse = z.infer<
++  typeof CheckoutRepositoryGraphCheckoutResponseSchema
++>;
+ export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
+ export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
+ export type ParsedDiffFile = z.infer<typeof ParsedDiffFileSchema>;
+@@ -7506,6 +7605,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
+ export type CheckoutGithubGetCheckDetailsRequest = z.infer<
+   typeof CheckoutGithubGetCheckDetailsRequestSchema
+ >;
++export type CheckoutForgeGetBranchPipelineRequest = z.infer<
++  typeof CheckoutForgeGetBranchPipelineRequestSchema
++>;
+ export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
+ export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
+ export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
+@@ -7517,6 +7619,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
+ export type CheckoutGithubGetCheckDetailsResponse = z.infer<
+   typeof CheckoutGithubGetCheckDetailsResponseSchema
+ >;
++export type CheckoutForgeGetBranchPipelineResponse = z.infer<
++  typeof CheckoutForgeGetBranchPipelineResponseSchema
++>;
+ export type PullRequestMergeable = z.infer<typeof CheckoutPrStatusSchema>["mergeable"];
+ export type CheckoutPrStatusRequest = z.infer<typeof CheckoutPrStatusRequestSchema>;
+ export type CheckoutPrStatusResponse = z.infer<typeof CheckoutPrStatusResponseSchema>;
+diff --git a/packages/server/scripts/download-speech-models.ts b/packages/server/scripts/download-speech-models.ts
+index b75086bb7de39ab606b3c96cfa09bf92846b8bf3..67d54080e4385bef45f6eb177bda2089a56738f0 100644
+--- a/packages/server/scripts/download-speech-models.ts
++++ b/packages/server/scripts/download-speech-models.ts
+@@ -37,7 +37,7 @@ function parseArgs(argv: string[]): { modelsDir: string; modelIds: LocalSpeechMo
+   return { modelsDir, modelIds };
+ }
+ 
+-const logger = createRootLogger({ level: "info", format: "pretty" });
++const logger = await createRootLogger({ level: "info", format: "pretty" });
+ 
+ const { modelsDir, modelIds } = parseArgs(process.argv.slice(2));
+ await ensureLocalSpeechModels({ modelsDir, modelIds, logger });
+diff --git a/packages/server/scripts/transcribe-local-wav.ts b/packages/server/scripts/transcribe-local-wav.ts
+index a9cb10b7a2fd8d4b0d5ed074cad3927bc215bfa0..ad3b53e47d9c079e02d079d03380e57c9d883485 100644
+--- a/packages/server/scripts/transcribe-local-wav.ts
++++ b/packages/server/scripts/transcribe-local-wav.ts
+@@ -116,7 +116,7 @@ async function main(): Promise<void> {
+     return;
+   }
+ 
+-  const logger = createRootLogger({ level: "info", format: "pretty" });
++  const logger = await createRootLogger({ level: "info", format: "pretty" });
+ 
+   const providers: RequestedSpeechProviders = {
+     dictationStt: { provider: "local", explicit: true },
+diff --git a/packages/server/src/server/agent/agent-response-loop.ts b/packages/server/src/server/agent/agent-response-loop.ts
+index 79f625b025d78f88854697847e85112407d994fc..9254536243f37078a245d6e9dee0e122e3be9c2e 100644
+--- a/packages/server/src/server/agent/agent-response-loop.ts
++++ b/packages/server/src/server/agent/agent-response-loop.ts
+@@ -1,5 +1,6 @@
+ import { z } from "zod";
+ import Ajv, { type ErrorObject, type Options as AjvOptions } from "ajv";
++import { withTimeout } from "../../utils/promise-timeout.js";
+ import type { AgentProvider, AgentSessionConfig } from "./agent-sdk-types.js";
+ import type { AgentManager } from "./agent-manager.js";
+ 
+@@ -78,6 +79,7 @@ export interface StructuredAgentGenerationOptions<T> {
+   schema: z.ZodType<T> | JsonSchema;
+   maxRetries?: number;
+   schemaName?: string;
++  timeoutMs?: number;
+ }
+ 
+ export interface StructuredAgentGenerationWithFallbackOptions<T> {
+@@ -93,6 +95,7 @@ export interface StructuredAgentGenerationWithFallbackOptions<T> {
+   persistSession?: boolean;
+   maxRetries?: number;
+   schemaName?: string;
++  timeoutMs?: number;
+   logger?: StructuredGenerationLogger;
+   runner?: <TResult>(options: StructuredAgentGenerationOptions<TResult>) => Promise<TResult>;
+ }
+@@ -354,15 +357,30 @@ export async function getStructuredAgentResponse<T>(
+ export async function generateStructuredAgentResponse<T>(
+   options: StructuredAgentGenerationOptions<T>,
+ ): Promise<T> {
+-  const { manager, agentConfig, agentId, persistSession, prompt, schema, maxRetries, schemaName } =
+-    options;
++  const {
++    manager,
++    agentConfig,
++    agentId,
++    persistSession,
++    prompt,
++    schema,
++    maxRetries,
++    schemaName,
++    timeoutMs,
++  } = options;
++  const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+   const agent = await manager.createAgent(agentConfig, agentId, {
+     persistSession,
+     workspaceId: undefined,
+   });
+   try {
+     const caller: AgentCaller = async (nextPrompt) => {
+-      const result = await manager.runAgent(agent.id, nextPrompt);
++      const remainingMs = deadline === undefined ? undefined : Math.max(0, deadline - Date.now());
++      const run = manager.runAgent(agent.id, nextPrompt);
++      const result =
++        remainingMs === undefined
++          ? await run
++          : await withTimeout(run, remainingMs, `Structured generation timed out (${timeoutMs}ms)`);
+       if (typeof result.finalText === "string" && result.finalText.length > 0) {
+         return result.finalText;
+       }
+@@ -395,6 +413,18 @@ function errorMessage(error: unknown): string {
+   return String(error);
+ }
+ 
++function waitBeforeDeadline<T>(
++  promise: Promise<T>,
++  deadline: number | undefined,
++  timeoutMs: number | undefined,
++): Promise<T> {
++  if (deadline === undefined) {
++    return promise;
++  }
++  const remainingMs = Math.max(0, deadline - Date.now());
++  return withTimeout(promise, remainingMs, `Structured generation timed out (${timeoutMs}ms)`);
++}
++
+ export async function generateStructuredAgentResponseWithFallback<T>(
+   options: StructuredAgentGenerationWithFallbackOptions<T>,
+ ): Promise<T> {
+@@ -408,6 +438,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
+     persistSession,
+     maxRetries,
+     schemaName,
++    timeoutMs,
+     logger,
+     runner,
+   } = options;
+@@ -422,7 +453,23 @@ export async function generateStructuredAgentResponseWithFallback<T>(
+   const attempts: StructuredGenerationAttempt[] = [];
+ 
+   for (const candidate of providers) {
+-    const availabilityEntry = await manager.getProviderAvailability(candidate.provider);
++    const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
++    let availabilityEntry;
++    try {
++      availabilityEntry = await waitBeforeDeadline(
++        manager.getProviderAvailability(candidate.provider),
++        deadline,
++        timeoutMs,
++      );
++    } catch (error) {
++      attempts.push({
++        provider: candidate.provider,
++        model: candidate.model ?? null,
++        available: false,
++        error: errorMessage(error),
++      });
++      continue;
++    }
+     if (!availabilityEntry.available) {
+       const reason = availabilityEntry.error ?? "unavailable";
+       attempts.push({
+@@ -445,6 +492,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
+         schema,
+         maxRetries,
+         schemaName,
++        ...(deadline === undefined ? {} : { timeoutMs: Math.max(0, deadline - Date.now()) }),
+         persistSession,
+         agentConfig: {
+           ...agentConfigOverrides,
+diff --git a/packages/server/src/server/authorization/operation-permissions.ts b/packages/server/src/server/authorization/operation-permissions.ts
+index f7a5b17857583911be562aa4ba469dba29759462..5d3b05bb3d67b91b1f7876c143710af596178ef0 100644
+--- a/packages/server/src/server/authorization/operation-permissions.ts
++++ b/packages/server/src/server/authorization/operation-permissions.ts
+@@ -51,6 +51,11 @@ const INBOUND_PERMISSION = {
+   "checkout.commits.file_diff.request": "workspace.read",
+   "checkout.commits.list.request": "workspace.read",
+   "checkout.discard_changes.request": "workspace.write",
++  "checkout.forge.get_branch_pipeline.request": "workspace.read",
++  "checkout.repository_graph.get_commit_details.request": "workspace.read",
++  "checkout.repository_graph.get_history.request": "workspace.read",
++  "checkout.repository_graph.mutate_ref.request": "workspace.write",
++  "checkout.repository_graph.checkout.request": "workspace.write",
+   "checkout.forge.get_check_details.request": "workspace.read",
+   "checkout.forge.set_auto_merge.request": "workspace.write",
+   "checkout.github.get_check_details.request": "workspace.read",
+@@ -287,6 +292,11 @@ const OUTBOUND_PERMISSION = {
+   "checkout.commits.file_diff.response": "workspace.read",
+   "checkout.commits.list.response": "workspace.read",
+   "checkout.discard_changes.response": "workspace.write",
++  "checkout.forge.get_branch_pipeline.response": "workspace.read",
++  "checkout.repository_graph.get_commit_details.response": "workspace.read",
++  "checkout.repository_graph.get_history.response": "workspace.read",
++  "checkout.repository_graph.mutate_ref.response": "workspace.write",
++  "checkout.repository_graph.checkout.response": "workspace.write",
+   "checkout.forge.get_check_details.response": "workspace.read",
+   "checkout.forge.set_auto_merge.response": "workspace.write",
+   "checkout.github.get_check_details.response": "workspace.read",
+diff --git a/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts b/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts
+index f050237620ea5df6051b0e36c8c05b37c2e27ef3..101eb2426904ef7b98e41df2e75a8736a64ab9a2 100644
+--- a/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts
++++ b/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts
+@@ -381,6 +381,17 @@ describe("archiveIfSafe", () => {
+     expect(harness.deps.archiveByScope).not.toHaveBeenCalled();
+   });
+ 
++  test("archives when only a tree-equivalent merge commit is ahead of origin", async () => {
++    const harness = createHarness({
++      getSnapshot: async () =>
++        createSnapshot({ git: { aheadOfOrigin: 1, hasChangesFromBase: false } }),
++    });
++
++    await runArchiveIfSafe(harness);
++
++    expect(harness.deps.archiveByScope).toHaveBeenCalledTimes(1);
++  });
++
+   test("archives when the PR is merged and the upstream branch was deleted", async () => {
+     const harness = createHarness({
+       snapshot: createSnapshot({ git: { aheadOfOrigin: null, behindOfOrigin: null } }),
+diff --git a/packages/server/src/server/bootstrap-auth.test.ts b/packages/server/src/server/bootstrap-auth.test.ts
+index 4046bd6747d977a38e3fbd0a7010f0d733b7e3ef..b75e57c9afa285c2d895b7be49f35fc09aca643c 100644
+--- a/packages/server/src/server/bootstrap-auth.test.ts
++++ b/packages/server/src/server/bootstrap-auth.test.ts
+@@ -118,6 +118,24 @@ describe("daemon bearer auth", () => {
+     }
+   });
+ 
++  test("serves file downloads on the service proxy public base host", async () => {
++    const daemonHandle = await createTestPaseoDaemon({
++      serviceProxy: {
++        publicBaseUrl: "https://services.example.com",
++        standaloneListen: null,
++      },
++    });
++    try {
++      const response = await fetch(`http://127.0.0.1:${daemonHandle.port}/api/files/download`, {
++        headers: { Host: "services.example.com" },
++      });
++      expect(response.status).toBe(400);
++      await expect(response.json()).resolves.toEqual({ error: "Missing download token" });
++    } finally {
++      await daemonHandle.close();
++    }
++  });
++
+   test("bypasses bearer auth for preflight and liveness endpoints", async () => {
+     const daemonHandle = await createTestPaseoDaemon({
+       auth: { password: CORRECT_PASSWORD_HASH },
+diff --git a/packages/server/src/server/bootstrap.smoke.test.ts b/packages/server/src/server/bootstrap.smoke.test.ts
+index f6304491ab29c997b2e090f5d874a5491727e79d..f219f669620a6dd3e3b80669617facf65fe053b4 100644
+--- a/packages/server/src/server/bootstrap.smoke.test.ts
++++ b/packages/server/src/server/bootstrap.smoke.test.ts
+@@ -1,4 +1,4 @@
+-import { resolveDaemonVersion } from "./daemon-version.js";
++import { resolveDaemonVersion } from "./fork/daemon-version.js";
+ import os from "node:os";
+ import { randomUUID } from "node:crypto";
+ import { once } from "node:events";
+@@ -10,7 +10,7 @@ import path from "node:path";
+ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import pino from "pino";
+ import { afterEach, describe, expect, test, vi } from "vitest";
+-import { WebSocket } from "ws";
++import { WebSocket, WebSocketServer } from "ws";
+ 
+ import { createPaseoDaemon, parseListenString, type PaseoDaemonConfig } from "./bootstrap.js";
+ import { loadConfig } from "./config.js";
+@@ -512,6 +512,52 @@ describe("paseo daemon bootstrap", () => {
+     }
+   });
+ 
++  test("routes public service websocket upgrades without daemon websocket interference", async () => {
++    const upstream = http.createServer();
++    const upstreamWss = new WebSocketServer({ server: upstream });
++    upstreamWss.on("connection", (socket) => socket.send("service-ready"));
++    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
++    const upstreamAddress = upstream.address();
++    if (!upstreamAddress || typeof upstreamAddress === "string") {
++      throw new Error("Expected upstream TCP address");
++    }
++
++    const daemonHandle = await createTestPaseoDaemon();
++    let ws: WebSocket | null = null;
++    try {
++      const route = daemonHandle.daemon.serviceProxy.registerWorkspaceService({
++        workspaceId: "workspace-public-websocket",
++        projectSlug: "repo",
++        branchName: "main",
++        scriptName: "web",
++        port: upstreamAddress.port,
++        publicBaseUrl: "https://services.example.test:8443",
++      });
++      if (!route.publicHostname) {
++        throw new Error("Expected public service hostname");
++      }
++
++      ws = new WebSocket(`ws://127.0.0.1:${daemonHandle.port}/ws`, {
++        headers: {
++          Host: `${route.publicHostname}:8443`,
++          Origin: "https://app.services.example.test:8443",
++        },
++      });
++      await expect(
++        new Promise<string>((resolve, reject) => {
++          ws?.once("message", (data) => resolve(data.toString()));
++          ws?.once("error", reject);
++        }),
++      ).resolves.toBe("service-ready");
++    } finally {
++      ws?.terminate();
++      for (const socket of upstreamWss.clients) socket.terminate();
++      await new Promise<void>((resolve) => upstreamWss.close(() => resolve()));
++      await new Promise<void>((resolve) => upstream.close(() => resolve()));
++      await daemonHandle.close();
++    }
++  });
++
+   test("relay config changes during Hub enrollment reach the live runtime", async () => {
+     const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-relay-startup-"));
+     const paseoHome = path.join(paseoHomeRoot, ".paseo");
+@@ -688,7 +734,7 @@ describe("paseo daemon bootstrap", () => {
+         path.join(pluginDirectory, "paseo-plugin.json"),
+         JSON.stringify({
+           id: "startup-rollback",
+-          requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++          requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+         }),
+       );
+       await writeFile(
+diff --git a/packages/server/src/server/bootstrap.ts b/packages/server/src/server/bootstrap.ts
+index 83ef2acb8356b66eada2e4b494eecb05a0b35c62..b361e7a1adf09eb39e828753eefe01bb099eb582 100644
+--- a/packages/server/src/server/bootstrap.ts
++++ b/packages/server/src/server/bootstrap.ts
+@@ -187,7 +187,7 @@ import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
+ import { admitSecuredRelaySocket } from "./websocket/secure-relay-ingress.js";
+ import type { PushNotificationSender } from "./push/index.js";
+ import { getOrCreateServerId } from "./server-id.js";
+-import { resolveDaemonVersion } from "./daemon-version.js";
++import { resolveDaemonVersion } from "./fork/daemon-version.js";
+ import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
+ import type {
+   AgentProfile,
+@@ -624,7 +624,7 @@ export async function createPaseoDaemon(
+   });
+   const bootstrapStart = performance.now();
+   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
+-  const daemonVersion = config.daemonVersion ?? resolveDaemonVersion(import.meta.url);
++  const daemonVersion = config.daemonVersion ?? (await resolveDaemonVersion(import.meta.url));
+   const initialMutableConfig = createInitialMutableDaemonConfig(config);
+   const speechService = createSpeechService({
+     logger,
+diff --git a/packages/server/src/server/checkout/status-projection.ts b/packages/server/src/server/checkout/status-projection.ts
+index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245206ff441 100644
+--- a/packages/server/src/server/checkout/status-projection.ts
++++ b/packages/server/src/server/checkout/status-projection.ts
+@@ -15,6 +15,10 @@ type CheckoutPrStatusWireStatus = Omit<CheckoutPrStatusPayloadStatus, "forge"> &
+   forge?: string;
+ };
+ 
++function toWireNullable<T>(value: T | null | undefined): T | null {
++  return value ?? null;
++}
++
+ export function buildCheckoutStatusPayloadFromSnapshot({
+   cwd,
+   requestId,
+@@ -36,6 +40,8 @@ export function buildCheckoutStatusPayloadFromSnapshot({
+       upstreamRef: null,
+       aheadOfOrigin: null,
+       behindOfOrigin: null,
++      hasChangesFromBase: null,
++      hasChangesFromOrigin: null,
+       hasRemote: false,
+       remoteUrl: null,
+       isPaseoOwnedWorktree: false,
+@@ -58,13 +64,15 @@ export function buildCheckoutStatusPayloadFromSnapshot({
+       isGit: true,
+       repoRoot: snapshot.git.repoRoot,
+       mainRepoRoot: snapshot.git.mainRepoRoot,
+-      currentBranch: snapshot.git.currentBranch ?? null,
++      currentBranch: toWireNullable(snapshot.git.currentBranch),
+       isDirty: snapshot.git.isDirty,
+       baseRef: snapshot.git.baseRef,
+-      aheadBehind: snapshot.git.aheadBehind ?? null,
+-      upstreamRef: snapshot.git.upstreamRef ?? null,
+-      aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
+-      behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
++      aheadBehind: toWireNullable(snapshot.git.aheadBehind),
++      upstreamRef: toWireNullable(snapshot.git.upstreamRef),
++      aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
++      behindOfOrigin: toWireNullable(snapshot.git.behindOfOrigin),
++      hasChangesFromBase: toWireNullable(snapshot.git.hasChangesFromBase),
++      hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
+       hasRemote: snapshot.git.hasRemote,
+       remoteUrl: snapshot.git.remoteUrl,
+       isPaseoOwnedWorktree: true,
+@@ -78,13 +86,15 @@ export function buildCheckoutStatusPayloadFromSnapshot({
+     isGit: true,
+     repoRoot: snapshot.git.repoRoot,
+     mainRepoRoot: snapshot.git.mainRepoRoot,
+-    currentBranch: snapshot.git.currentBranch ?? null,
++    currentBranch: toWireNullable(snapshot.git.currentBranch),
+     isDirty: snapshot.git.isDirty,
+-    baseRef: snapshot.git.baseRef ?? null,
+-    aheadBehind: snapshot.git.aheadBehind ?? null,
+-    upstreamRef: snapshot.git.upstreamRef ?? null,
+-    aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
+-    behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
++    baseRef: toWireNullable(snapshot.git.baseRef),
++    aheadBehind: toWireNullable(snapshot.git.aheadBehind),
++    upstreamRef: toWireNullable(snapshot.git.upstreamRef),
++    aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
++    behindOfOrigin: toWireNullable(snapshot.git.behindOfOrigin),
++    hasChangesFromBase: toWireNullable(snapshot.git.hasChangesFromBase),
++    hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
+     hasRemote: snapshot.git.hasRemote,
+     remoteUrl: snapshot.git.remoteUrl,
+     isPaseoOwnedWorktree: false,
+diff --git a/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts b/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
+index 862923dec62292556b4c0f572a23f2c3f661698c..ee9832e9358d75e4f8ad5905e7e218e7d04f152f 100644
+--- a/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
++++ b/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
+@@ -61,7 +61,12 @@ describe("daemon E2E", () => {
+   let ctx: DaemonTestContext;
+ 
+   beforeEach(async () => {
+-    ctx = await createDaemonTestContext();
++    ctx = await createDaemonTestContext({
++      serviceProxy: {
++        publicBaseUrl: "https://services.example.com",
++        standaloneListen: null,
++      },
++    });
+   });
+ 
+   afterEach(async () => {
+@@ -174,6 +179,49 @@ describe("daemon E2E", () => {
+       60000,
+     );
+ 
++    test("downloads a WebP file through the service proxy public base host", async () => {
++      const cwd = tmpCwd();
++      try {
++        const filePath = path.join(cwd, "download.webp");
++        const fileContents = Buffer.from("RIFF\x04\x00\x00\x00WEBP");
++        writeFileSync(filePath, fileContents);
++
++        const agent = await ctx.client.createAgent({
++          provider: "codex",
++          model: CODEX_TEST_MODEL,
++          thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
++          cwd,
++          title: "Download Token Test Agent",
++        });
++
++        expect(agent.id).toMatch(
++          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
++        );
++
++        const tokenResponse = await ctx.client.requestDownloadToken(cwd, "download.webp");
++
++        expect(tokenResponse.error).toBeNull();
++        expect(tokenResponse.token).toBeTruthy();
++        expect(tokenResponse.fileName).toBe("download.webp");
++        expect(tokenResponse.mimeType).toBe("image/webp");
++
++        const response = await fetch(
++          `http://127.0.0.1:${ctx.daemon.port}/api/files/download?token=${tokenResponse.token}`,
++          { headers: { Host: "services.example.com" } },
++        );
++
++        expect(response.status).toBe(200);
++        expect(response.headers.get("content-type")).toBe(tokenResponse.mimeType);
++        const disposition = response.headers.get("content-disposition") ?? "";
++        expect(disposition).toContain("download.webp");
++
++        const body = Buffer.from(await response.arrayBuffer());
++        expect(body).toEqual(fileContents);
++      } finally {
++        rmSync(cwd, { recursive: true, force: true });
++      }
++    }, 60000);
++
+     test("rejects invalid token", async () => {
+       const response = await fetch(
+         `http://127.0.0.1:${ctx.daemon.port}/api/files/download?token=invalid-token`,
+diff --git a/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts b/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts
+index 80c9409ceff191325aae3a64e65049d74c137cd0..7d3ff6ddefebe3a1c309f50d34a62b2bac203b06 100644
+--- a/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts
++++ b/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts
+@@ -1,4 +1,4 @@
+-import { resolveDaemonVersion } from "../daemon-version.js";
++import { resolveDaemonVersion } from "../fork/daemon-version.js";
+ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import path from "node:path";
+@@ -117,7 +117,7 @@ test("plugin handlers operate terminals through their host-owned Paseo API", asy
+     path.join(pluginDirectory, "paseo-plugin.json"),
+     JSON.stringify({
+       id: "terminal-sdk",
+-      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+     }),
+   );
+   await writeFile(
+diff --git a/packages/server/src/server/daemon-worker.ts b/packages/server/src/server/daemon-worker.ts
+index bc5acbc404958d5a8843241398423253b4987510..75d399d0cee4a4bebff95e4a6a35380eb2ffaa50 100644
+--- a/packages/server/src/server/daemon-worker.ts
++++ b/packages/server/src/server/daemon-worker.ts
+@@ -1,5 +1,6 @@
+ import { appendFileSync, mkdirSync } from "node:fs";
+ import path from "node:path";
++import type { Logger } from "pino";
+ import { createPaseoDaemon, formatListenTarget } from "./bootstrap.js";
+ import { loadConfig } from "./config.js";
+ import { resolvePaseoHome } from "./paseo-home.js";
+@@ -26,7 +27,7 @@ type SupervisorLifecycleMessage =
+ 
+ interface BootstrapResult {
+   paseoHome: string;
+-  logger: ReturnType<typeof createRootLogger>;
++  logger: Logger;
+   config: ReturnType<typeof loadConfig>;
+ }
+ 
+@@ -67,11 +68,11 @@ function writeWorkerLifecycleLog(
+   }
+ }
+ 
+-function bootstrapFromEnvironment(): BootstrapResult {
++async function bootstrapFromEnvironment(): Promise<BootstrapResult> {
+   try {
+     const paseoHome = resolvePaseoHome();
+     const config = loadConfig(paseoHome);
+-    const logger = createRootLogger({ log: config.log }, { paseoHome, file: false });
++    const logger = await createRootLogger({ log: config.log }, { paseoHome, file: false });
+     return { paseoHome, logger, config };
+   } catch (err) {
+     const message = err instanceof Error ? err.message : String(err);
+@@ -129,7 +130,7 @@ function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
+ }
+ 
+ async function main() {
+-  const { paseoHome, logger, config } = bootstrapFromEnvironment();
++  const { paseoHome, logger, config } = await bootstrapFromEnvironment();
+   let daemon: Awaited<ReturnType<typeof createPaseoDaemon>> | null = null;
+   let shutdownPromise: Promise<number> | null = null;
+   let exitHookInstalled = false;
+diff --git a/packages/server/src/server/file-observer/index.test.ts b/packages/server/src/server/file-observer/index.test.ts
+index 95fe416c5480531750d0b4b2d463b0727477c489..ac46456adffe53ff553381e3e186c82f51cef28f 100644
+--- a/packages/server/src/server/file-observer/index.test.ts
++++ b/packages/server/src/server/file-observer/index.test.ts
+@@ -157,13 +157,25 @@ test("survives atomic replacement and remains observable", async () => {
+ test("classifies a removed file as deleted", async () => {
+   const root = await createRoot();
+   const target = join(root, "removed.txt");
+-  await writeFile(target, "before");
+   const events: FileChange[] = [];
+-  const subscription = await subscribeToFileChanges(root, (error, batch) => {
++  const observer = createObserver();
++  const subscription = await observer.subscribe(root, (error, batch) => {
+     expect(error).toBeNull();
+     events.push(...batch);
+   });
+ 
++  await writeFile(target, "before");
++  await expect.poll(() => events.some((event) => event.path === target)).toBe(true);
++  // Drain create classifications before starting the separate deletion phase.
++  await expect
++    .poll(() => observer.getDiagnostics())
++    .toMatchObject({
++      pendingEventCount: 0,
++      pendingClassificationCount: 0,
++      reconciliationInFlightCount: 0,
++    });
++  events.length = 0;
++
+   await rm(target);
+   await expect.poll(() => events.find((event) => event.path === target)?.type).toBe("delete");
+   await subscription.unsubscribe();
+diff --git a/packages/server/src/server/logger.test.ts b/packages/server/src/server/logger.test.ts
+index f7f42a7ef4a7ea111b9dd9ee37258a9e267a8f74..9113f54b4822f807844e9f69e3fadf865590f7a4 100644
+--- a/packages/server/src/server/logger.test.ts
++++ b/packages/server/src/server/logger.test.ts
+@@ -5,7 +5,7 @@ import path from "node:path";
+ import { spawn } from "node:child_process";
+ import { fileURLToPath } from "node:url";
+ import { describe, expect, it } from "vitest";
+-import { resolveDaemonVersion } from "./daemon-version.js";
++import { resolveDaemonVersion } from "./fork/daemon-version.js";
+ import { resolveLogConfig } from "./logger.js";
+ import { loadConfig } from "./config.js";
+ import type { PersistedConfig } from "./persisted-config.js";
+@@ -158,7 +158,7 @@ describe("createRootLogger", () => {
+     const paseoHome = await mkdtemp(path.join(tmpdir(), "paseo-logger-version-"));
+ 
+     const { stdout } = await runLoggerFixture(`
+-      const logger = createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
++      const logger = await createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
+       logger.child({ name: "fixture" }).info("versioned child logger");
+       logger.flush();
+     `);
+@@ -166,7 +166,7 @@ describe("createRootLogger", () => {
+     expect(JSON.parse(stdout)).toMatchObject({
+       pid: expect.any(Number),
+       hostname: expect.any(String),
+-      daemonVersion: resolveDaemonVersion(),
++      daemonVersion: await resolveDaemonVersion(),
+       name: "fixture",
+       msg: "versioned child logger",
+     });
+@@ -177,7 +177,7 @@ describe("createRootLogger", () => {
+     const missingLogDir = path.join(paseoHome, "logs");
+ 
+     const { stdout } = await runLoggerFixture(`
+-      const logger = createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
++      const logger = await createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
+       logger.info({ proof: "stdout-default" }, "default logger");
+       logger.flush();
+     `);
+@@ -193,7 +193,7 @@ describe("createRootLogger", () => {
+     const logPath = path.join(paseoHome, "logs", "programmatic.log");
+ 
+     await runLoggerFixture(`
+-      const logger = createRootLogger(
++      const logger = await createRootLogger(
+         { log: { file: { path: ${JSON.stringify(logPath)} } } },
+         { paseoHome: ${JSON.stringify(paseoHome)} },
+       );
+@@ -214,7 +214,7 @@ describe("createRootLogger", () => {
+     const logPath = path.join(paseoHome, "daemon.log");
+ 
+     const { stdout } = await runLoggerFixture(`
+-      const logger = createRootLogger(
++      const logger = await createRootLogger(
+         { log: { file: { path: ${JSON.stringify(logPath)} } } },
+         { paseoHome: ${JSON.stringify(paseoHome)}, file: false },
+       );
+@@ -231,7 +231,7 @@ describe("createRootLogger", () => {
+     const paseoHome = await mkdtemp(path.join(tmpdir(), "paseo-logger-pretty-"));
+ 
+     const { stdout } = await runLoggerFixture(`
+-      const logger = createRootLogger({ level: "info", format: "pretty" }, {
++      const logger = await createRootLogger({ level: "info", format: "pretty" }, {
+         paseoHome: ${JSON.stringify(paseoHome)},
+       });
+       logger.info("pretty logger");
+diff --git a/packages/server/src/server/logger.ts b/packages/server/src/server/logger.ts
+index 118ce9bbe9f3b3d4eb1219ab2c4725c4b8591f1d..06683e522e3edfc711a18d5d272e4bd3bbc6dcfb 100644
+--- a/packages/server/src/server/logger.ts
++++ b/packages/server/src/server/logger.ts
+@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
+ import path from "node:path";
+ import pino from "pino";
+ import pretty from "pino-pretty";
+-import { resolveDaemonVersion } from "./daemon-version.js";
++import { resolveDaemonVersion } from "./fork/daemon-version.js";
+ import type { PersistedConfig } from "./persisted-config.js";
+ import { resolvePaseoHome } from "./paseo-home.js";
+ 
+@@ -162,10 +162,10 @@ export function resolveLogConfig(
+   };
+ }
+ 
+-export function createRootLogger(
++export async function createRootLogger(
+   configInput: LoggerConfigInput,
+   options?: ResolveLogConfigOptions,
+-): pino.Logger {
++): Promise<pino.Logger> {
+   const config = resolveLogConfig(configInput, options);
+   if (config.file) {
+     mkdirSync(path.dirname(config.file.path), { recursive: true });
+@@ -189,7 +189,7 @@ export function createRootLogger(
+     stream,
+   );
+ 
+-  return logger.child({ daemonVersion: resolveDaemonVersion() });
++  return logger.child({ daemonVersion: await resolveDaemonVersion() });
+ }
+ 
+ export function createChildLogger(parent: pino.Logger, name: string): pino.Logger {
+diff --git a/packages/server/src/server/plugins/lifecycle.e2e.test.ts b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
+index 9c75f63746d574bfd40e658ae3e69bf3eb3215b5..1abd9ac087868f39048e6a5c59b1275a2c1b5319 100644
+--- a/packages/server/src/server/plugins/lifecycle.e2e.test.ts
++++ b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
+@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
+ import { expect, onTestFinished, test } from "vitest";
+ import { DaemonClient } from "../test-utils/daemon-client.js";
+ import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+-import { resolveDaemonVersion } from "../daemon-version.js";
++import { resolveDaemonVersion } from "../fork/daemon-version.js";
+ 
+ test("a plugin transforms workspace creation once across receipt replays and observes its committed lifecycle", async () => {
+   const directory = await mkdtemp(path.join(tmpdir(), "paseo-lifecycle-"));
+@@ -286,7 +286,7 @@ async function createProviderPlugin(
+     path.join(directory, "paseo-plugin.json"),
+     JSON.stringify({
+       id: "shutdown-provider-plugin",
+-      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+     }),
+   );
+   await writeFile(
+diff --git a/packages/server/src/server/plugins/plugin-paseo-api.e2e.test.ts b/packages/server/src/server/plugins/plugin-paseo-api.e2e.test.ts
+index 042388447b4ae9eed43bd2fabe8373c61a6daab9..544ddf2f7e2c2a8b0061f2d2becd87648b7953e5 100644
+--- a/packages/server/src/server/plugins/plugin-paseo-api.e2e.test.ts
++++ b/packages/server/src/server/plugins/plugin-paseo-api.e2e.test.ts
+@@ -9,7 +9,7 @@ import { runInNewContext } from "node:vm";
+ import { fileURLToPath } from "node:url";
+ import { build } from "esbuild";
+ import { EventEmitter, once } from "node:events";
+-import { resolveDaemonVersion } from "../daemon-version.js";
++import { resolveDaemonVersion } from "../fork/daemon-version.js";
+ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import path from "node:path";
+@@ -86,7 +86,7 @@ test("plugin handlers create workspaces and agents through their Paseo API", asy
+     path.join(pluginDirectory, "paseo-plugin.json"),
+     JSON.stringify({
+       id: "paseo-api",
+-      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+     }),
+   );
+   await writeFile(
+@@ -258,7 +258,7 @@ test("daemon config reload enables and disables configured plugins without resta
+     path.join(pluginDirectory, "paseo-plugin.json"),
+     JSON.stringify({
+       id: "reloadable-plugin",
+-      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+     }),
+   );
+   await writeFile(
+diff --git a/packages/server/src/server/plugins/settings.e2e.test.ts b/packages/server/src/server/plugins/settings.e2e.test.ts
+index a6ccf3f2cc28ea667cd2636a19b2da5c70172e59..23bcd1ae908e869cd3691458eb764ba6ab02aeb7 100644
+--- a/packages/server/src/server/plugins/settings.e2e.test.ts
++++ b/packages/server/src/server/plugins/settings.e2e.test.ts
+@@ -1,4 +1,4 @@
+-import { resolveDaemonVersion } from "../daemon-version.js";
++import { resolveDaemonVersion } from "../fork/daemon-version.js";
+ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import path from "node:path";
+diff --git a/packages/server/src/server/service-proxy.test.ts b/packages/server/src/server/service-proxy.test.ts
+index 5764b195393b5cf98b23390c658a9920332d8938..608b25f8067caf7bc6f010286764044dfc537877 100644
+--- a/packages/server/src/server/service-proxy.test.ts
++++ b/packages/server/src/server/service-proxy.test.ts
+@@ -101,7 +101,7 @@ describe("service proxy subsystem shape", () => {
+     expect(offenders).toEqual([]);
+   });
+ 
+-  it("classifies the configured public namespace before any route exists", async () => {
++  it("classifies public service subdomains without swallowing the daemon base host", async () => {
+     const serviceProxy = createServiceProxySubsystem({
+       logger,
+       publicBaseUrl: "https://services.example.com",
+@@ -123,6 +123,10 @@ describe("service proxy subsystem shape", () => {
+         status: 200,
+         body: "daemon-api",
+       });
++      await expect(httpGet(port, `services.example.com:${port}`)).resolves.toEqual({
++        status: 200,
++        body: "daemon-api",
++      });
+     } finally {
+       await new Promise<void>((resolve) => server.close(() => resolve()));
+     }
+diff --git a/packages/server/src/server/service-proxy.ts b/packages/server/src/server/service-proxy.ts
+index ef93a27f9a0d19ce027cd7820a53ba2a92041a07..4a231743cc60aca6a2567a3b560637424436826c 100644
+--- a/packages/server/src/server/service-proxy.ts
++++ b/packages/server/src/server/service-proxy.ts
+@@ -91,6 +91,11 @@ const HOP_BY_HOP_HEADERS = new Set([
+   "te",
+   "trailer",
+ ]);
++const serviceProxyUpgradeRequests = new WeakSet<IncomingMessage>();
++
++export function isServiceProxyUpgradeRequest(req: IncomingMessage): boolean {
++  return serviceProxyUpgradeRequests.has(req);
++}
+ 
+ function normalizeHostHeader(host: string): string {
+   return host.trim().toLowerCase().replace(/:\d+$/, "");
+@@ -636,7 +641,7 @@ export class ServiceProxyRouteRegistry {
+       return { type: "known-service-miss" };
+     }
+     for (const baseHostname of this.publicBaseHostnames) {
+-      if (hostname === baseHostname || hostname.endsWith(`.${baseHostname}`)) {
++      if (hostname.endsWith(`.${baseHostname}`)) {
+         return { type: "known-service-miss" };
+       }
+     }
+@@ -793,6 +798,7 @@ export function createScriptProxyUpgradeHandler({
+       }
+       return;
+     }
++    serviceProxyUpgradeRequests.add(req);
+     proxyUpgradeRequest({ req, socket, head, route: classification.route, logger });
+   };
+ }
+diff --git a/packages/server/src/server/session.test.ts b/packages/server/src/server/session.test.ts
+index 73213128267cd130499bcd8166530e50e4623728..103ef1e75e839717b1492f1961f6fb7c91ab2517 100644
+--- a/packages/server/src/server/session.test.ts
++++ b/packages/server/src/server/session.test.ts
+@@ -305,6 +305,7 @@ interface SessionForTestOptions {
+     getCheckout?: ReturnType<typeof vi.fn>;
+     getCheckoutDiff?: ReturnType<typeof vi.fn>;
+     getSnapshot?: ReturnType<typeof vi.fn>;
++    requestFetch?: ReturnType<typeof vi.fn>;
+     suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
+     listStashes?: ReturnType<typeof vi.fn>;
+     validateBranchRef?: ReturnType<typeof vi.fn>;
+@@ -355,6 +356,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
+     getCheckout: vi.fn(),
+     getCheckoutDiff: vi.fn(),
+     getSnapshot: vi.fn(),
++    requestFetch: vi.fn(),
+     suggestBranchesForCwd: vi.fn(),
+     listStashes: vi.fn(),
+ 
+@@ -3933,6 +3935,8 @@ describe("session checkout status handling", () => {
+         aheadOfOrigin: 2,
+         behindOfOrigin: 1,
+         upstreamRef: null,
++        hasChangesFromBase: null,
++        hasChangesFromOrigin: null,
+         hasRemote: true,
+         remoteUrl: "https://github.com/getpaseo/paseo.git",
+         isPaseoOwnedWorktree: false,
+diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
+index 3e7898279388b42c2ba6c0bd23ce2be5c3caf7ff..02110854ca632b833e45f9e5ec800e0076b78f1a 100644
+--- a/packages/server/src/server/session.ts
++++ b/packages/server/src/server/session.ts
+@@ -2962,6 +2962,15 @@ export class Session {
+         return this.checkoutSession.handleStatusRequest(msg);
+       case "checkout.commits.list.request":
+         return this.checkoutSession.handleCommitsListRequest(msg);
++      // FORK(repository-graph): route fork-only RPCs to the checkout adapter.
++      case "checkout.repository_graph.get_history.request":
++        return this.checkoutSession.handleRepositoryGraphGetHistoryRequest(msg);
++      case "checkout.repository_graph.get_commit_details.request":
++        return this.checkoutSession.handleRepositoryGraphGetCommitDetailsRequest(msg);
++      case "checkout.repository_graph.mutate_ref.request":
++        return this.checkoutSession.handleRepositoryGraphMutateRefRequest(msg);
++      case "checkout.repository_graph.checkout.request":
++        return this.checkoutSession.handleRepositoryGraphCheckoutRequest(msg);
+       case "checkout.commits.file_diff.request":
+         return this.checkoutSession.handleCommitFileDiffRequest(msg, this.delivery.requestSignal);
+       case "validate_branch_request":
+@@ -3004,6 +3013,8 @@ export class Session {
+       case "checkout.forge.get_check_details.request":
+       case "checkout.github.get_check_details.request":
+         return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);
++      case "checkout.forge.get_branch_pipeline.request":
++        return this.checkoutSession.handleCheckoutForgeGetBranchPipelineRequest(msg);
+       case "checkout_pr_status_request":
+         return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
+       case "pull_request_timeline_request":
+@@ -5691,8 +5702,10 @@ export class Session {
+       isPaseoOwnedWorktree: snapshot.git.isPaseoOwnedWorktree,
+       isDirty: snapshot.git.isDirty,
+       aheadBehind: snapshot.git.aheadBehind,
++      hasChangesFromBase: snapshot.git.hasChangesFromBase,
+       aheadOfOrigin: snapshot.git.aheadOfOrigin,
+       behindOfOrigin: snapshot.git.behindOfOrigin,
++      hasChangesFromOrigin: snapshot.git.hasChangesFromOrigin,
+     };
+   }
+ 
+diff --git a/packages/server/src/server/session/checkout/checkout-session.test.ts b/packages/server/src/server/session/checkout/checkout-session.test.ts
+index aaa79e3da14e6ba0edfd8d26b0e7d512a56f445f..7423795b72d80b42bb935b3a41cdba8407db7750 100644
+--- a/packages/server/src/server/session/checkout/checkout-session.test.ts
++++ b/packages/server/src/server/session/checkout/checkout-session.test.ts
+@@ -35,6 +35,10 @@ function isCheckDetailsResponse(msg: SessionOutboundMessage): boolean {
+   return msg.type === "checkout.forge.get_check_details.response";
+ }
+ 
++function isBranchPipelineResponse(msg: SessionOutboundMessage): boolean {
++  return msg.type === "checkout.forge.get_branch_pipeline.response";
++}
++
+ function isTimelineResponse(msg: SessionOutboundMessage): boolean {
+   return msg.type === "pull_request_timeline_response";
+ }
+@@ -399,8 +403,9 @@ describe("CheckoutSession", () => {
+   });
+ 
+   describe("refresh", () => {
+-    it("forces a github-inclusive snapshot, nudges diffs, and confirms success", async () => {
++    it("requests a background fetch, forces a github-inclusive snapshot, nudges diffs, and confirms success", async () => {
+       const snapshotCalls: Array<{ cwd: string; options: unknown }> = [];
++      const fetchCalls: string[] = [];
+       const { subscriber, refreshedCwds } = createFakeDiffSubscriber({
+         cwd: "",
+         files: [],
+@@ -408,6 +413,9 @@ describe("CheckoutSession", () => {
+       });
+       const { checkout, emitted } = makeCheckoutSession({
+         git: {
++          requestFetch: async (cwd) => {
++            fetchCalls.push(cwd);
++          },
+           getSnapshot: async (cwd, snapshotOptions) => {
+             snapshotCalls.push({ cwd, options: snapshotOptions });
+             return createNoGitWorkspaceRuntimeSnapshot(cwd);
+@@ -422,6 +430,7 @@ describe("CheckoutSession", () => {
+         requestId: "r7",
+       });
+ 
++      expect(fetchCalls).toEqual(["/repo"]);
+       expect(snapshotCalls).toEqual([
+         { cwd: "/repo", options: { force: true, includeForge: true, reason: "manual-refresh" } },
+       ]);
+@@ -1111,6 +1120,170 @@ describe("CheckoutSession", () => {
+     });
+   });
+ 
++  describe("branch pipeline routing", () => {
++    it("routes get-branch-pipeline through the resolved GitLab adapter", async () => {
++      const githubCalls: string[] = [];
++      const gitlabCalls: Array<{ cwd: string; branch: string }> = [];
++      const gitlabService: Partial<ForgeService> = {
++        async getBranchPipeline(input) {
++          gitlabCalls.push({ cwd: input.cwd, branch: input.branch });
++          return {
++            id: 501,
++            status: "running",
++            rawStatus: "running",
++            url: "https://gitlab.example.com/g/r/-/pipelines/501",
++            ref: input.branch,
++            sha: "def",
++            stages: [],
++          };
++        },
++      };
++      const { checkout, emitted } = makeCheckoutSession({
++        github: {
++          async getBranchPipeline(input) {
++            githubCalls.push(input.branch);
++            throw new Error("github adapter should not be reached for a gitlab cwd");
++          },
++        },
++        git: {
++          resolveForge: async () => ({
++            forge: "gitlab",
++            host: "gitlab.example.com",
++            service: gitlabService as ForgeService,
++          }),
++        },
++      });
++
++      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
++        type: "checkout.forge.get_branch_pipeline.request",
++        cwd: "/repo",
++        branch: "feature",
++        requestId: "bp1",
++      });
++
++      expect(githubCalls).toEqual([]);
++      expect(gitlabCalls).toEqual([{ cwd: "/repo", branch: "feature" }]);
++      const response = emitted.find(isBranchPipelineResponse);
++      expect(response).toMatchObject({
++        type: "checkout.forge.get_branch_pipeline.response",
++        payload: {
++          cwd: "/repo",
++          branch: "feature",
++          success: true,
++          supported: true,
++          pipeline: { id: 501, status: "running", ref: "feature" },
++          error: null,
++          requestId: "bp1",
++        },
++      });
++    });
++
++    it("reports unsupported when the resolved forge cannot read branch pipelines", async () => {
++      const gitlabService: Partial<ForgeService> = {};
++      const { checkout, emitted } = makeCheckoutSession({
++        git: {
++          resolveForge: async () => ({
++            forge: "gitlab",
++            host: "gitlab.example.com",
++            service: gitlabService as ForgeService,
++          }),
++        },
++      });
++
++      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
++        type: "checkout.forge.get_branch_pipeline.request",
++        cwd: "/repo",
++        branch: "feature",
++        requestId: "bp-unsupported",
++      });
++
++      expect(emitted.find(isBranchPipelineResponse)).toMatchObject({
++        payload: {
++          success: true,
++          supported: false,
++          pipeline: null,
++          branch: "feature",
++          requestId: "bp-unsupported",
++        },
++      });
++    });
++
++    it("falls back to the workspace current branch when the request omits branch", async () => {
++      const gitlabCalls: string[] = [];
++      const gitlabService: Partial<ForgeService> = {
++        async getBranchPipeline(input) {
++          gitlabCalls.push(input.branch);
++          return null;
++        },
++      };
++      const { checkout, emitted } = makeCheckoutSession({
++        git: {
++          getSnapshot: async () => createGitSnapshot("/repo", "from-snapshot"),
++          resolveForge: async () => ({
++            forge: "gitlab",
++            host: "gitlab.example.com",
++            service: gitlabService as ForgeService,
++          }),
++        },
++      });
++
++      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
++        type: "checkout.forge.get_branch_pipeline.request",
++        cwd: "/repo",
++        requestId: "bp-fallback",
++      });
++
++      expect(gitlabCalls).toEqual(["from-snapshot"]);
++      expect(emitted.find(isBranchPipelineResponse)).toMatchObject({
++        payload: {
++          success: true,
++          supported: true,
++          pipeline: null,
++          branch: "from-snapshot",
++          requestId: "bp-fallback",
++        },
++      });
++    });
++
++    it("returns an error when no branch can be resolved", async () => {
++      const { checkout, emitted } = makeCheckoutSession({
++        git: {
++          getSnapshot: async () => {
++            const snapshot = createGitSnapshot("/repo", "main");
++            snapshot.git.currentBranch = null;
++            return snapshot;
++          },
++          resolveForge: async () => ({
++            forge: "gitlab",
++            host: "gitlab.example.com",
++            service: {
++              async getBranchPipeline() {
++                throw new Error("should not be called without a branch");
++              },
++            } as ForgeService,
++          }),
++        },
++      });
++
++      await checkout.handleCheckoutForgeGetBranchPipelineRequest({
++        type: "checkout.forge.get_branch_pipeline.request",
++        cwd: "/repo",
++        requestId: "bp-no-branch",
++      });
++
++      expect(emitted.find(isBranchPipelineResponse)).toMatchObject({
++        payload: {
++          success: false,
++          supported: true,
++          pipeline: null,
++          branch: null,
++          error: { code: "UNKNOWN", message: "Branch pipeline request requires a branch name" },
++          requestId: "bp-no-branch",
++        },
++      });
++    });
++  });
++
+   describe("timeline routing", () => {
+     it("routes the timeline request through the resolved GitLab adapter", async () => {
+       const gitlabCalls: Array<{ cwd: string; prNumber: number }> = [];
+diff --git a/packages/server/src/server/session/checkout/checkout-session.ts b/packages/server/src/server/session/checkout/checkout-session.ts
+index ceb69e9623c184be95c57140f2e9e3fd7563e454..06895845c817b8f70f2f50af90b4777c95ac714f 100644
+--- a/packages/server/src/server/session/checkout/checkout-session.ts
++++ b/packages/server/src/server/session/checkout/checkout-session.ts
+@@ -1,6 +1,5 @@
+-import type pino from "pino";
+-import type { SessionDelivery } from "../owned-subscriptions/index.js";
+ import { isAbsolute } from "node:path";
++import type pino from "pino";
+ import { getErrorMessage } from "@getpaseo/protocol/error-utils";
+ import { getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
+ import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
+@@ -8,6 +7,10 @@ import type {
+   BranchSuggestionsRequest,
+   CheckoutCommitsListRequest,
+   CheckoutCommitFileDiffRequest,
++  CheckoutRepositoryGraphCheckoutRequest,
++  CheckoutRepositoryGraphGetHistoryRequest,
++  CheckoutRepositoryGraphMutateRefRequest,
++  CheckoutRepositoryGraphGetCommitDetailsRequest,
+   CheckoutRefreshRequest,
+   CheckoutRenameBranchRequest,
+   CheckoutStatusRequest,
+@@ -56,6 +59,9 @@ import {
+ import { runGitCommand } from "../../../utils/run-git-command.js";
+ import { expandTilde } from "../../../utils/path.js";
+ import type { GitMetadataGenerator } from "./git-metadata-generator.js";
++// FORK(repository-graph): delegate fork-only RPC behavior outside the checkout session.
++import { RepositoryGraphForkSessionHandler } from "../../fork/repository-graph/session-handler.js";
++import type { SessionDelivery } from "../owned-subscriptions/index.js";
+ 
+ /**
+  * The collaborators a checkout command reaches that are NOT part of the checkout
+@@ -156,6 +162,7 @@ export class CheckoutSession {
+   private readonly paseoHome: string;
+   private readonly worktreesRoot: string | undefined;
+   private readonly logger: pino.Logger;
++  private readonly repositoryGraphFork: RepositoryGraphForkSessionHandler;
+   private readonly statusUpdateFingerprints = new Map<string, string>();
+ 
+   constructor(options: CheckoutSessionOptions) {
+@@ -168,6 +175,16 @@ export class CheckoutSession {
+     this.paseoHome = options.paseoHome;
+     this.worktreesRoot = options.worktreesRoot;
+     this.logger = options.logger;
++    this.repositoryGraphFork = new RepositoryGraphForkSessionHandler(
++      (message) => this.host.emit(message),
++      async (cwd) => {
++        await this.gitMutation.notifyGitMutation(cwd, "repository-graph-ref");
++        await this.host.emitWorkspaceUpdateForCwd(cwd);
++      },
++      (error, cwd) => {
++        this.logger.warn({ err: error, cwd }, "Repository graph ref changed but refresh failed");
++      },
++    );
+   }
+ 
+   private async resolveForgeService(
+@@ -290,6 +307,30 @@ export class CheckoutSession {
+     }
+   }
+ 
++  async handleRepositoryGraphGetHistoryRequest(
++    msg: CheckoutRepositoryGraphGetHistoryRequest,
++  ): Promise<void> {
++    return this.repositoryGraphFork.handleHistory(msg);
++  }
++
++  async handleRepositoryGraphGetCommitDetailsRequest(
++    msg: CheckoutRepositoryGraphGetCommitDetailsRequest,
++  ): Promise<void> {
++    return this.repositoryGraphFork.handleCommitDetails(msg);
++  }
++
++  async handleRepositoryGraphMutateRefRequest(
++    msg: CheckoutRepositoryGraphMutateRefRequest,
++  ): Promise<void> {
++    return this.repositoryGraphFork.handleMutateRef(msg);
++  }
++
++  async handleRepositoryGraphCheckoutRequest(
++    msg: CheckoutRepositoryGraphCheckoutRequest,
++  ): Promise<void> {
++    return this.repositoryGraphFork.handleCheckout(msg);
++  }
++
+   async handleCommitFileDiffRequest(
+     msg: CheckoutCommitFileDiffRequest,
+     signal: AbortSignal,
+@@ -487,6 +528,7 @@ export class CheckoutSession {
+     const resolvedCwd = expandTilde(cwd);
+ 
+     try {
++      await this.workspaceGitService.requestFetch(resolvedCwd);
+       (await this.resolveForgeService(resolvedCwd))?.service.invalidate({ cwd: resolvedCwd });
+       await this.workspaceGitService.getSnapshot(resolvedCwd, {
+         force: true,
+@@ -1349,6 +1391,67 @@ export class CheckoutSession {
+     }
+   }
+ 
++  async handleCheckoutForgeGetBranchPipelineRequest(
++    msg: Extract<SessionInboundMessage, { type: "checkout.forge.get_branch_pipeline.request" }>,
++  ): Promise<void> {
++    const { cwd, requestId } = msg;
++    try {
++      const { service } = await this.requireForgeService(cwd);
++      const branch =
++        msg.branch?.trim() ||
++        (await this.workspaceGitService.getSnapshot(cwd, { includeForge: false })).git
++          .currentBranch ||
++        null;
++      if (!branch) {
++        throw new Error("Branch pipeline request requires a branch name");
++      }
++      if (!service.getBranchPipeline) {
++        this.host.emit({
++          type: "checkout.forge.get_branch_pipeline.response",
++          payload: {
++            cwd,
++            branch,
++            success: true,
++            pipeline: null,
++            supported: false,
++            error: null,
++            requestId,
++          },
++        });
++        return;
++      }
++      const pipeline = await service.getBranchPipeline({ cwd, branch });
++      this.host.emit({
++        type: "checkout.forge.get_branch_pipeline.response",
++        payload: {
++          cwd,
++          branch,
++          success: true,
++          pipeline,
++          supported: true,
++          error: null,
++          requestId,
++        },
++      });
++    } catch (error) {
++      this.host.emit({
++        type: "checkout.forge.get_branch_pipeline.response",
++        payload: {
++          cwd,
++          branch: msg.branch?.trim() || null,
++          success: false,
++          pipeline: null,
++          supported: true,
++          error: {
++            code: "UNKNOWN",
++            message: error instanceof Error ? error.message : String(error),
++          },
++          requestId,
++        },
++      });
++    }
++  }
++
+   async handleForgeSearchRequest(
+     msg: Extract<SessionInboundMessage, { type: "forge.search.request" | "github_search_request" }>,
+   ): Promise<void> {
+diff --git a/packages/server/src/server/session/checkout/git-metadata-generator.ts b/packages/server/src/server/session/checkout/git-metadata-generator.ts
+index 722309213a4d8beb232ad4a9f94957973bb81a4d..c2cd1f5be97ec3892d8c6c0f7a7c9bf1c9b7ae83 100644
+--- a/packages/server/src/server/session/checkout/git-metadata-generator.ts
++++ b/packages/server/src/server/session/checkout/git-metadata-generator.ts
+@@ -81,6 +81,7 @@ const PULL_REQUEST_FALLBACK: PullRequestText = {
+ 
+ const MAX_COMMIT_PATCH_CHARS = 120_000;
+ const MAX_PULL_REQUEST_PATCH_CHARS = 200_000;
++const METADATA_GENERATION_TIMEOUT_MS = 120_000;
+ 
+ interface PromptForDiffInput {
+   cwd: string;
+@@ -218,6 +219,7 @@ export function createAgentStructuredTextGeneration(deps: {
+         schema,
+         schemaName,
+         maxRetries: 2,
++        timeoutMs: METADATA_GENERATION_TIMEOUT_MS,
+         providers,
+         persistSession: false,
+         logger: deps.logger,
+diff --git a/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts b/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
+index 22e903b5f1a5485e130b4f6f40a4675205e07e38..adb78cabdf180c11b8976f35d0aa4484cfdae9d2 100644
+--- a/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
++++ b/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
+@@ -159,6 +159,12 @@ describe("workspace recovery", () => {
+     });
+     const worktreeRoot = realpathSync(created.worktreePath);
+     const workspaceCwd = join(worktreeRoot, "packages", "app");
++    writeFileSync(join(worktreeRoot, "feature.txt"), "feature\n");
++    execFileSync("git", ["add", "feature.txt"], { cwd: worktreeRoot, stdio: "pipe" });
++    execFileSync("git", ["commit", "-m", "add feature"], {
++      cwd: worktreeRoot,
++      stdio: "pipe",
++    });
+     rmSync(worktreeRoot, { recursive: true, force: true });
+     execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
+ 
+@@ -175,6 +181,7 @@ describe("workspace recovery", () => {
+       cwd: workspaceCwd,
+       branch,
+       worktreeRoot,
++      baseBranch: "main",
+       mainRepoRoot: repoDir,
+     });
+     const unarchived: string[] = [];
+@@ -196,6 +203,10 @@ describe("workspace recovery", () => {
+     });
+     expect(existsSync(worktreeRoot)).toBe(true);
+     expect(existsSync(workspaceCwd)).toBe(true);
++    await expect(getCheckoutStatus(worktreeRoot, { paseoHome })).resolves.toMatchObject({
++      baseRef: "main",
++      hasChangesFromBase: true,
++    });
+     expect(unarchived).toEqual([workspace.workspaceId]);
+   });
+ 
+diff --git a/packages/server/src/server/test-utils/workspace-git-service-stub.ts b/packages/server/src/server/test-utils/workspace-git-service-stub.ts
+index 0027173ab78632fddbfe36d537d988c530821d61..b92fbd3df596fa136cd9544153e0d685172d7b2e 100644
+--- a/packages/server/src/server/test-utils/workspace-git-service-stub.ts
++++ b/packages/server/src/server/test-utils/workspace-git-service-stub.ts
+@@ -65,6 +65,7 @@ export function createNoopWorkspaceGitService(
+     resolveDefaultBranch: async () => "main",
+     resolveRepoRemoteUrl: async () => null,
+     refresh: async () => {},
++    requestFetch: () => {},
+     requestWorkingTreeWatch: async () => ({
+       repoRoot: null,
+       unsubscribe: () => {},
+diff --git a/packages/server/src/server/websocket-server.notifications.test.ts b/packages/server/src/server/websocket-server.notifications.test.ts
+index c16a079628c406b8340093eed3e91062901f112b..31b17b0b384366d3468cf60ae9d0442cb15c6a40 100644
+--- a/packages/server/src/server/websocket-server.notifications.test.ts
++++ b/packages/server/src/server/websocket-server.notifications.test.ts
+@@ -25,6 +25,11 @@ const wsModuleMock = vi.hoisted(() => {
+       return this;
+     }
+ 
++    once(event: string, handler: (...args: unknown[]) => void) {
++      this.handlers.set(event, handler);
++      return this;
++    }
++
+     close() {
+       // no-op
+     }
+@@ -107,7 +112,7 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
+   };
+ 
+   const server = new VoiceAssistantWebSocketServer(
+-    createStub<HTTPServer>({}),
++    createStub<HTTPServer>({ on: vi.fn(), off: vi.fn() }),
+     createStub<pino.Logger>(createLogger()),
+     "srv-test",
+     createStub<AgentManager>(agentManager),
+diff --git a/packages/server/src/server/websocket-server.relay-reconnect.test.ts b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
+index 2d48a93c87739a9d5f97442d8a94ce227c00ee35..3eefbba13feb1aa70adf6111284bb211e7ae69b5 100644
+--- a/packages/server/src/server/websocket-server.relay-reconnect.test.ts
++++ b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
+@@ -37,6 +37,11 @@ const wsModuleMock = vi.hoisted(() => {
+       return this;
+     }
+ 
++    once(event: string, handler: (...args: unknown[]) => void) {
++      this.handlers.set(event, handler);
++      return this;
++    }
++
+     close() {
+       // no-op
+     }
+@@ -264,7 +269,7 @@ function createServer(options?: {
+   };
+   const logger = options?.logger ?? createLogger();
+   return new VoiceAssistantWebSocketServer(
+-    createStub<HTTPServer>({}),
++    createStub<HTTPServer>({ on: vi.fn(), off: vi.fn() }),
+     createStub<pino.Logger>(logger),
+     "srv_test",
+     createStub<AgentManager>({
+diff --git a/packages/server/src/server/websocket-server.terminal-notifications.test.ts b/packages/server/src/server/websocket-server.terminal-notifications.test.ts
+index e22e5bf9a72baee67eca03a3f3752d64f0498630..8b7d335e19e04a7ad38c5bb595c555c790c2df37 100644
+--- a/packages/server/src/server/websocket-server.terminal-notifications.test.ts
++++ b/packages/server/src/server/websocket-server.terminal-notifications.test.ts
+@@ -29,6 +29,11 @@ const wsModuleMock = vi.hoisted(() => {
+       return this;
+     }
+ 
++    once(event: string, handler: (...args: unknown[]) => void) {
++      this.handlers.set(event, handler);
++      return this;
++    }
++
+     close() {
+       // no-op
+     }
+@@ -138,7 +143,7 @@ function createServer(terminalManager: TerminalManager, workspaceRegistry?: Work
+   };
+ 
+   const server = new VoiceAssistantWebSocketServer(
+-    createStub<HTTPServer>({}),
++    createStub<HTTPServer>({ on: vi.fn(), off: vi.fn() }),
+     createStub<pino.Logger>(createLogger()),
+     "srv-test",
+     createStub<AgentManager>(agentManager),
+diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
+index dfa324315c45e7a9b56e314af3c9d39672935dda..26bd269560411f760f7cb8f0f3be664a62898ef7 100644
+--- a/packages/server/src/server/websocket-server.ts
++++ b/packages/server/src/server/websocket-server.ts
+@@ -17,6 +17,7 @@ import { CreationService } from "./creation/index.js";
+ import { MessageReceipts } from "./message-receipts/index.js";
+ import { WebSocket, WebSocketServer } from "ws";
+ import type { IncomingMessage, Server as HTTPServer } from "http";
++import type { Duplex } from "node:stream";
+ import { join } from "path";
+ import { getHostName } from "./host-name.js";
+ import { randomUUID } from "node:crypto";
+@@ -77,7 +78,7 @@ import {
+   type PushNotificationSender,
+ } from "./push/index.js";
+ import type { ScriptHealthState } from "./script-health-monitor.js";
+-import type { ServiceProxySubsystem } from "./service-proxy.js";
++import { isServiceProxyUpgradeRequest, type ServiceProxySubsystem } from "./service-proxy.js";
+ import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
+ import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
+ import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
+@@ -272,6 +273,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
+     resolveDefaultBranch: async () => "main",
+     resolveRepoRemoteUrl: async () => null,
+     refresh: async () => {},
++    requestFetch: async () => {},
+     requestWorkingTreeWatch: async () => ({
+       repoRoot: null,
+       unsubscribe: () => {},
+@@ -874,7 +876,7 @@ export class VoiceAssistantWebSocketServer {
+   ): WebSocketServer {
+     const password = auth?.password;
+     const wss = new WebSocketServer({
+-      server,
++      noServer: true,
+       path: "/ws",
+       maxPayload: MAX_WEBSOCKET_MESSAGE_BYTES,
+       handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
+@@ -887,6 +889,16 @@ export class VoiceAssistantWebSocketServer {
+         );
+       },
+     });
++    const handleUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
++      if (isServiceProxyUpgradeRequest(req)) {
++        return;
++      }
++      wss.handleUpgrade(req, socket, head, (ws) => {
++        wss.emit("connection", ws, req);
++      });
++    };
++    server.on("upgrade", handleUpgrade);
++    wss.once("close", () => server.off("upgrade", handleUpgrade));
+     wss.on("connection", (ws, request) => {
+       void this.attachAuthenticatedSocket(ws, request, password);
+     });
+@@ -1984,6 +1996,8 @@ export class VoiceAssistantWebSocketServer {
+         // gate and legacy fallback after 2027-01-17 once the supported daemon
+         // floor is >= v0.2.0.
+         forgeCheckDetails: true,
++        // COMPAT(forgeBranchPipeline): added in v0.2.5, remove gate after 2027-02-08.
++        forgeBranchPipeline: true,
+         // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
+         // and legacy fallback after 2027-01-17 once the supported daemon floor
+         // is >= v0.2.0.
+@@ -2081,6 +2095,12 @@ export class VoiceAssistantWebSocketServer {
+         commitsList: true,
+         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
+         commitBaseClassification: true,
++        // FORK(repository-graph): advertise fork-only graph functionality.
++        repositoryGraph: true,
++        repositoryGraphCommitDetails: true,
++        repositoryGraphRefActions: true,
++        repositoryGraphTagActions: true,
++        repositoryGraphCheckout: true,
+         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
+         providerRemoval: true,
+         hopliteProvider: this.providerSnapshotManager.supportsConfigRequiredProvider("hoplite"),
+diff --git a/packages/server/src/server/workspace-git-service.observation.test.ts b/packages/server/src/server/workspace-git-service.observation.test.ts
+index ab93558793b4922bca364045c77b4c1a0f4c44b4..5a29358a196e53f41beb4e53ed948e8f21a734b4 100644
+--- a/packages/server/src/server/workspace-git-service.observation.test.ts
++++ b/packages/server/src/server/workspace-git-service.observation.test.ts
+@@ -216,6 +216,7 @@ function createService(
+       getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
+       getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
+         ...current,
++        hasChangesFromBase: current.hasChangesFromBase ?? null,
+         upstreamStatus: facts.upstreamStatus,
+       })),
+       getCheckoutStatus,
+@@ -588,9 +589,14 @@ describe("WorkspaceGitService checkout observation", () => {
+       resolvedBaseRef: "main",
+       comparisonBaseRef: "origin/main",
+     }));
+-    const getCheckoutRefDerivedState = vi.fn(async (_cwd, facts, current) => ({
++    const getCheckoutRefDerivedState = vi.fn(async (_cwd, _facts, current) => ({
+       ...current,
+-      upstreamStatus: facts.upstreamStatus,
++      hasChangesFromBase: false,
++      upstreamStatus: {
++        ref: "origin/feature",
++        aheadBehind: { ahead: 1, behind: 0 },
++        hasChanges: true,
++      },
+     }));
+     const runGitFetch = vi.fn(async (_cwd, observer) => {
+       observer?.onRefSnapshot("before");
+@@ -607,6 +613,8 @@ describe("WorkspaceGitService checkout observation", () => {
+       getCheckoutStatus: vi.fn(async (cwd: string) =>
+         createCheckoutStatus(cwd, {
+           currentBranch: "feature",
++          hasChangesFromBase: true,
++          hasChangesFromOrigin: false,
+           baseRef: "main",
+           hasRemote: true,
+           remoteUrl: REMOTE_URL,
+@@ -641,6 +649,14 @@ describe("WorkspaceGitService checkout observation", () => {
+ 
+     expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
+     expect(listener).toHaveBeenCalledTimes(1);
++    expect((await service.getSnapshot(REPO_CWD, { includeForge: false })).git).toMatchObject({
++      hasChangesFromBase: false,
++      hasChangesFromOrigin: true,
++      upstreamRef: "origin/feature",
++    });
++    expect(getCheckoutRefDerivedState.mock.calls[0]?.[2]).toMatchObject({
++      hasChangesFromBase: true,
++    });
+ 
+     subscription.unsubscribe();
+     service.dispose();
+diff --git a/packages/server/src/server/workspace-git-service.primitive.test.ts b/packages/server/src/server/workspace-git-service.primitive.test.ts
+index 1b43026c7d7e002f35eafd1bc045c45de4c6b8df..28073d4a74f5859790a58db52e0363304b631529 100644
+--- a/packages/server/src/server/workspace-git-service.primitive.test.ts
++++ b/packages/server/src/server/workspace-git-service.primitive.test.ts
+@@ -345,6 +345,7 @@ function buildDefaultServiceDeps() {
+     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
+     getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
+       ...current,
++      hasChangesFromBase: current.hasChangesFromBase ?? null,
+       upstreamStatus: facts.upstreamStatus,
+     })),
+     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
+@@ -581,6 +582,10 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
+     await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(createSnapshot(REPO_CWD));
+     expect(listener.mock.lastCall?.[0] ?? null).toEqual(createSnapshot(REPO_CWD));
+ 
++    await vi.waitFor(() => {
++      expect(listener).toHaveBeenLastCalledWith(createSnapshot(REPO_CWD));
++    });
++
+     subscription.unsubscribe();
+     service.dispose();
+   });
+diff --git a/packages/server/src/server/workspace-git-service.test.ts b/packages/server/src/server/workspace-git-service.test.ts
+index 4b0b13b7a2435c44672c398e792af6d1ace29472..2968ba954e7cecb9b4671cd758ad24492f40875c 100644
+--- a/packages/server/src/server/workspace-git-service.test.ts
++++ b/packages/server/src/server/workspace-git-service.test.ts
+@@ -273,6 +273,7 @@ function buildDefaultTestServiceDeps() {
+     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutSnapshotFacts(cwd)),
+     getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
+       ...current,
++      hasChangesFromBase: current.hasChangesFromBase ?? null,
+       upstreamStatus: facts.upstreamStatus,
+     })),
+     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
+@@ -966,6 +967,7 @@ describe("WorkspaceGitServiceImpl", () => {
+     }));
+     const getCheckoutRefDerivedState = vi.fn(async (_cwd, facts, current) => ({
+       ...current,
++      hasChangesFromBase: current.hasChangesFromBase ?? null,
+       upstreamStatus: facts.upstreamStatus,
+     }));
+     const resolveAbsoluteGitDir = vi.fn(async () => join(REPO_CWD, ".git"));
+@@ -1011,6 +1013,75 @@ describe("WorkspaceGitServiceImpl", () => {
+     service.dispose();
+   });
+ 
++  test("manual requests queue one fresh fetch after background work", async () => {
++    const firstFetch = createDeferred<{ changes: []; error: null }>();
++    const secondFetch = createDeferred<{ changes: []; error: null }>();
++    const runGitFetch = vi
++      .fn()
++      .mockImplementationOnce(() => firstFetch.promise)
++      .mockImplementationOnce(() => secondFetch.promise);
++    const service = createService({ runGitFetch });
++    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
++
++    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(1));
++    const firstRequest = service.requestFetch(REPO_CWD);
++    const secondRequest = service.requestFetch(REPO_CWD);
++    await flushPromises();
++    expect(runGitFetch).toHaveBeenCalledTimes(1);
++
++    firstFetch.resolve({ changes: [], error: null });
++    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(2));
++    let settled = false;
++    void firstRequest.then(() => {
++      settled = true;
++      return undefined;
++    });
++    await flushPromises();
++    expect(settled).toBe(false);
++
++    secondFetch.resolve({ changes: [], error: null });
++    await Promise.all([firstRequest, secondRequest]);
++    expect(runGitFetch).toHaveBeenCalledTimes(2);
++    subscription.unsubscribe();
++    service.dispose();
++  });
++
++  test("manual fetch works without an observed workspace or background polling", async () => {
++    const runGitFetch = vi.fn(async () => ({ changes: [], error: null }));
++    const service = createService({ runGitFetch });
++
++    await service.requestFetch(REPO_CWD);
++
++    expect(runGitFetch).toHaveBeenCalledTimes(1);
++    expect(service.getMetrics().repositoryTargetCount).toBe(0);
++    await vi.advanceTimersByTimeAsync(180_000);
++    expect(runGitFetch).toHaveBeenCalledTimes(1);
++    service.dispose();
++  });
++
++  test("concurrent cold requests share a single fetch", async () => {
++    const pending = createDeferred<{ changes: []; error: null }>();
++    const runGitFetch = vi.fn(() => pending.promise);
++    const service = createService({ runGitFetch });
++
++    const first = service.requestFetch(REPO_CWD);
++    const second = service.requestFetch(REPO_CWD);
++    await vi.waitFor(() => expect(runGitFetch).toHaveBeenCalledTimes(1));
++    pending.resolve({ changes: [], error: null });
++    await Promise.all([first, second]);
++    expect(runGitFetch).toHaveBeenCalledTimes(1);
++    service.dispose();
++  });
++
++  test("manual fetch rejects network failure while background fetch remains best-effort", async () => {
++    const failure = new Error("remote unavailable");
++    const runGitFetch = vi.fn(async () => ({ changes: [], error: failure }));
++    const service = createService({ runGitFetch });
++
++    await expect(service.requestFetch(REPO_CWD)).rejects.toBe(failure);
++    service.dispose();
++  });
++
+   test("remote ref name drift outside the fetch interval takes the structural fallback", async () => {
+     const runGitFetch = vi
+       .fn()
+@@ -1165,7 +1236,6 @@ describe("WorkspaceGitServiceImpl", () => {
+       expect(getCheckoutShortstat).toHaveBeenCalledTimes(2);
+     });
+     expect(listener.mock.lastCall?.[0].git.diffStat).toEqual({ additions: 2, deletions: 0 });
+-
+     subscription.unsubscribe();
+     service.dispose();
+   });
+diff --git a/packages/server/src/server/workspace-git-service.ts b/packages/server/src/server/workspace-git-service.ts
+index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba371fe26b 100644
+--- a/packages/server/src/server/workspace-git-service.ts
++++ b/packages/server/src/server/workspace-git-service.ts
+@@ -160,9 +160,11 @@ export interface WorkspaceGitRuntimeSnapshot {
+     isDirty: boolean | null;
+     baseRef: string | null;
+     aheadBehind: { ahead: number; behind: number } | null;
++    hasChangesFromBase?: boolean | null;
+     upstreamRef: string | null;
+     aheadOfOrigin: number | null;
+     behindOfOrigin: number | null;
++    hasChangesFromOrigin?: boolean | null;
+     hasRemote: boolean;
+     diffStat: { additions: number; deletions: number } | null;
+   };
+@@ -242,6 +244,7 @@ export interface WorkspaceGitService {
+   resolveDefaultBranch(cwdOrRepoRoot: string, options?: WorkspaceGitReadOptions): Promise<string>;
+   resolveRepoRemoteUrl(cwd: string, options?: WorkspaceGitReadOptions): Promise<string | null>;
+   refresh(cwd: string, options?: { priority?: "normal" | "high" }): Promise<void>;
++  requestFetch(cwd: string): Promise<void>;
+   requestWorkingTreeWatch(
+     cwd: string,
+     onChange: () => void,
+@@ -450,6 +453,8 @@ interface RepoGitTarget {
+   recovery: WatchRecoveryState;
+   intervalId: NodeJS.Timeout | null;
+   fetchInFlight: boolean;
++  fetchPromise: Promise<void> | null;
++  explicitFetchPromise: Promise<void> | null;
+   bufferedFetchMetadataEvents: FileChange[];
+   recentFetchRemoteRefChanges: Map<
+     string,
+@@ -603,6 +608,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+   private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
+   private readonly workspaceTargets = new Map<string, WorkspaceGitTarget>();
+   private readonly repoTargets = new Map<string, RepoGitTarget>();
++  private readonly coldFetches = new Map<string, Promise<void>>();
+   private readonly workingTreeWatchTargets = new Map<string, WorkingTreeWatchTarget>();
+   private readonly workingTreeWatchSetups = new Map<string, Promise<WorkingTreeWatchTarget>>();
+   private readonly workingTreeWatchResolutions = new Map<string, Promise<WorkingTreeWatchTarget>>();
+@@ -984,6 +990,48 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+     this.scheduleWorkspaceObservationSetup(target);
+   }
+ 
++  async requestFetch(cwd: string): Promise<void> {
++    this.assertNotDisposed();
++    cwd = resolve(cwd);
++    const workspace = this.ensureWorkspaceTarget(cwd);
++    if (workspace.observationSetupPromise) {
++      await workspace.observationSetupPromise;
++    }
++    const facts = await this.getFactsForObservation(workspace);
++    if (!facts.isGit || !facts.absoluteGitDir) {
++      return;
++    }
++    const repoGitRoot =
++      facts.gitCommonDir ?? (await this.resolveWorkspaceGitRefsRoot(facts.absoluteGitDir));
++    const pending = this.coldFetches.get(repoGitRoot);
++    if (pending) {
++      return pending;
++    }
++    if (facts.remoteUrl === null && !(await this.deps.hasOriginRemote(cwd))) {
++      return;
++    }
++    const existing = this.repoTargets.get(repoGitRoot);
++    if (existing) {
++      return this.runExplicitRepoFetch(existing);
++    }
++    const startedWhileProbing = this.coldFetches.get(repoGitRoot);
++    if (startedWhileProbing) {
++      return startedWhileProbing;
++    }
++    // Cold reads do not subscribe to metadata or start background polling.
++    const fetch = GitObservationPaths.create(repoGitRoot)
++      .then((paths) => {
++        const target =
++          this.repoTargets.get(repoGitRoot) ?? this.createRepoTarget(repoGitRoot, cwd, paths);
++        return this.runExplicitRepoFetch(target);
++      })
++      .finally(() => {
++        this.coldFetches.delete(repoGitRoot);
++      });
++    this.coldFetches.set(repoGitRoot, fetch);
++    return fetch;
++  }
++
+   async requestWorkingTreeWatch(
+     cwd: string,
+     onChange: () => void,
+@@ -2145,6 +2193,54 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+     return gitDir;
+   }
+ 
++  private createRepoTarget(
++    repoGitRoot: string,
++    cwd: string,
++    paths: GitObservationPaths,
++  ): RepoGitTarget {
++    return {
++      paths,
++      repoGitRoot,
++      cwd,
++      workspaceKeys: new Set(),
++      subscription: null,
++      fallbackPolling: false,
++      fallbackPollTimer: null,
++      fallbackPollQuietTickCount: 0,
++      recovery: { attemptCount: 0, timer: null, establishedAt: null },
++      intervalId: null,
++      fetchInFlight: false,
++      fetchPromise: null,
++      explicitFetchPromise: null,
++      bufferedFetchMetadataEvents: [],
++      recentFetchRemoteRefChanges: new Map(),
++      knownRemoteRefs: null,
++      closed: false,
++    };
++  }
++
++  private runExplicitRepoFetch(target: RepoGitTarget): Promise<void> {
++    if (target.explicitFetchPromise) {
++      return target.explicitFetchPromise;
++    }
++    const inFlight = target.fetchPromise;
++    const fetch = (async () => {
++      // A background fetch already in flight cannot promise post-request state.
++      // Concurrent manual requests share exactly one follow-up fetch.
++      if (inFlight) {
++        await inFlight;
++      }
++      await this.runRepoFetch(target, true);
++    })();
++    target.explicitFetchPromise = fetch;
++    void fetch
++      .finally(() => {
++        target.explicitFetchPromise = null;
++      })
++      .catch(() => {});
++    return fetch;
++  }
++
+   private async ensureRepoTarget(workspaceTarget: WorkspaceGitTarget): Promise<void> {
+     const repoGitRoot = workspaceTarget.repoGitRoot;
+     if (!repoGitRoot || !this.isActiveObservedWorkspaceTarget(workspaceTarget)) {
+@@ -2164,23 +2260,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+       establishedTarget.workspaceKeys.add(workspaceTarget.cwd);
+       return;
+     }
+-    const repoTarget: RepoGitTarget = {
+-      paths,
+-      repoGitRoot,
+-      cwd: workspaceTarget.cwd,
+-      workspaceKeys: new Set([workspaceTarget.cwd]),
+-      subscription: null,
+-      fallbackPolling: false,
+-      fallbackPollTimer: null,
+-      fallbackPollQuietTickCount: 0,
+-      recovery: { attemptCount: 0, timer: null, establishedAt: null },
+-      intervalId: null,
+-      fetchInFlight: false,
+-      bufferedFetchMetadataEvents: [],
+-      recentFetchRemoteRefChanges: new Map(),
+-      knownRemoteRefs: null,
+-      closed: false,
+-    };
++    const repoTarget = this.createRepoTarget(repoGitRoot, workspaceTarget.cwd, paths);
++    repoTarget.workspaceKeys.add(workspaceTarget.cwd);
+     this.repoTargets.set(repoGitRoot, repoTarget);
+     await this.startRepoMetadataObservation(repoTarget);
+     if (repoTarget.closed || this.repoTargets.get(repoGitRoot) !== repoTarget) {
+@@ -3294,7 +3375,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+     const derived = await this.deps.getCheckoutRefDerivedState(
+       target.cwd,
+       facts,
+-      { aheadBehind: latestGit.aheadBehind, diffStat: latestGit.diffStat },
++      {
++        aheadBehind: latestGit.aheadBehind,
++        diffStat: latestGit.diffStat,
++        hasChangesFromBase: latestGit.hasChangesFromBase ?? null,
++      },
+       movedRemoteRefs,
+       {
+         paseoHome: this.paseoHome,
+@@ -3308,9 +3393,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+     target.latestGit = {
+       ...latestGit,
+       aheadBehind: derived.aheadBehind,
++      hasChangesFromBase: derived.hasChangesFromBase,
+       diffStat: derived.diffStat,
+       upstreamRef: derived.upstreamStatus?.ref ?? null,
+       aheadOfOrigin: derived.upstreamStatus?.aheadBehind.ahead ?? null,
++      hasChangesFromOrigin: derived.upstreamStatus?.hasChanges ?? null,
+       behindOfOrigin: derived.upstreamStatus?.aheadBehind.behind ?? null,
+     };
+     const loadedAtMs = this.deps.now().getTime();
+@@ -3394,9 +3481,15 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+         : (target.latestGit?.isDirty ?? checkoutStatus.isDirty),
+       baseRef: checkoutStatus.baseRef,
+       aheadBehind: checkoutStatus.aheadBehind,
++      ...(checkoutStatus.hasChangesFromBase !== undefined
++        ? { hasChangesFromBase: checkoutStatus.hasChangesFromBase }
++        : {}),
+       upstreamRef: checkoutStatus.upstreamRef,
+       aheadOfOrigin: checkoutStatus.aheadOfOrigin,
+       behindOfOrigin: checkoutStatus.behindOfOrigin,
++      ...(checkoutStatus.hasChangesFromOrigin !== undefined
++        ? { hasChangesFromOrigin: checkoutStatus.hasChangesFromOrigin }
++        : {}),
+       hasRemote: checkoutStatus.hasRemote,
+       diffStat,
+     };
+@@ -3532,99 +3625,111 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+     }
+   }
+ 
+-  private async runRepoFetch(target: RepoGitTarget): Promise<void> {
+-    if (target.fetchInFlight) {
+-      return;
++  private async runRepoFetch(target: RepoGitTarget, explicit = false): Promise<void> {
++    if (target.fetchPromise) {
++      return target.fetchPromise;
+     }
+ 
+-    target.fetchInFlight = true;
+-    this.logger.debug(
+-      { repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+-      "Running background git fetch",
+-    );
++    let fetchError: unknown = null;
++    target.fetchPromise = (async () => {
++      target.fetchInFlight = true;
++      this.logger.debug(
++        { repoGitRoot: target.repoGitRoot, cwd: target.cwd },
++        "Running background git fetch",
++      );
+ 
+-    let result: WorkspaceGitFetchResult | null = null;
+-    const eventsBeforeFetchSnapshot: FileChange[] = [];
+-    try {
++      let result: WorkspaceGitFetchResult | null = null;
++      const eventsBeforeFetchSnapshot: FileChange[] = [];
+       try {
+-        result = await this.deps.runGitFetch(
+-          target.cwd,
+-          {
+-            onRefSnapshot: (phase) => {
+-              const events = target.bufferedFetchMetadataEvents.splice(0);
+-              if (phase === "before") {
+-                eventsBeforeFetchSnapshot.push(...events);
+-              }
++        try {
++          result = await this.deps.runGitFetch(
++            target.cwd,
++            {
++              onRefSnapshot: (phase) => {
++                const events = target.bufferedFetchMetadataEvents.splice(0);
++                if (phase === "before") {
++                  eventsBeforeFetchSnapshot.push(...events);
++                }
++              },
+             },
+-          },
+-          createRunGitCommand("background-fetch"),
+-        );
+-      } catch (error) {
+-        this.logger.warn(
+-          { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+-          "Background git fetch failed",
+-        );
+-      }
+-      this.applyRepoFetchResult(target, result, eventsBeforeFetchSnapshot);
+-    } finally {
+-      target.fetchInFlight = false;
+-    }
+-  }
++            createRunGitCommand("background-fetch"),
++          );
++        } catch (error) {
++          this.logger.warn(
++            { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
++            "Background git fetch failed",
++          );
++          fetchError = error;
++        }
++        if (result?.error) {
++          fetchError = result.error;
++        }
++        this.flushFetchMetadataEvents(target, eventsBeforeFetchSnapshot);
++        if (!result || result.changes === null) {
++          target.recentFetchRemoteRefChanges.clear();
++          target.knownRemoteRefs = null;
++          this.flushBufferedFetchMetadataEvents(target);
++          if (result) {
++            this.logger.warn(
++              { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
++              "Background git fetch ref classification failed; using structural refresh",
++            );
++          }
++          this.scheduleRepoMetadataRefresh(target, "repo-fetch-unclassified", false);
++          return;
++        }
++        if (result.error) {
++          this.logger.warn(
++            { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
++            "Background git fetch completed with errors after changing refs",
++          );
++        }
++        const expiresAtMs = this.deps.now().getTime() + FETCH_METADATA_ECHO_TTL_MS;
++        const remoteRefShapeChanged =
++          target.knownRemoteRefs !== null &&
++          result.remoteRefs !== undefined &&
++          !setsEqual(target.knownRemoteRefs, result.remoteRefs);
++        if (result.remoteRefs) {
++          target.knownRemoteRefs = new Set(result.remoteRefs);
++        }
++        target.recentFetchRemoteRefChanges.clear();
++        for (const change of result.changes) {
++          target.recentFetchRemoteRefChanges.set(change.ref, { change, expiresAtMs });
++        }
++        this.flushBufferedFetchMetadataEvents(target);
++        if (
++          result.nonRemoteRefsChanged === true ||
++          remoteRefShapeChanged ||
++          result.changes.some((change) => change.kind !== "moved")
++        ) {
++          this.scheduleRepoMetadataRefresh(target, "repo-fetch-ref-shape", false);
++          return;
++        }
++        if (result.changes.length === 0) {
++          return;
++        }
++        const refreshes = new Map<string, RepoMetadataWorkspaceRefresh>();
++        for (const change of result.changes) {
++          this.routeRemoteBranchRef(target, change.ref, refreshes, { narrow: true });
++        }
++        this.scheduleRepoMetadataRefresh(target, "repo-fetch", false, refreshes);
++      } finally {
++        // Keep the flag set until classification/refresh scheduling completes: tests and
++        // callers treat fetchInFlightCount === 0 as "fetch fully settled" (upstream #4171).
++        target.fetchInFlight = false;
++      }
++    })()
++      .then(() => {
++        if (explicit && fetchError) {
++          throw fetchError;
++        }
++        return undefined;
++      })
++      .finally(() => {
++        target.fetchPromise = null;
++      });
+ 
+-  private applyRepoFetchResult(
+-    target: RepoGitTarget,
+-    result: WorkspaceGitFetchResult | null,
+-    eventsBeforeFetchSnapshot: FileChange[],
+-  ): void {
+-    this.flushFetchMetadataEvents(target, eventsBeforeFetchSnapshot);
+-    if (!result || result.changes === null) {
+-      target.recentFetchRemoteRefChanges.clear();
+-      target.knownRemoteRefs = null;
+-      this.flushBufferedFetchMetadataEvents(target);
+-      if (result) {
+-        this.logger.warn(
+-          { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+-          "Background git fetch ref classification failed; using structural refresh",
+-        );
+-      }
+-      this.scheduleRepoMetadataRefresh(target, "repo-fetch-unclassified", false);
+-      return;
+-    }
+-    if (result.error) {
+-      this.logger.warn(
+-        { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+-        "Background git fetch completed with errors after changing refs",
+-      );
+-    }
+-    const expiresAtMs = this.deps.now().getTime() + FETCH_METADATA_ECHO_TTL_MS;
+-    const remoteRefShapeChanged =
+-      target.knownRemoteRefs !== null &&
+-      result.remoteRefs !== undefined &&
+-      !setsEqual(target.knownRemoteRefs, result.remoteRefs);
+-    if (result.remoteRefs) {
+-      target.knownRemoteRefs = new Set(result.remoteRefs);
+-    }
+-    target.recentFetchRemoteRefChanges.clear();
+-    for (const change of result.changes) {
+-      target.recentFetchRemoteRefChanges.set(change.ref, { change, expiresAtMs });
+-    }
+-    this.flushBufferedFetchMetadataEvents(target);
+-    if (
+-      result.nonRemoteRefsChanged === true ||
+-      remoteRefShapeChanged ||
+-      result.changes.some((change) => change.kind !== "moved")
+-    ) {
+-      this.scheduleRepoMetadataRefresh(target, "repo-fetch-ref-shape", false);
+-      return;
+-    }
+-    if (result.changes.length === 0) {
+-      return;
+-    }
+-    const refreshes = new Map<string, RepoMetadataWorkspaceRefresh>();
+-    for (const change of result.changes) {
+-      this.routeRemoteBranchRef(target, change.ref, refreshes, { narrow: true });
+-    }
+-    this.scheduleRepoMetadataRefresh(target, "repo-fetch", false, refreshes);
++    return target.fetchPromise;
+   }
+ 
+   private flushBufferedFetchMetadataEvents(target: RepoGitTarget): void {
+diff --git a/packages/server/src/services/forge-registry.test.ts b/packages/server/src/services/forge-registry.test.ts
+index 8671f51f8b47c2fb2b4d59689756f97938ba0872..fa668ce487f313e409e6c401ee44e055771691dd 100644
+--- a/packages/server/src/services/forge-registry.test.ts
++++ b/packages/server/src/services/forge-registry.test.ts
+@@ -74,6 +74,10 @@ describe("forge registry", () => {
+     expect(defaultForgeRegistry.matchHost("notgitlab.example.org")).toBeNull();
+   });
+ 
++  it("matches declared self-hosted hosts without probing", () => {
++    expect(defaultForgeRegistry.matchHost("gitlab.iceveil.com")).toBe("gitlab");
++  });
++
+   it("treats a probe that throws as 'not this forge' rather than crashing detection", async () => {
+     const registry = new ForgeRegistry([
+       [
+diff --git a/packages/server/src/services/forge-registry.ts b/packages/server/src/services/forge-registry.ts
+index 4b01f5e4e6a1450e182144a9c732adf974055632..1c1d55be5524db40092cc037104532ade07ba285 100644
+--- a/packages/server/src/services/forge-registry.ts
++++ b/packages/server/src/services/forge-registry.ts
+@@ -1,5 +1,6 @@
+ import { getForgeDefinition } from "@getpaseo/protocol/forge-manifest";
+ import { normalizeHost } from "@getpaseo/protocol/git-remote";
++import { getForkForgeKnownHosts } from "@getpaseo/protocol/fork/forges/self-hosted";
+ import { createGitHubService, probeGitHubHost } from "./github-service.js";
+ import type { ForgeService } from "./forge-service.js";
+ import { createGiteaService, resolveGiteaFamilyForge } from "./gitea-service.js";
+@@ -130,6 +131,14 @@ function matchesCloudHost(forgeId: string): ((host: string) => boolean) | undefi
+   return (host) => normalized.has(normalizeHost(host));
+ }
+ 
++function matchesForkGitLabHost(): (host: string) => boolean {
++  const definition = getForgeDefinition("gitlab");
++  const normalized = new Set(
++    definition ? getForkForgeKnownHosts(definition).map(normalizeHost) : [],
++  );
++  return (host) => normalized.has(normalizeHost(host));
++}
++
+ export const defaultForgeRegistry = new ForgeRegistry([
+   // GitHub Enterprise Server is recognized at runtime by probeHost, exactly like
+   // self-hosted GitLab/Gitea: github.com short-circuits via matchHost, so the
+@@ -147,7 +156,7 @@ export const defaultForgeRegistry = new ForgeRegistry([
+     "gitlab",
+     {
+       createService: createGitLabService,
+-      matchesHost: matchesCloudHost("gitlab"),
++      matchesHost: matchesForkGitLabHost(),
+       probeHost: probeGitLabHost,
+     },
+   ],
+diff --git a/packages/server/src/services/forge-resolver.test.ts b/packages/server/src/services/forge-resolver.test.ts
+index 414a4cee92346bf7370971220f994dfb220c7ca2..9ad9a78d68c1c5895a6146fbd93a81904d33eb5b 100644
+--- a/packages/server/src/services/forge-resolver.test.ts
++++ b/packages/server/src/services/forge-resolver.test.ts
+@@ -17,6 +17,9 @@ describe("parseRemoteHost", () => {
+   it("parses ssh and https remotes", () => {
+     expect(parseRemoteHost("git@github.com:owner/repo.git")).toBe("github.com");
+     expect(parseRemoteHost("git@gitlab.example.com:group/sub/repo.git")).toBe("gitlab.example.com");
++    expect(parseRemoteHost("https://gitlab.iceveil.com:38443/group/repo.git")).toBe(
++      "gitlab.iceveil.com",
++    );
+     expect(parseRemoteHost("https://GitLab.Example.Com./group/repo.git")).toBe(
+       "gitlab.example.com",
+     );
+@@ -28,6 +31,7 @@ describe("forgeForHost", () => {
+   it("maps public registered forge hosts without resolver-specific branches", () => {
+     expect(forgeForHost("github.com")).toBe("github");
+     expect(forgeForHost("gitlab.com")).toBe("gitlab");
++    expect(forgeForHost("gitlab.iceveil.com")).toBe("gitlab");
+     expect(forgeForHost("gitea.com")).toBe("gitea");
+     expect(forgeForHost("codeberg.org")).toBe("codeberg");
+   });
+@@ -306,11 +310,12 @@ describe("createForgeResolver", () => {
+   it.each([
+     ["github", "git@github.com:owner/repo.git", "github.com"],
+     ["gitlab", "git@gitlab.com:group/repo.git", "gitlab.com"],
++    ["gitlab", "https://gitlab.iceveil.com:38443/group/repo.git", "gitlab.iceveil.com"],
+     ["gitea", "git@gitea.com:owner/repo.git", "gitea.com"],
+     ["codeberg", "git@codeberg.org:owner/repo.git", "codeberg.org"],
+-  ])("resolves the %s cloud host without probing CLI auth", async (forge, remoteUrl, host) => {
++  ])("resolves the %s known host without probing CLI auth", async (forge, remoteUrl, host) => {
+     const probeForge = vi.fn(async () => {
+-      throw new Error("cloud host should not probe");
++      throw new Error("known host should not probe");
+     });
+     const resolver = createForgeResolver({
+       resolveRemoteUrl: async () => remoteUrl,
+diff --git a/packages/server/src/services/forge-service.ts b/packages/server/src/services/forge-service.ts
+index 8499cc8756f3809c5c474b763167005e1fb8a4e9..98814641b37bedd1b041ec177a375000709a4aab 100644
+--- a/packages/server/src/services/forge-service.ts
++++ b/packages/server/src/services/forge-service.ts
+@@ -195,6 +195,8 @@ export interface PullRequestCreateResult {
+ export type PullRequestMergeMethod = "merge" | "squash" | "rebase";
+ 
+ export interface PullRequestCommandStatus {
++  repoOwner?: string;
++  repoName?: string;
+   mergeable?: PullRequestMergeable;
+   forgeSpecific?: ForgeSpecificStatusFacts;
+ }
+@@ -476,6 +478,12 @@ export interface ForgeService {
+   ): Promise<CurrentPullRequestStatus | null>;
+   getPullRequestTimeline(options: GetPullRequestTimelineOptions): Promise<PullRequestTimeline>;
+   getCheckDetails(options: GetCheckDetailsOptions): Promise<CheckDetails>;
++  /**
++   * Latest pipeline for a branch when there is no open change request.
++   * Adapters that cannot report branch pipelines leave this unimplemented;
++   * callers treat that as `supported: false`.
++   */
++  getBranchPipeline?(options: { cwd: string; branch: string }): Promise<PipelineDetails | null>;
+   searchIssuesAndPrs(options: SearchIssuesAndPrsOptions): Promise<SearchResult>;
+   createPullRequest(options: CreatePullRequestOptions): Promise<PullRequestCreateResult>;
+   mergePullRequest(options: MergePullRequestOptions): Promise<PullRequestMergeResult>;
+diff --git a/packages/server/src/services/github-service.test.ts b/packages/server/src/services/github-service.test.ts
+index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389baf2e6bdbc 100644
+--- a/packages/server/src/services/github-service.test.ts
++++ b/packages/server/src/services/github-service.test.ts
+@@ -533,9 +533,9 @@ describe("ForgeService", () => {
+   });
+ 
+   it.each([
+-    ["merge", ["pr", "merge", "42", "--merge"]],
+-    ["squash", ["pr", "merge", "42", "--squash"]],
+-    ["rebase", ["pr", "merge", "42", "--rebase"]],
++    ["merge", ["pr", "merge", "42", "--repo", "acme/repo", "--merge"]],
++    ["squash", ["pr", "merge", "42", "--repo", "acme/repo", "--squash"]],
++    ["rebase", ["pr", "merge", "42", "--repo", "acme/repo", "--rebase"]],
+   ] as const)("merges pull requests with gh using %s", async (mergeMethod, expectedArgs) => {
+     const runner = createRunner([""]);
+     const service = createGitHubService({
+@@ -681,9 +681,9 @@ describe("ForgeService", () => {
+   });
+ 
+   it.each([
+-    ["merge", ["pr", "merge", "42", "--auto", "--merge"]],
+-    ["squash", ["pr", "merge", "42", "--auto", "--squash"]],
+-    ["rebase", ["pr", "merge", "42", "--auto", "--rebase"]],
++    ["merge", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--merge"]],
++    ["squash", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--squash"]],
++    ["rebase", ["pr", "merge", "42", "--repo", "acme/repo", "--auto", "--rebase"]],
+   ] as const)("enables auto-merge with gh using %s", async (mergeMethod, expectedArgs) => {
+     const runner = createRunner([""]);
+     const service = createGitHubService({
+@@ -745,7 +745,7 @@ describe("ForgeService", () => {
+ 
+     expect(runner.calls).toEqual([
+       {
+-        args: ["pr", "merge", "42", "--disable-auto"],
++        args: ["pr", "merge", "42", "--repo", "acme/repo", "--disable-auto"],
+         cwd: "/tmp/repo",
+         envOverlay: { GH_PROMPT_DISABLED: "1" },
+       },
+@@ -759,11 +759,13 @@ describe("ForgeService", () => {
+       checks: [{ name: "ci", status: "pending", url: null }],
+     });
+     const stableStatus = createCurrentPullRequestStatus({ checksStatus: "success" });
++    const emptyChecksStatus = createCurrentPullRequestStatus({ checksStatus: "none" });
+ 
+     expect(computeGithubNextInterval(pendingStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
+     expect(computeGithubNextInterval(runningCheckStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
+     expect(computeGithubNextInterval(stableStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
+     expect(computeGithubNextInterval(null, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
++    expect(computeGithubNextInterval(emptyChecksStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
+   });
+ 
+   it("computes exponential error backoff up to the cap", () => {
+@@ -849,6 +851,7 @@ describe("ForgeService", () => {
+       runner: runner.runner,
+       resolveGhPath: async () => "/usr/bin/gh",
+       now: () => now,
++      resolveRepoSlug: async () => null,
+     });
+     const reads = recordCurrentPullRequestStatusReads(service);
+ 
+@@ -922,6 +925,7 @@ describe("ForgeService", () => {
+       runner: runner.runner,
+       resolveGhPath: async () => "/usr/bin/gh",
+       now: () => now,
++      resolveRepoSlug: async () => null,
+     });
+     const reads = recordCurrentPullRequestStatusReads(service);
+ 
+@@ -968,6 +972,7 @@ describe("ForgeService", () => {
+       runner: runner.runner,
+       resolveGhPath: async () => "/usr/bin/gh",
+       now: () => now,
++      resolveRepoSlug: async () => null,
+     });
+     const reads = recordCurrentPullRequestStatusReads(service);
+ 
+@@ -1418,26 +1423,28 @@ describe("ForgeService", () => {
+     service.dispose?.();
+   });
+ 
+-  it("redirects a fork poll to its parent and reuses that batch address", async () => {
++  it("uses a fork-internal PR from the fork repository without redirecting to the parent", async () => {
+     let now = 0;
+     const parent = { owner: { login: "upstream" }, name: "widgets" };
+     const forkPr = batchPollPrNodeJson({
+-      url: "https://github.com/upstream/widgets/pull/42",
++      url: "https://github.com/forkowner/widgets/pull/33",
+       headRefName: "feat-a",
+       headRefOid: "oid-a",
+       headRepositoryOwner: { login: "forkowner" },
+     });
+     const runner = createScriptedRunner([
+       batchPollStatusJson({
+-        t0: batchPollRepositoryJson([], { isFork: true, parent }),
++        t0: batchPollRepositoryJson([forkPr], {
++          isFork: true,
++          parent,
++          owner: { login: "forkowner" },
++        }),
+       }),
+-      batchPollStatusJson({ t0: batchPollRepositoryJson([forkPr]) }),
+       batchPollStatusJson({
+         t0: batchPollChecksAliasJson([
+           { __typename: "StatusContext", context: "ci", state: "SUCCESS" },
+         ]),
+       }),
+-      batchPollStatusJson({ t0: batchPollRepositoryJson([forkPr]) }),
+     ]);
+     const service = createGitHubService({
+       ttlMs: 0,
+@@ -1459,24 +1466,17 @@ describe("ForgeService", () => {
+     await flushMicrotasks();
+ 
+     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(0);
++    expect(runner.calls).toHaveLength(2);
+     expect(runner.calls[0]?.args[3]).toContain(
+       't0: repository(owner: "forkowner", name: "widgets")',
+     );
+-    expect(runner.calls[1]?.args[3]).toContain(
++    expect(runner.calls[1]?.args[3]).not.toContain(
+       't0: repository(owner: "upstream", name: "widgets")',
+     );
+     expect(statuses).toEqual([
+-      expect.objectContaining({ number: 42, repoOwner: "upstream", checksStatus: "success" }),
++      expect.objectContaining({ number: 42, repoOwner: "forkowner", checksStatus: "success" }),
+     ]);
+ 
+-    now = EXPECTED_GITHUB_SLOW_POLL_MS;
+-    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS);
+-    await flushMicrotasks();
+-
+-    expect(runner.calls[3]?.args[3]).toContain(
+-      't0: repository(owner: "upstream", name: "widgets")',
+-    );
+-
+     subscription?.unsubscribe();
+     service.dispose?.();
+   });
+@@ -3152,6 +3152,75 @@ describe("ForgeService", () => {
+     expect(status).toMatchObject({ number: 42, state: "open" });
+   });
+ 
++  it("scopes current PR lookup to origin when another remote has the same head SHA", async () => {
++    const tempDir = mkdtempSync(join(tmpdir(), "github-service-origin-pr-"));
++    const headSha = "2222222222222222222222222222222222222222";
++    execFileSync("git", ["init", tempDir], { stdio: "pipe" });
++    execFileSync(
++      "git",
++      ["-C", tempDir, "remote", "add", "origin", "https://github.com/yooztech/paseo.git"],
++      { stdio: "pipe" },
++    );
++    execFileSync(
++      "git",
++      ["-C", tempDir, "remote", "add", "upstream", "https://github.com/getpaseo/paseo.git"],
++      { stdio: "pipe" },
++    );
++    const calls: RunnerCall[] = [];
++    const runner: GitHubCommandRunner = async (args, options) => {
++      calls.push({ args, cwd: options.cwd });
++      if (args[0] === "api") {
++        return { stdout: currentPullRequestGithubFactsJson(), stderr: "" };
++      }
++      const scopedToOrigin = args.includes("--repo") && args.includes("yooztech/paseo");
++      return {
++        stdout: currentPullRequestJson({
++          number: scopedToOrigin ? 6 : 2852,
++          url: scopedToOrigin
++            ? "https://github.com/yooztech/paseo/pull/6"
++            : "https://github.com/getpaseo/paseo/pull/2852",
++          title: scopedToOrigin ? "Origin PR" : "Upstream PR",
++          state: scopedToOrigin ? "OPEN" : "CLOSED",
++          headRefName: "demonic-shark",
++          headRefOid: headSha,
++          headRepositoryOwner: { login: "yooztech" },
++        }),
++        stderr: "",
++      };
++    };
++    const service = createGitHubService({
++      runner,
++      resolveGhPath: async () => "/usr/bin/gh",
++    });
++
++    try {
++      const status = await service.getCurrentPullRequestStatus({
++        cwd: tempDir,
++        headRef: "demonic-shark",
++        headSha,
++        headRepositoryOwner: "yooztech",
++      });
++
++      expect(status).toMatchObject({
++        number: 6,
++        repoOwner: "yooztech",
++        repoName: "paseo",
++        state: "open",
++      });
++      expect(calls[0]?.args).toEqual([
++        "pr",
++        "view",
++        "demonic-shark",
++        "--repo",
++        "yooztech/paseo",
++        "--json",
++        CURRENT_PR_STATUS_FIELDS,
++      ]);
++    } finally {
++      rmSync(tempDir, { recursive: true, force: true });
++    }
++  });
++
+   it("loads GitHub merge, auto-merge, permission, policy, and queue facts for PR 993 shape", async () => {
+     const runner = createScriptedRunner([
+       currentPullRequestJson({
+@@ -4459,9 +4528,10 @@ describe("ForgeService", () => {
+ 
+     const first = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+     const second = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+-    await flushMicrotasks();
++    await vi.waitFor(() => {
++      expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
++    });
+ 
+-    expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
+     runner.resolveNext(currentPullRequestJson());
+     for (let i = 0; i < 10 && runner.calls.length < 2; i += 1) {
+       await Promise.resolve();
+diff --git a/packages/server/src/services/github-service.ts b/packages/server/src/services/github-service.ts
+index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6ba2a8e871 100644
+--- a/packages/server/src/services/github-service.ts
++++ b/packages/server/src/services/github-service.ts
+@@ -12,6 +12,7 @@ import {
+ } from "../utils/change-request-checkout.js";
+ import { execCommand } from "../utils/spawn.js";
+ import { resolveSshHostname } from "../utils/ssh-hostname.js";
++import { getGitHubPollParentFallback } from "../server/fork/github-poll-policy.js";
+ import {
+   CLI_AUTH_PROBE_TIMEOUT_MS,
+   createForgeCliRunner,
+@@ -1088,8 +1089,6 @@ interface GitHubPollTarget {
+ interface GitHubBatchPollEntry {
+   target: GitHubPollTarget;
+   host: string;
+-  originOwner: string;
+-  originName: string;
+   owner: string;
+   name: string;
+   headRepositoryOwner?: string;
+@@ -1161,10 +1160,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+   // Rollup nodes for merged/closed PRs keyed by repo#number@headOid: their
+   // checks can no longer change, so each is fetched at most once per daemon run.
+   const frozenPullRequestChecksCache = new Map<string, unknown[]>();
+-  const pollRepositoryRedirects = new Map<
+-    string,
+-    { owner: string; name: string; headRepositoryOwner: string }
+-  >();
+   const pollPausedUntilByHost = new Map<string, number>();
+   const rateLimitResetLoads = new Map<string, Promise<number | null>>();
+   let githubPollTimer: NodeJS.Timeout | null = null;
+@@ -1521,8 +1516,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+       group.push({
+         target,
+         host: key,
+-        originOwner: owner,
+-        originName: name,
+         owner,
+         name,
+       });
+@@ -1621,13 +1614,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+     entries: GitHubBatchPollEntry[],
+     startedAt: number,
+   ): Promise<void> {
+-    const addressedEntries = entries.map(addressGitHubBatchEntry);
+-    const firstEntry = addressedEntries[0];
++    const firstEntry = entries[0];
+     if (!firstEntry) {
+       return;
+     }
+     const query = buildBatchPullRequestStatusQuery(
+-      addressedEntries.map((entry) => ({
++      entries.map((entry) => ({
+         owner: entry.owner,
+         name: entry.name,
+         headRef: entry.target.headRef,
+@@ -1635,7 +1627,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+     );
+     const args = ["api", "graphql", "-f", `query=${query}`];
+     const response = await loadGitHubPollBatchResponse({
+-      entries: addressedEntries,
++      entries,
+       firstEntry,
+       args,
+     });
+@@ -1645,12 +1637,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+     const rateLimit = parseGraphqlBatchRateLimit(response.stdout);
+     if (rateLimit && pauseGitHubPollsAtReserve(firstEntry.host, rateLimit)) {
+       const error = new GitHubGraphqlPollPausedError(rateLimit);
+-      reportGitHubBatchError(addressedEntries, error);
++      reportGitHubBatchError(entries, error);
+       return;
+     }
+ 
+     const distribution = distributeGitHubPollBatch({
+-      entries: addressedEntries,
++      entries,
+       aliases: response.aliases,
+       args,
+       startedAt,
+@@ -1716,17 +1708,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+         );
+         continue;
+       }
+-      if (repository.data.isFork && repository.data.parent) {
+-        const forkOwner = repository.data.owner?.login ?? entry.owner;
+-        pollRepositoryRedirects.set(batchRepositoryRedirectKey(entry), {
+-          owner: repository.data.parent.owner.login,
+-          name: repository.data.parent.name,
+-          headRepositoryOwner: forkOwner,
+-        });
+-        distribution.redirected.push(entry);
++      const node = selectBatchPollNode(entry, repository.data);
++      const parentFallback = !node && getGitHubPollParentFallback(entry, repository.data);
++      if (parentFallback) {
++        distribution.redirected.push({ ...entry, ...parentFallback });
+         continue;
+       }
+-      const node = selectBatchPollNode(entry, repository.data);
+       if (!node) {
+         // Legacy fallback covers the two ways "no match" can be wrong: a fork
+         // whose PR lives in the parent repository, and a full candidate page —
+@@ -1774,22 +1761,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+     return distribution;
+   }
+ 
+-  function addressGitHubBatchEntry(entry: GitHubBatchPollEntry): GitHubBatchPollEntry {
+-    const redirect = pollRepositoryRedirects.get(batchRepositoryRedirectKey(entry));
+-    return redirect
+-      ? {
+-          ...entry,
+-          owner: redirect.owner,
+-          name: redirect.name,
+-          headRepositoryOwner: redirect.headRepositoryOwner,
+-        }
+-      : entry;
+-  }
+-
+-  function batchRepositoryRedirectKey(entry: GitHubBatchPollEntry): string {
+-    return `${entry.host}\n${entry.originOwner}/${entry.originName}`;
+-  }
+-
+   function selectBatchPollNode(
+     entry: GitHubBatchPollEntry,
+     repository: BatchPollRepository,
+@@ -2170,6 +2141,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+             headSha: input.headSha,
+             headRepositoryOwner: input.headRepositoryOwner,
+             run,
++            resolveOriginRepo: deps.resolveRepoSlug,
+           });
+           return addCurrentPullRequestGithubFacts({ cwd: input.cwd, status, run });
+         },
+@@ -2514,28 +2486,59 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+ 
+     async mergePullRequest(input) {
+       assertDirectPullRequestMergeReady(input);
+-      await run(["pr", "merge", String(input.prNumber), `--${input.mergeMethod}`], {
+-        cwd: input.cwd,
+-        envOverlay: { GH_PROMPT_DISABLED: "1" },
+-      });
++      await run(
++        [
++          "pr",
++          "merge",
++          String(input.prNumber),
++          "--repo",
++          getPullRequestRepository(input.status),
++          `--${input.mergeMethod}`,
++        ],
++        {
++          cwd: input.cwd,
++          envOverlay: { GH_PROMPT_DISABLED: "1" },
++        },
++      );
+       return { success: true };
+     },
+ 
+     async enablePullRequestAutoMerge(input) {
+       assertPullRequestAutoMergeEnableReady(input);
+-      await run(["pr", "merge", String(input.prNumber), "--auto", `--${input.mergeMethod}`], {
+-        cwd: input.cwd,
+-        envOverlay: { GH_PROMPT_DISABLED: "1" },
+-      });
++      await run(
++        [
++          "pr",
++          "merge",
++          String(input.prNumber),
++          "--repo",
++          getPullRequestRepository(input.status),
++          "--auto",
++          `--${input.mergeMethod}`,
++        ],
++        {
++          cwd: input.cwd,
++          envOverlay: { GH_PROMPT_DISABLED: "1" },
++        },
++      );
+       return { success: true };
+     },
+ 
+     async disablePullRequestAutoMerge(input) {
+       assertPullRequestAutoMergeDisableReady(input);
+-      await run(["pr", "merge", String(input.prNumber), "--disable-auto"], {
+-        cwd: input.cwd,
+-        envOverlay: { GH_PROMPT_DISABLED: "1" },
+-      });
++      await run(
++        [
++          "pr",
++          "merge",
++          String(input.prNumber),
++          "--repo",
++          getPullRequestRepository(input.status),
++          "--disable-auto",
++        ],
++        {
++          cwd: input.cwd,
++          envOverlay: { GH_PROMPT_DISABLED: "1" },
++        },
++      );
+       return { success: true };
+     },
+ 
+@@ -2585,7 +2588,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+         void resolveRepoHostCached(input.cwd).catch(() => {});
+         void resolveRepoSlugCached(input.cwd);
+       }
+-
+       const isNewlyRetained = target.retainCount === 0;
+       target.retainCount += 1;
+       if (input.onStatus) {
+@@ -2652,7 +2654,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+         closeGitHubPollTarget(target);
+       }
+       pollTargets.clear();
+-      pollRepositoryRedirects.clear();
+       pollPausedUntilByHost.clear();
+       rateLimitResetLoads.clear();
+     },
+@@ -2668,6 +2669,13 @@ function getGithubStatusFacts(
+   return isGitHubPullRequestStatusFacts(forgeSpecific) ? forgeSpecific : null;
+ }
+ 
++function getPullRequestRepository(status: PullRequestCommandStatus | null | undefined): string {
++  if (!status?.repoOwner || !status.repoName) {
++    throw new Error("GitHub pull request repository identity is unavailable");
++  }
++  return `${status.repoOwner}/${status.repoName}`;
++}
++
+ function assertDirectPullRequestMergeReady(input: MergePullRequestOptions): void {
+   const github = getGithubStatusFacts(input.status);
+   if (!github) {
+@@ -2958,8 +2966,13 @@ async function resolveCurrentPullRequestView(options: {
+   headSha?: string;
+   headRepositoryOwner?: string;
+   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
++  resolveOriginRepo: (cwd: string) => Promise<string | null>;
+ }): Promise<CurrentPullRequestStatus | null> {
+-  const viewCandidate = await tryCurrentPullRequestView(options);
++  const originRepo = await options.resolveOriginRepo(options.cwd);
++  const viewCandidate = await tryCurrentPullRequestView({
++    ...options,
++    repo: originRepo ?? undefined,
++  });
+   const viewMatch = viewCandidate
+     ? pickPullRequestCandidate({
+         candidates: [viewCandidate],
+@@ -2971,31 +2984,56 @@ async function resolveCurrentPullRequestView(options: {
+   if (viewMatch) {
+     return viewMatch.status;
+   }
++  // An explicit head owner lets the origin candidate list disambiguate reused
++  // branch names without probing repository metadata first. In particular, an
++  // open PR must win over an older merged PR for the same branch.
++  if (options.headRepositoryOwner) {
++    const originMatch = await resolveOriginPullRequestView({
++      ...options,
++      originRepo,
++      headRepositoryOwner: options.headRepositoryOwner,
++    });
++    if (originMatch) return originMatch;
++  }
+ 
+-  let headRepositoryOwner = options.headRepositoryOwner;
++  const repo = await getGitHubRepoView({ ...options, repo: originRepo ?? undefined });
++  const headRepositoryOwner = options.headRepositoryOwner;
+ 
+-  if (!headRepositoryOwner) {
+-    const repo = await getGitHubRepoView(options);
+-    const forkOwner = repo?.owner?.login;
+-    const parentOwner = repo?.parent?.owner?.login;
+-    const parentName = repo?.parent?.name;
+-    if (!forkOwner) {
+-      return null;
+-    }
+-    if (parentOwner && parentName) {
+-      return resolveForkPullRequestView({
+-        ...options,
+-        forkOwner,
+-        repo: `${parentOwner}/${parentName}`,
+-      });
+-    }
+-    headRepositoryOwner = forkOwner;
++  const forkOwner = repo?.owner?.login;
++  const parentOwner = repo?.parent?.owner?.login;
++  const parentName = repo?.parent?.name;
++  if (
++    forkOwner &&
++    parentOwner &&
++    parentName &&
++    (!headRepositoryOwner || headRepositoryOwner.toLowerCase() === forkOwner.toLowerCase())
++  ) {
++    return resolveForkPullRequestView({
++      ...options,
++      forkOwner,
++      repo: `${parentOwner}/${parentName}`,
++    });
+   }
++  return resolveOriginPullRequestView({ ...options, originRepo, forkOwner, headRepositoryOwner });
++}
++
++async function resolveOriginPullRequestView(options: {
++  cwd: string;
++  headRef: string;
++  headSha?: string;
++  headRepositoryOwner?: string;
++  forkOwner?: string;
++  originRepo: string | null;
++  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
++}): Promise<CurrentPullRequestStatus | null> {
++  const headRepositoryOwner = options.headRepositoryOwner ?? options.forkOwner;
++  if (!headRepositoryOwner) return null;
+ 
+   const candidates = await listCurrentPullRequestCandidates({
+     cwd: options.cwd,
+     headRef: options.headRef,
+     run: options.run,
++    repo: options.originRepo ?? undefined,
+   });
+   const match = pickPullRequestCandidate({
+     candidates,
+@@ -3138,8 +3176,13 @@ async function tryCurrentPullRequestView(options: {
+   headRef: string;
+   args?: string[];
+   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
++  repo?: string;
+ }): Promise<ResolvedPullRequestCandidate | null> {
+-  const args = options.args ?? ["pr", "view"];
++  const args = options.args ?? [
++    "pr",
++    "view",
++    ...(options.repo ? [options.headRef, "--repo", options.repo] : []),
++  ];
+   try {
+     const stdout = await runCurrentPullRequestStatusCommand({
+       cwd: options.cwd,
+@@ -3162,8 +3205,12 @@ async function listCurrentPullRequestCandidates(options: {
+   cwd: string;
+   headRef: string;
+   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
++  repo?: string;
+ }): Promise<ResolvedPullRequestCandidate[]> {
+   const args = ["pr", "list", "--state", "all", "--head", options.headRef, "--limit", "10"];
++  if (options.repo) {
++    args.push("--repo", options.repo);
++  }
+   try {
+     const stdout = await runCurrentPullRequestStatusCommand({
+       cwd: options.cwd,
+@@ -3218,8 +3265,13 @@ async function resolveGitHubSlugFromOrigin(cwd: string): Promise<string | null>
+ async function getGitHubRepoView(options: {
+   cwd: string;
+   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
++  repo?: string;
+ }): Promise<z.infer<typeof GitHubRepoViewSchema> | null> {
+-  const args = ["repo", "view", "--json", "owner,name,parent"];
++  const args = ["repo", "view"];
++  if (options.repo) {
++    args.push(options.repo);
++  }
++  args.push("--json", "owner,name,parent");
+   try {
+     const stdout = await options.run(args, {
+       cwd: options.cwd,
+diff --git a/packages/server/src/services/gitlab-service.test.ts b/packages/server/src/services/gitlab-service.test.ts
+index b9b6d447d4d4e86599158da36f7379bde4aabd26..f13ea7c6a167f1cad797920e82d9f5b50dc54fb3 100644
+--- a/packages/server/src/services/gitlab-service.test.ts
++++ b/packages/server/src/services/gitlab-service.test.ts
+@@ -29,6 +29,8 @@ function makeService(responder: Responder, overrides: Partial<CreateGitLabServic
+     runner,
+     resolveGlabPath: async () => "/usr/bin/glab",
+     resolveRemoteUrl: async () => "git@gitlab.example.com:example-group/example-project.git",
++    resolveProjectId: async () => 101,
++    resolveBranchTipSha: async () => null,
+     ...overrides,
+   });
+   return { service, calls };
+@@ -321,6 +323,69 @@ describe("createGitLabService", () => {
+     expect(status).toBeNull();
+   });
+ 
++  it("selects the merge request from the checkout source project", async () => {
++    const otherForkMr = {
++      ...OPEN_MR,
++      iid: 15,
++      source_project_id: 202,
++      updated_at: "2026-06-26T19:00:00.000Z",
++    };
++    const { service, calls } = makeService((args) => {
++      if (args[1] === "list") return ok(JSON.stringify([otherForkMr, OPEN_MR]));
++      if (args[1] === "view" && args[2] === "14") return ok(JSON.stringify(OPEN_MR));
++      if (args[0] === "api") return ok("{}");
++      throw new Error(`unexpected call: ${args.join(" ")}`);
++    });
++
++    const status = await service.getCurrentPullRequestStatus({
++      cwd: "/repo",
++      headRef: "release/v0.4.0",
++    });
++
++    expect(status?.number).toBe(14);
++    expect(calls).toContainEqual(["mr", "view", "14", "-F", "json"]);
++    expect(calls).not.toContainEqual(["mr", "view", "15", "-F", "json"]);
++  });
++
++  it("does not attach a same-name merge request from another source project", async () => {
++    const otherForkMr = { ...OPEN_MR, source_project_id: 202 };
++    const { service, calls } = makeService((args) => {
++      if (args[1] === "list") return ok(JSON.stringify([otherForkMr]));
++      throw new Error(`unexpected call: ${args.join(" ")}`);
++    });
++
++    await expect(
++      service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "release/v0.4.0" }),
++    ).resolves.toBeNull();
++    expect(calls).toEqual([currentMrListArgs("release/v0.4.0")]);
++  });
++
++  it("resolves the checkout source project id from a nested GitLab remote", async () => {
++    const { service, calls } = makeService(
++      (args) => {
++        if (args[0] === "api" && args[1] === "projects/group%2Fsubgroup%2Fproject") {
++          return ok(JSON.stringify({ id: 101 }));
++        }
++        if (args[0] === "api" && args[1].endsWith("/approvals")) return ok("{}");
++        if (args[1] === "list") return ok(JSON.stringify([OPEN_MR]));
++        if (args[1] === "view") return ok(JSON.stringify(OPEN_MR));
++        throw new Error(`unexpected call: ${args.join(" ")}`);
++      },
++      {
++        resolveRemoteUrl: async () => "git@gitlab.example.com:group/subgroup/project.git",
++        resolveProjectId: undefined,
++      },
++    );
++
++    const status = await service.getCurrentPullRequestStatus({
++      cwd: "/repo",
++      headRef: "release/v0.4.0",
++    });
++
++    expect(status?.number).toBe(14);
++    expect(calls).toContainEqual(["api", "projects/group%2Fsubgroup%2Fproject"]);
++  });
++
+   it("selects a terminal merge request only when its head SHA matches the checkout", async () => {
+     const branch = "dev";
+     const checkoutSha = "2222222222222222222222222222222222222222";
+@@ -912,6 +977,96 @@ describe("createGitLabService", () => {
+     },
+   );
+ 
++  it("does not select an unrelated tag pipeline for a branch without a resolved tip", async () => {
++    const { service, calls } = makeService((args) => {
++      if (args[0] === "ci" && args[1] === "list" && args.includes("--ref")) {
++        return ok(
++          JSON.stringify([
++            { id: 3031, ref: "master", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
++          ]),
++        );
++      }
++      if (args[0] === "ci" && args[1] === "list" && args.includes("--scope")) {
++        return ok(
++          JSON.stringify([
++            { id: 3103, ref: "v1.2.3", tag: true, sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
++          ]),
++        );
++      }
++      if (args[0] === "ci" && args[1] === "get") {
++        return ok(JSON.stringify({ ...PIPELINE_WITH_JOBS, id: Number(args[3]) }));
++      }
++      throw new Error(`unexpected call: ${args.join(" ")}`);
++    });
++
++    const pipeline = await service.getBranchPipeline?.({ cwd: "/repo", branch: "master" });
++
++    expect(pipeline?.id).toBe(3031);
++    expect(calls.filter((args) => args[0] === "ci" && args[1] === "list")).toHaveLength(1);
++    expect(calls.some((args) => args.includes("--scope"))).toBe(false);
++  });
++
++  it("also considers tip-sha pipelines when resolving branch tip", async () => {
++    const tipSha = "dddddddddddddddddddddddddddddddddddddddd";
++    const { service, calls } = makeService(
++      (args) => {
++        if (args[0] === "ci" && args[1] === "list" && args.includes("--ref")) {
++          return ok(JSON.stringify([{ id: 3031, status: "success", ref: "master" }]));
++        }
++        if (args[0] === "ci" && args[1] === "list" && args.includes("--sha")) {
++          return ok(
++            JSON.stringify([
++              { id: 3103, status: "running", ref: "v9.9.9", tag: true, sha: tipSha },
++            ]),
++          );
++        }
++        if (args[0] === "ci" && args[1] === "get") {
++          return ok(JSON.stringify({ ...PIPELINE_WITH_JOBS, id: 3103, status: "running" }));
++        }
++        throw new Error(`unexpected call: ${args.join(" ")}`);
++      },
++      { resolveBranchTipSha: async () => tipSha },
++    );
++
++    const pipeline = await service.getBranchPipeline?.({
++      cwd: "/repo",
++      branch: "master",
++    });
++
++    expect(calls.some((args) => args.includes("--sha") && args.includes(tipSha))).toBe(true);
++    expect(calls.some((args) => args.includes("--scope"))).toBe(false);
++    expect(pipeline?.id).toBe(3103);
++  });
++
++  it("returns null when the branch has never produced a pipeline", async () => {
++    const { service, calls } = makeService(() => ok(JSON.stringify([])));
++
++    await expect(
++      service.getBranchPipeline?.({ cwd: "/repo", branch: "feat/missing" }),
++    ).resolves.toBeNull();
++    expect(calls.filter((args) => args[1] === "list")).toHaveLength(1);
++  });
++
++  it("returns null when list-by-ref reports no pipeline text error", async () => {
++    const { service } = makeService(() => {
++      throw { code: 1, stderr: "No pipeline found for branch feat/missing" };
++    });
++
++    await expect(
++      service.getBranchPipeline?.({ cwd: "/repo", branch: "feat/missing" }),
++    ).resolves.toBeNull();
++  });
++
++  it("does not treat auth failures as a missing branch pipeline", async () => {
++    const { service } = makeService(() => {
++      throw { code: 1, stderr: "error: 401 Unauthorized — not logged in" };
++    });
++
++    await expect(
++      service.getBranchPipeline?.({ cwd: "/repo", branch: "feat/sample-change" }),
++    ).rejects.toBeInstanceOf(GlabAuthenticationError);
++  });
++
+   it("populates approval counts from the approvals endpoint", async () => {
+     const { service, calls } = makeService((args) => {
+       if (args[0] === "mr" && args[1] === "list") return ok(JSON.stringify([OPEN_MR]));
+@@ -1278,12 +1433,18 @@ describe("createGitLabService", () => {
+   });
+ 
+   it("reports authentication via a host-scoped glab auth status", async () => {
+-    const { service, calls } = makeService((args) => {
+-      if (args[0] === "auth") return ok("");
+-      throw new Error("unexpected");
+-    });
++    const { service, calls } = makeService(
++      (args) => {
++        if (args[0] === "auth") return ok("");
++        throw new Error("unexpected");
++      },
++      {
++        resolveRemoteUrl: async () =>
++          "https://gitlab.iceveil.com:38443/example-group/example-project.git",
++      },
++    );
+     await expect(service.isAuthenticated({ cwd: "/repo" })).resolves.toBe(true);
+-    expect(calls[0]).toEqual(["auth", "status", "--hostname", "gitlab.example.com"]);
++    expect(calls[0]).toEqual(["auth", "status", "--hostname", "gitlab.iceveil.com"]);
+   });
+ 
+   it("reports unauthenticated when glab auth status fails", async () => {
+diff --git a/packages/server/src/services/gitlab-service.ts b/packages/server/src/services/gitlab-service.ts
+index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e72851ce73 100644
+--- a/packages/server/src/services/gitlab-service.ts
++++ b/packages/server/src/services/gitlab-service.ts
+@@ -1,6 +1,7 @@
+ import { z } from "zod";
+ import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
+ import { findExecutable } from "../executable-resolution/executable-resolution.js";
++import { runGitCommand } from "../utils/run-git-command.js";
+ import {
+   createCachedCliPathResolver,
+   createForgeCliRunner,
+@@ -111,6 +112,66 @@ export interface CreateGitLabServiceOptions {
+   runner?: GlabCommandRunner;
+   resolveGlabPath?: () => Promise<string | null>;
+   resolveRemoteUrl?: (cwd: string) => Promise<string | null>;
++  resolveProjectId?: (cwd: string, projectPath: string) => Promise<number | null>;
++  /** Tip SHA for the branch; used to find tag/web pipelines for that commit. */
++  resolveBranchTipSha?: (cwd: string, branch: string) => Promise<string | null>;
++}
++
++const GitLabBranchPipelineListItemSchema = z
++  .object({
++    id: z.number(),
++    sha: z.string().optional(),
++    ref: z.string().optional(),
++    tag: z.boolean().optional(),
++  })
++  .passthrough();
++
++type GitLabBranchPipelineListItem = z.infer<typeof GitLabBranchPipelineListItemSchema>;
++
++/** Newest pipeline = highest numeric id. Never trust list array order alone. */
++function pickNewestBranchPipeline(
++  listed: GitLabBranchPipelineListItem[],
++): GitLabBranchPipelineListItem | null {
++  if (listed.length === 0) {
++    return null;
++  }
++  return listed.reduce((newest, item) => (item.id > newest.id ? item : newest));
++}
++
++function mergePipelineListItems(
++  groups: GitLabBranchPipelineListItem[][],
++): GitLabBranchPipelineListItem[] {
++  const byId = new Map<number, GitLabBranchPipelineListItem>();
++  for (const group of groups) {
++    for (const item of group) {
++      byId.set(item.id, item);
++    }
++  }
++  return [...byId.values()];
++}
++
++/**
++ * Prefer the remote-tracking tip when present so tag pipelines for the remote
++ * tip match what GitLab shows after fetch.
++ */
++async function defaultResolveBranchTipSha(cwd: string, branch: string): Promise<string | null> {
++  for (const ref of [`refs/remotes/origin/${branch}`, `refs/heads/${branch}`, branch]) {
++    try {
++      const result = await runGitCommand(["rev-parse", "--verify", "--quiet", ref], {
++        cwd,
++        acceptExitCodes: [0, 1],
++      });
++      if (result.exitCode === 0) {
++        const sha = result.stdout.trim();
++        if (sha.length > 0) {
++          return sha;
++        }
++      }
++    } catch {
++      // Try the next candidate.
++    }
++  }
++  return null;
+ }
+ 
+ const GitLabPipelineSchema = z
+@@ -173,6 +234,8 @@ const GitLabMergeRequestSchema = z
+   })
+   .passthrough();
+ 
++const GitLabProjectSchema = z.object({ id: z.number() }).passthrough();
++
+ const GitLabIssueSchema = z
+   .object({
+     iid: z.number(),
+@@ -289,6 +352,10 @@ export function parseGitLabHostFromRemoteUrl(url: string): string | null {
+   return parseGitRemoteLocation(url)?.host ?? null;
+ }
+ 
++function parseGitLabProjectPathFromRemoteUrl(url: string): string | null {
++  return parseGitRemoteLocation(url)?.path ?? null;
++}
++
+ function mapMergeRequestState(state: string): string {
+   if (state === "opened") {
+     return "open";
+@@ -530,6 +597,19 @@ function classifyGlabTimelineErrorKind(stderr: string): PullRequestTimelineError
+   return "unknown";
+ }
+ 
++function isGitLabNoPipelineError(error: unknown): boolean {
++  if (!(error instanceof GlabCommandError)) {
++    return false;
++  }
++  const normalized = `${error.stderr} ${error.message}`.toLowerCase();
++  return (
++    normalized.includes("no pipeline") ||
++    normalized.includes("pipeline not found") ||
++    normalized.includes("404") ||
++    normalized.includes("not found")
++  );
++}
++
+ function mapGlabTimelineError(error: unknown): PullRequestTimelineError {
+   if (error instanceof GlabAuthenticationError) {
+     return { kind: "forbidden", message: error.stderr || error.message };
+@@ -911,6 +991,8 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+   const runner = options.runner ?? runGlabCommand;
+   const resolveGlab = createCachedCliPathResolver(options.resolveGlabPath ?? resolveGlabPath);
+   const resolveRemoteUrl = options.resolveRemoteUrl ?? defaultResolveRemoteUrl;
++  const resolveBranchTipSha = options.resolveBranchTipSha ?? defaultResolveBranchTipSha;
++  const projectIdPromises = new Map<string, Promise<number | null>>();
+ 
+   async function run(args: string[], runOptions: GlabCommandRunnerOptions): Promise<string> {
+     const glabPath = await resolveGlab();
+@@ -944,6 +1026,35 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+     });
+   }
+ 
++  async function resolveCurrentProjectId(cwd: string): Promise<number | null> {
++    const remoteUrl = await resolveRemoteUrl(cwd);
++    const projectPath = remoteUrl ? parseGitLabProjectPathFromRemoteUrl(remoteUrl) : null;
++    if (!projectPath) {
++      return null;
++    }
++
++    const cacheKey = `${cwd}\0${projectPath}`;
++    const existing = projectIdPromises.get(cacheKey);
++    if (existing) {
++      return existing;
++    }
++
++    const promise = (
++      options.resolveProjectId
++        ? options.resolveProjectId(cwd, projectPath)
++        : runJson(
++            ["api", `projects/${encodeURIComponent(projectPath)}`],
++            { cwd },
++            GitLabProjectSchema,
++          ).then((project) => project.id)
++    ).catch((error: unknown) => {
++      projectIdPromises.delete(cacheKey);
++      throw error;
++    });
++    projectIdPromises.set(cacheKey, promise);
++    return promise;
++  }
++
+   async function viewMergeRequest(cwd: string, ref: string): Promise<GitLabMergeRequest> {
+     assertSafeGlabPositional(ref);
+     return runJson(["mr", "view", ref, "-F", "json"], { cwd }, GitLabMergeRequestSchema);
+@@ -979,8 +1090,16 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+     headRef: string,
+     headSha?: string,
+   ): Promise<GitLabMergeRequest | null> {
+-    const mergeRequests = await listMergeRequestsBySourceBranch(cwd, headRef);
+-    const candidates = mergeRequests.filter((mr) => mr.source_branch === headRef);
++    const [mergeRequests, sourceProjectId] = await Promise.all([
++      listMergeRequestsBySourceBranch(cwd, headRef),
++      resolveCurrentProjectId(cwd),
++    ]);
++    if (sourceProjectId === null) {
++      return null;
++    }
++    const candidates = mergeRequests.filter(
++      (mr) => mr.source_branch === headRef && mr.source_project_id === sourceProjectId,
++    );
+     const match =
+       candidates.find((mr) => mapMergeRequestState(mr.state) === "open") ??
+       candidates.find(
+@@ -1332,6 +1451,82 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+       return toCheckDetails(pipeline);
+     },
+ 
++    async getBranchPipeline(input: {
++      cwd: string;
++      branch: string;
++    }): Promise<PipelineDetails | null> {
++      try {
++        // The branch ref covers push pipelines; the branch tip SHA also finds
++        // tag and web pipelines for that commit without including unrelated tags.
++        const tipSha = await resolveBranchTipSha(input.cwd, input.branch);
++        const listQueries: string[][] = [
++          [
++            "ci",
++            "list",
++            "--ref",
++            input.branch,
++            "--order",
++            "id",
++            "--sort",
++            "desc",
++            "--per-page",
++            "30",
++            "-F",
++            "json",
++          ],
++        ];
++        if (tipSha) {
++          listQueries.push([
++            "ci",
++            "list",
++            "--sha",
++            tipSha,
++            "--order",
++            "id",
++            "--sort",
++            "desc",
++            "--per-page",
++            "30",
++            "-F",
++            "json",
++          ]);
++        }
++
++        const listedGroups = await Promise.all(
++          listQueries.map(async (args) => {
++            try {
++              return await runJson(
++                args,
++                { cwd: input.cwd },
++                z.array(GitLabBranchPipelineListItemSchema),
++              );
++            } catch (error) {
++              if (isGitLabNoPipelineError(error)) {
++                return [];
++              }
++              throw error;
++            }
++          }),
++        );
++        const selected = pickNewestBranchPipeline(mergePipelineListItems(listedGroups));
++        if (selected == null) {
++          return null;
++        }
++        const pipeline = await runJson(
++          ["ci", "get", "--pipeline-id", String(selected.id), "--with-job-details", "-F", "json"],
++          { cwd: input.cwd },
++          GitLabPipelineDetailsSchema,
++        );
++        return toPipelineDetails(pipeline);
++      } catch (error) {
++        // glab exits non-zero when the branch has never produced a pipeline.
++        if (isGitLabNoPipelineError(error)) {
++          return null;
++        }
++        throw error;
++      }
++    },
++
+     async searchIssuesAndPrs(input: SearchIssuesAndPrsOptions): Promise<SearchResult> {
+       if (input.force && !input.reason) {
+         throw new Error("ForgeService forced read requires a reason");
+diff --git a/packages/server/src/utils/checkout-git-ref-derived.test.ts b/packages/server/src/utils/checkout-git-ref-derived.test.ts
+index ddafaab6b5bf888e7f295944e0a6b577dc80cf30..4935c9735e083d864065469ffdf6a389c3b6e17b 100644
+--- a/packages/server/src/utils/checkout-git-ref-derived.test.ts
++++ b/packages/server/src/utils/checkout-git-ref-derived.test.ts
+@@ -65,6 +65,7 @@ function seedFeatureCheckout(): {
+       upstreamStatus: {
+         ref: "refs/remotes/origin/main",
+         aheadBehind: { ahead: 0, behind: 0 },
++        hasChanges: false,
+       },
+       pullRequestLookupTarget: { headRef: "feature" },
+     },
+@@ -107,6 +108,7 @@ function seedMainCheckout(): {
+       upstreamStatus: {
+         ref: "refs/remotes/origin/main",
+         aheadBehind: { ahead: 1, behind: 0 },
++        hasChanges: true,
+       },
+       pullRequestLookupTarget: { headRef: "main" },
+     },
+@@ -119,20 +121,23 @@ test("one comparison refresh updates a shared base and upstream ref", async () =
+   const result = await getCheckoutRefDerivedState(
+     cwd,
+     facts,
+-    { aheadBehind: { ahead: 0, behind: 0 }, diffStat: null },
++    { aheadBehind: { ahead: 0, behind: 0 }, hasChangesFromBase: false, diffStat: null },
+     new Set(["origin/main"]),
+   );
+   await waitForGitCommandMetricsIdle({ quietMs: 50, timeoutMs: 5_000 });
+   const metrics = stopGitCommandMetrics();
+ 
+   expect(result.aheadBehind).toEqual({ ahead: 1, behind: 0 });
++  expect(result.hasChangesFromBase).toBe(true);
+   expect(result.upstreamStatus).toEqual({
+     ref: "refs/remotes/origin/main",
+     aheadBehind: { ahead: 1, behind: 0 },
++    hasChanges: true,
+   });
+   expect(result.diffStat).toEqual({ additions: 1, deletions: 0 });
+   expect(metrics.submissions.map((command) => command.args[0]).sort()).toEqual([
+     "diff",
++    "diff",
+     "ls-files",
+     "merge-base",
+     "rev-list",
+@@ -146,16 +151,18 @@ test("an upstream move refreshes the main checkout shortstat", async () => {
+   const result = await getCheckoutRefDerivedState(
+     cwd,
+     facts,
+-    { aheadBehind: null, diffStat: { additions: 1, deletions: 0 } },
++    { aheadBehind: null, hasChangesFromBase: null, diffStat: { additions: 1, deletions: 0 } },
+     new Set(["origin/main"]),
+   );
+ 
+   expect(result).toEqual({
+     aheadBehind: null,
++    hasChangesFromBase: null,
+     diffStat: null,
+     upstreamStatus: {
+       ref: "refs/remotes/origin/main",
+       aheadBehind: { ahead: 0, behind: 0 },
++      hasChanges: false,
+     },
+   });
+ });
+@@ -178,8 +185,42 @@ test("an origin move refreshes an untracked main checkout shortstat", async () =
+     await getCheckoutRefDerivedState(
+       seeded.cwd,
+       facts,
+-      { aheadBehind: null, diffStat: { additions: 1, deletions: 0 } },
++      { aheadBehind: null, hasChangesFromBase: null, diffStat: { additions: 1, deletions: 0 } },
+       new Set(["origin/main"]),
+     ),
+-  ).toEqual({ aheadBehind: null, diffStat: null, upstreamStatus: null });
++  ).toEqual({ aheadBehind: null, hasChangesFromBase: null, diffStat: null, upstreamStatus: null });
++});
++
++test("shared ref refresh keeps commit counts separate from identical trees", async () => {
++  const { cwd, facts } = seedFeatureCheckout();
++  git(cwd, ["update-ref", "refs/remotes/origin/main", git(cwd, ["rev-parse", "HEAD"])]);
++  git(cwd, ["commit", "--allow-empty", "-m", "same tree, new history"]);
++
++  const result = await getCheckoutRefDerivedState(
++    cwd,
++    facts,
++    { aheadBehind: { ahead: 1, behind: 0 }, hasChangesFromBase: true, diffStat: null },
++    new Set(["origin/main"]),
++  );
++
++  expect(result.aheadBehind).toEqual({ ahead: 1, behind: 0 });
++  expect(result.hasChangesFromBase).toBe(false);
++  expect(result.upstreamStatus).toEqual({
++    ref: "refs/remotes/origin/main",
++    aheadBehind: { ahead: 1, behind: 0 },
++    hasChanges: false,
++  });
++});
++
++test("unrelated ref moves preserve the current base tree comparison", async () => {
++  const { cwd, facts } = seedFeatureCheckout();
++  const current = {
++    aheadBehind: { ahead: 2, behind: 1 },
++    hasChangesFromBase: false,
++    diffStat: null,
++  };
++
++  expect(
++    await getCheckoutRefDerivedState(cwd, facts, current, new Set(["origin/unrelated"])),
++  ).toEqual({ ...current, upstreamStatus: facts.upstreamStatus });
+ });
+diff --git a/packages/server/src/utils/checkout-git.test.ts b/packages/server/src/utils/checkout-git.test.ts
+index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737eeba4db5 100644
+--- a/packages/server/src/utils/checkout-git.test.ts
++++ b/packages/server/src/utils/checkout-git.test.ts
+@@ -875,6 +875,7 @@ const x = 1;
+     }
+     expect(behindStatus.aheadOfOrigin).toBe(0);
+     expect(behindStatus.behindOfOrigin).toBe(1);
++    expect(behindStatus.hasChangesFromOrigin).toBe(true);
+ 
+     commitFile(repoDir, "local-1.txt", "local 1\n", "local update 1");
+     commitFile(repoDir, "local-2.txt", "local 2\n", "local update 2");
+@@ -899,6 +900,7 @@ const x = 1;
+     expect(divergedStatus.upstreamRef).toBe("refs/remotes/origin/main");
+     expect(divergedStatus.aheadOfOrigin).toBe(3);
+     expect(divergedStatus.behindOfOrigin).toBe(2);
++    expect(divergedStatus.hasChangesFromOrigin).toBe(true);
+     expect(upstreamCountCommands).toHaveLength(1);
+     expect(upstreamCountCommands[0]?.args).toEqual([
+       "for-each-ref",
+@@ -907,6 +909,26 @@ const x = 1;
+     ]);
+   });
+ 
++  it("reports no base changes when a merge commit has the same tree as the base", async () => {
++    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
++    commitFile(repoDir, "feature.txt", "merged content\n", "feature commit");
++    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
++    commitFile(repoDir, "feature.txt", "merged content\n", "merge feature independently");
++    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
++    execFileSync("git", ["-c", "commit.gpgsign=false", "merge", "main", "--no-edit"], {
++      cwd: repoDir,
++    });
++
++    const status = await getCheckoutStatus(repoDir);
++
++    expect(status.isGit).toBe(true);
++    if (!status.isGit) {
++      return;
++    }
++    expect(status.aheadBehind?.ahead).toBeGreaterThan(0);
++    expect(status.hasChangesFromBase).toBe(false);
++  });
++
+   it("reports the fork remote, not origin, when the branch tracks a second remote", async () => {
+     setupRemoteTrackingMain(repoDir, tempDir);
+     const forkDir = join(tempDir, "fork.git");
+@@ -920,6 +942,29 @@ const x = 1;
+       return;
+     }
+     expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
++    expect(status.hasChangesFromOrigin).toBe(false);
++  });
++
++  it("compares a feature branch against the same most-ahead base ref used for updates", async () => {
++    const remoteDir = join(tempDir, "remote.git");
++    execFileSync("git", ["init", "--bare", "-b", "main", remoteDir]);
++    execFileSync("git", ["remote", "add", "origin", remoteDir], { cwd: repoDir });
++    execFileSync("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
++
++    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
++    commitFile(repoDir, "feature.txt", "feature\n", "feature commit");
++    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
++    execFileSync("git", ["merge", "--no-ff", "feature", "-m", "merge feature"], { cwd: repoDir });
++    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
++
++    const status = await getCheckoutStatus(repoDir);
++
++    expect(status.isGit).toBe(true);
++    if (!status.isGit) {
++      return;
++    }
++    expect(status.aheadBehind?.behind).toBe(1);
++    expect(status.hasChangesFromBase).toBe(false);
+   });
+ 
+   it("reports the upstream branch name when it differs from the local branch name", async () => {
+@@ -2063,6 +2108,23 @@ const x = 1;
+     });
+   });
+ 
++  it("does not create a merge commit when the base has the same tree", async () => {
++    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
++    commitFile(repoDir, "feature.txt", "same content\n", "feature commit");
++    const featureCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir })
++      .toString()
++      .trim();
++    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
++    commitFile(repoDir, "feature.txt", "same content\n", "independent base commit");
++    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
++
++    await mergeFromBase(repoDir, { baseRef: "main", requireCleanTarget: true });
++
++    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir }).toString().trim()).toBe(
++      featureCommit,
++    );
++  });
++
+   it("aborts merge-from-base on conflicts and leaves no merge in progress", async () => {
+     writeFileSync(join(repoDir, "conflict.txt"), "base\n");
+     execFileSync("git", ["add", "conflict.txt"], { cwd: repoDir });
+diff --git a/packages/server/src/utils/checkout-git.ts b/packages/server/src/utils/checkout-git.ts
+index eed39f63e594ce57aa7a5363e8681d64fcd70d78..bb670aaa5088b2192ed25d57a4f35329af1d8bde 100644
+--- a/packages/server/src/utils/checkout-git.ts
++++ b/packages/server/src/utils/checkout-git.ts
+@@ -72,6 +72,8 @@ export type GitMutationRefreshReason =
+   | "create-pr"
+   | "switch-branch"
+   | "rename-branch"
++  // FORK(repository-graph): refresh after fork-only branch and tag mutations.
++  | "repository-graph-ref"
+   | "create-branch"
+   | "stash-push"
+   | "stash-pop"
+@@ -871,6 +873,10 @@ export interface AheadBehind {
+   behind: number;
+ }
+ 
++interface RefComparison extends AheadBehind {
++  hasChanges: boolean;
++}
++
+ export interface CheckoutStatus {
+   isGit: false;
+ }
+@@ -883,12 +889,14 @@ export interface CheckoutStatusGitNonPaseo {
+   isDirty: boolean;
+   baseRef: string | null;
+   aheadBehind: AheadBehind | null;
++  hasChangesFromBase: boolean | null;
+   // Remote-tracking ref for currentBranch, e.g. "refs/remotes/origin/main". Null when the
+   // branch has no upstream or git could not resolve it. aheadOfOrigin/behindOfOrigin are
+   // measured against exactly this ref.
+   upstreamRef: string | null;
+   aheadOfOrigin: number | null;
+   behindOfOrigin: number | null;
++  hasChangesFromOrigin: boolean | null;
+   hasRemote: boolean;
+   remoteUrl: string | null;
+   isPaseoOwnedWorktree: false;
+@@ -902,9 +910,11 @@ export interface CheckoutStatusGitPaseo {
+   isDirty: boolean;
+   baseRef: string;
+   aheadBehind: AheadBehind | null;
++  hasChangesFromBase: boolean | null;
+   upstreamRef: string | null;
+   aheadOfOrigin: number | null;
+   behindOfOrigin: number | null;
++  hasChangesFromOrigin: boolean | null;
+   hasRemote: boolean;
+   remoteUrl: string | null;
+   isPaseoOwnedWorktree: true;
+@@ -1769,43 +1779,48 @@ async function getAheadBehind(
+   baseRef: string,
+   currentBranch: string,
+   context?: CheckoutContext,
+-): Promise<AheadBehind | null> {
++): Promise<RefComparison | null> {
+   const normalizedBaseRef = branchNameFromRef(baseRef);
+   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
+     return null;
+   }
+-  const comparisonBaseRef =
+-    context?.facts?.isGit && context.facts.resolvedBaseRef === baseRef
+-      ? context.facts.comparisonBaseRef
+-      : await resolveBestComparisonBaseRef(cwd, baseRef, context);
++  const comparisonBaseRef = await resolveMostAheadBaseRef(cwd, baseRef);
+   if (!comparisonBaseRef) {
+     return null;
+   }
+   return getAheadBehindForComparisonRef(cwd, comparisonBaseRef, currentBranch, context);
+ }
+ 
+-export interface UpstreamStatus {
+-  ref: string;
+-  aheadBehind: AheadBehind;
+-}
+-
+ async function getAheadBehindForComparisonRef(
+   cwd: string,
+   comparisonRef: string,
+   currentBranch: string,
+   context?: CheckoutContext,
+-): Promise<AheadBehind | null> {
+-  const { stdout } = await getRunGitCommand(context)(
+-    ["rev-list", "--left-right", "--count", `${comparisonRef}...${currentBranch}`],
+-    { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+-  );
++): Promise<RefComparison | null> {
++  if (!comparisonRef || !currentBranch || comparisonRef === currentBranch) {
++    return null;
++  }
++  const run = getRunGitCommand(context);
++  const [{ stdout }, diffResult] = await Promise.all([
++    run(["rev-list", "--left-right", "--count", `${comparisonRef}...${currentBranch}`], {
++      cwd,
++      envOverlay: READ_ONLY_GIT_ENV,
++      logger: context?.logger,
++    }),
++    run(["diff", "--quiet", comparisonRef, currentBranch], {
++      cwd,
++      envOverlay: READ_ONLY_GIT_ENV,
++      acceptExitCodes: [0, 1],
++      logger: context?.logger,
++    }),
++  ]);
+   const [behindRaw, aheadRaw] = stdout.trim().split(/\s+/);
+   const behind = Number.parseInt(behindRaw ?? "0", 10);
+   const ahead = Number.parseInt(aheadRaw ?? "0", 10);
+   if (Number.isNaN(behind) || Number.isNaN(ahead)) {
+     return null;
+   }
+-  return { ahead, behind };
++  return { ahead, behind, hasChanges: diffResult.exitCode === 1 };
+ }
+ 
+ async function getUpstreamStatus(
+@@ -1828,12 +1843,24 @@ async function getUpstreamStatus(
+     }
+     const ahead = Number.parseInt(track.match(/ahead (\d+)/)?.[1] ?? "0", 10);
+     const behind = Number.parseInt(track.match(/behind (\d+)/)?.[1] ?? "0", 10);
+-    return { ref, aheadBehind: { ahead, behind } };
++    const diffResult = await getRunGitCommand(context)(["diff", "--quiet", ref, currentBranch], {
++      cwd,
++      envOverlay: READ_ONLY_GIT_ENV,
++      acceptExitCodes: [0, 1],
++      logger: context?.logger,
++    });
++    return { ref, aheadBehind: { ahead, behind }, hasChanges: diffResult.exitCode === 1 };
+   } catch {
+     return null;
+   }
+ }
+ 
++export interface UpstreamStatus {
++  ref: string;
++  aheadBehind: AheadBehind;
++  hasChanges: boolean;
++}
++
+ interface CheckoutInspectionContext {
+   worktreeRoot: string;
+   currentBranch: string | null;
+@@ -2328,16 +2355,11 @@ export async function getCheckoutStatus(
+     return { isGit: false };
+   }
+ 
+-  const worktreeRoot = facts.worktreeRoot;
+   const currentBranch = facts.currentBranch;
+-  const remoteUrl = facts.remoteUrl;
+-  const paseoWorktree = facts.paseoWorktree;
+   const isDirty = await isWorkingTreeDirty(cwd, context);
+-  const hasRemote = remoteUrl !== null;
+   const baseRef = facts.resolvedBaseRef;
+-  const mainRepoRoot = facts.mainRepoRoot;
+   const factsContext = { ...context, facts };
+-  const aheadBehind =
++  const baseComparison =
+     baseRef && currentBranch
+       ? await getAheadBehind(cwd, baseRef, currentBranch, factsContext)
+       : null;
+@@ -2349,19 +2371,64 @@ export async function getCheckoutStatus(
+   const upstreamRef = upstreamStatus?.ref ?? null;
+   const aheadOfOrigin = upstreamStatus?.aheadBehind.ahead ?? null;
+   const behindOfOrigin = upstreamStatus?.aheadBehind.behind ?? null;
++  const aheadBehind = baseComparison
++    ? { ahead: baseComparison.ahead, behind: baseComparison.behind }
++    : null;
++  const hasChangesFromBase = baseComparison?.hasChanges ?? null;
++  const hasChangesFromOrigin = upstreamStatus?.hasChanges ?? null;
++
++  return buildCheckoutStatusFromFacts({
++    facts,
++    isDirty,
++    displayBaseRef,
++    aheadBehind,
++    hasChangesFromBase,
++    upstreamRef,
++    aheadOfOrigin,
++    behindOfOrigin,
++    hasChangesFromOrigin,
++  });
++}
++
++function buildCheckoutStatusFromFacts({
++  facts,
++  isDirty,
++  displayBaseRef,
++  aheadBehind,
++  hasChangesFromBase,
++  upstreamRef,
++  aheadOfOrigin,
++  behindOfOrigin,
++  hasChangesFromOrigin,
++}: {
++  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>;
++  isDirty: boolean;
++  displayBaseRef: string | null;
++  aheadBehind: AheadBehind | null;
++  hasChangesFromBase: boolean | null;
++  upstreamRef: string | null;
++  aheadOfOrigin: number | null;
++  behindOfOrigin: number | null;
++  hasChangesFromOrigin: boolean | null;
++}): CheckoutStatusGit {
++  const { worktreeRoot, currentBranch, remoteUrl, paseoWorktree, resolvedBaseRef, mainRepoRoot } =
++    facts;
++  const hasRemote = remoteUrl !== null;
+ 
+-  if (paseoWorktree.isPaseoOwnedWorktree && baseRef) {
++  if (paseoWorktree.isPaseoOwnedWorktree && resolvedBaseRef) {
+     return {
+       isGit: true,
+       repoRoot: worktreeRoot,
+       mainRepoRoot: mainRepoRoot ?? worktreeRoot,
+       currentBranch,
+       isDirty,
+-      baseRef: displayBaseRef ?? baseRef,
++      baseRef: displayBaseRef ?? resolvedBaseRef,
+       aheadBehind,
++      hasChangesFromBase,
+       upstreamRef,
+       aheadOfOrigin,
+       behindOfOrigin,
++      hasChangesFromOrigin,
+       hasRemote,
+       remoteUrl,
+       isPaseoOwnedWorktree: true,
+@@ -2377,9 +2444,11 @@ export async function getCheckoutStatus(
+     isDirty,
+     baseRef: displayBaseRef,
+     aheadBehind,
++    hasChangesFromBase,
+     upstreamRef,
+     aheadOfOrigin,
+     behindOfOrigin,
++    hasChangesFromOrigin,
+     hasRemote,
+     remoteUrl,
+     isPaseoOwnedWorktree: false,
+@@ -2726,16 +2795,8 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
+ }
+ 
+ /**
+- * Fetches the unified diff of a single file as introduced by one commit and
+- * parses it into the same {@link ParsedDiffFile} shape the diff subscription
+- * emits (so the client can reuse its existing renderer).
+- *
+- * Compares merge commits to their first parent, matching the linear history shown
+- * in the explorer. The text is parsed and highlighted by
+- * {@link parseAndHighlightDiff} — the exact parser the diff subscription uses.
+- * Returns `null` when the file is absent from the commit or the change is
+- * binary-only (no textual hunks). Throws on git failure (e.g. an unknown sha),
+- * which the caller maps to a typed checkout error.
++ * Returns the unified diff for one file in one commit, parsed into the same
++ * shape emitted by the checkout diff subscription.
+  */
+ export async function getCommitFileDiff({
+   cwd,
+@@ -2768,7 +2829,6 @@ export async function getCommitFileDiff({
+       envOverlay: READ_ONLY_GIT_ENV,
+     },
+   );
+-
+   if (stdout.trim().length === 0) {
+     return null;
+   }
+@@ -2782,19 +2842,18 @@ export async function getCommitFileDiff({
+   // Including the rename source lets Git pair it with the destination. Select
+   // the requested entry if another change also matches the source path.
+   const file = parsedFiles.find((candidate) => candidate.path === path) ?? null;
+-  if (!file) {
++  if (!file || (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout))) {
+     return null;
+   }
+-
+-  // Binary changes carry a "Binary files ... differ" marker and no hunks; there
+-  // is nothing textual to render, so report them as absent.
+-  if (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout)) {
+-    return null;
+-  }
+-
+   return file;
+ }
+ 
++// FORK(repository-graph): expose existing Git primitives to the fork-only feature.
++export const repositoryGraphGitPrimitives = {
++  getCommitRecords: getCheckoutCommitRecords,
++  readFileAtRef: readGitFileContentAtRef,
++};
++
+ export interface CheckoutShortstat {
+   additions: number;
+   deletions: number;
+@@ -3007,6 +3066,7 @@ export async function getCheckoutShortstat(
+ 
+ export interface CheckoutRefDerivedState {
+   aheadBehind: AheadBehind | null;
++  hasChangesFromBase: boolean | null;
+   diffStat: CheckoutShortstat | null;
+   upstreamStatus: UpstreamStatus | null;
+ }
+@@ -3068,7 +3128,7 @@ function getCheckoutRefMovement(
+ export async function getCheckoutRefDerivedState(
+   cwd: string,
+   facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
+-  current: Pick<CheckoutRefDerivedState, "aheadBehind" | "diffStat">,
++  current: Pick<CheckoutRefDerivedState, "aheadBehind" | "hasChangesFromBase" | "diffStat">,
+   movedRemoteRefs: ReadonlySet<string>,
+   context?: CheckoutContext,
+ ): Promise<CheckoutRefDerivedState> {
+@@ -3082,12 +3142,29 @@ export async function getCheckoutRefDerivedState(
+   } = getCheckoutRefMovement(facts, movedRemoteRefs);
+ 
+   let aheadBehind = current.aheadBehind;
++  let hasChangesFromBase = current.hasChangesFromBase;
++  let baseComparison: RefComparison | null = null;
+   let diffStat = current.diffStat;
++  const normalizedComparison = comparisonRef ? normalizeRemoteTrackingRef(comparisonRef) : null;
++  const normalizedUpstream = upstreamRef ? normalizeRemoteTrackingRef(upstreamRef) : null;
++  const sharedComparisonRef = getSharedMovedComparisonRef({
++    baseMoved,
++    upstreamMoved,
++    comparisonRef,
++    normalizedComparison,
++    normalizedUpstream,
++  });
+   if (baseMoved && currentBranch && facts.resolvedBaseRef) {
+-    aheadBehind = await getAheadBehind(cwd, facts.resolvedBaseRef, currentBranch, {
+-      ...context,
+-      facts,
+-    });
++    baseComparison = sharedComparisonRef
++      ? await getAheadBehindForComparisonRef(cwd, sharedComparisonRef, currentBranch, context)
++      : await getAheadBehind(cwd, facts.resolvedBaseRef, currentBranch, {
++          ...context,
++          facts,
++        });
++    aheadBehind = baseComparison
++      ? { ahead: baseComparison.ahead, behind: baseComparison.behind }
++      : null;
++    hasChangesFromBase = baseComparison?.hasChanges ?? null;
+   }
+   if (baseMoved || (upstreamMoved && currentBranch === normalizedResolvedBase)) {
+     diffStat = await getCheckoutShortstatUncached(
+@@ -3099,21 +3176,39 @@ export async function getCheckoutRefDerivedState(
+ 
+   let upstreamStatus = facts.upstreamStatus;
+   if (upstreamMoved && currentBranch && upstreamRef) {
+-    const normalizedUpstream = normalizeRemoteTrackingRef(upstreamRef);
+-    const normalizedComparison = comparisonRef ? normalizeRemoteTrackingRef(comparisonRef) : null;
+-    const upstreamAheadBehind =
+-      baseMoved && normalizedComparison === normalizedUpstream
+-        ? aheadBehind
+-        : await getAheadBehindForComparisonRef(cwd, upstreamRef, currentBranch, context);
+-    upstreamStatus = upstreamAheadBehind
++    const upstreamComparison = sharedComparisonRef
++      ? baseComparison
++      : await getAheadBehindForComparisonRef(cwd, upstreamRef, currentBranch, context);
++    upstreamStatus = upstreamComparison
+       ? {
+-          ref: facts.upstreamStatus?.ref ?? `refs/remotes/${normalizedUpstream}`,
+-          aheadBehind: upstreamAheadBehind,
++          ref:
++            facts.upstreamStatus?.ref ?? `refs/remotes/${normalizeRemoteTrackingRef(upstreamRef)}`,
++          aheadBehind: { ahead: upstreamComparison.ahead, behind: upstreamComparison.behind },
++          hasChanges: upstreamComparison.hasChanges,
+         }
+       : null;
+   }
+ 
+-  return { aheadBehind, diffStat, upstreamStatus };
++  return { aheadBehind, hasChangesFromBase, diffStat, upstreamStatus };
++}
++
++function getSharedMovedComparisonRef(input: {
++  baseMoved: boolean;
++  upstreamMoved: boolean;
++  comparisonRef: string | null;
++  normalizedComparison: string | null;
++  normalizedUpstream: string | null;
++}): string | null {
++  if (
++    input.baseMoved &&
++    input.upstreamMoved &&
++    input.comparisonRef !== null &&
++    input.normalizedComparison !== null &&
++    input.normalizedComparison === input.normalizedUpstream
++  ) {
++    return input.comparisonRef;
++  }
++  return null;
+ }
+ 
+ export interface CheckoutWorktreeState {
+@@ -3961,6 +4056,14 @@ export async function mergeFromBase(
+   if (bestBaseRef === currentBranch) {
+     return;
+   }
++  const treeDiff = await runGitCommand(["diff", "--quiet", bestBaseRef, currentBranch], {
++    cwd,
++    envOverlay: READ_ONLY_GIT_ENV,
++    acceptExitCodes: [0, 1],
++  });
++  if (treeDiff.exitCode === 0) {
++    return;
++  }
+ 
+   try {
+     await runGitCommand(["merge", bestBaseRef], { cwd, timeout: 120_000 });

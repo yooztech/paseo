@@ -1,0 +1,964 @@
+diff --git a/.gitignore b/.gitignore
+index a85ff1fd8c1f4c20760319a05953b4141cecb4f7..7da7e434a4642212f384b280e5c2c2e9bf27d79a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -7,6 +7,7 @@ dist/
+ .next/
+ out/
+ result
++**/.gradle/
+ 
+ # Environment variables
+ .env
+diff --git a/package.json b/package.json
+index 938497a362b2f746803e1f8b1eb113c0e522f0a9..9ea1076e9a498d57feea58beda104d115549fa93 100644
+--- a/package.json
++++ b/package.json
+@@ -115,6 +115,9 @@
+     "release:publish": "npm publish --workspace=@getpaseo/highlight --access public && npm publish --workspace=@getpaseo/relay --access public && npm publish --workspace=@getpaseo/protocol --access public && npm publish --workspace=@getpaseo/client --access public && npm publish --workspace=@getpaseo/plugin --access public && npm publish --workspace=@getpaseo/server --access public && npm publish --workspace=@getpaseo/cli --access public",
+     "release:publish:beta": "npm publish --workspace=@getpaseo/highlight --access public --tag beta && npm publish --workspace=@getpaseo/relay --access public --tag beta && npm publish --workspace=@getpaseo/protocol --access public --tag beta && npm publish --workspace=@getpaseo/client --access public --tag beta && npm publish --workspace=@getpaseo/plugin --access public --tag beta && npm publish --workspace=@getpaseo/server --access public --tag beta && npm publish --workspace=@getpaseo/cli --access public --tag beta",
+     "release:push": "node scripts/push-current-release-tag.mjs",
++    "release:fork:daemon": "node scripts/release-fork-daemon.mjs",
++    "release:fork:desktop": "node scripts/release-fork-desktop.mjs",
++    "release:fork:app": "node scripts/release-fork-app.mjs",
+     "release:beta:patch": "npm run release:check && npm run version:all:beta:patch && npm run release:publish:beta && npm run release:push",
+     "release:beta:minor": "npm run release:check && npm run version:all:beta:minor && npm run release:publish:beta && npm run release:push",
+     "release:beta:major": "npm run release:check && npm run version:all:beta:major && npm run release:publish:beta && npm run release:push",
+diff --git a/packages/desktop/e2e/browser-tabs.e2e.mjs b/packages/desktop/e2e/browser-tabs.e2e.mjs
+index 78d2fa978e7f5455fee8a05cdc5a7e1f7b744233..9ad67965f1c41cda24f41175ac02c5459c42ac50 100644
+--- a/packages/desktop/e2e/browser-tabs.e2e.mjs
++++ b/packages/desktop/e2e/browser-tabs.e2e.mjs
+@@ -777,7 +777,9 @@ async function runRegression({
+   await selectDeviceSize(page, "Responsive");
+   const responsiveViewport = await readViewport(client, browserId);
+ 
+-  await originalDeck.getByTestId(`workspace-tab-agent_${callerAgentId}`).click();
++  const agentTab = originalDeck.getByTestId(`workspace-tab-agent_${callerAgentId}`);
++  const browserTab = originalDeck.getByTestId(`workspace-tab-browser_${browserId}`);
++  await agentTab.click();
+   await page.waitForFunction(
+     ({ id, webContentsId }) => {
+       const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
+@@ -791,6 +793,17 @@ async function runRegression({
+     { id: browserId, webContentsId: firstGuest.webContentsId },
+     { timeout: timeoutMs },
+   );
++  const backgroundSnapshot = await callBrowserTool(client, "browser_snapshot", { browserId });
++  const backgroundInputRef = backgroundSnapshot.snapshot.match(
++    /textbox "Typing target" \[ref=(@e\d+)\]/,
++  )?.[1];
++  assert(backgroundInputRef, `browser_snapshot did not expose the typing target input`);
++  await callBrowserTool(client, "browser_click", { browserId, ref: backgroundInputRef });
++  assert(
++    (await agentTab.getAttribute("aria-selected")) === "true" &&
++      (await browserTab.getAttribute("aria-selected")) === "false",
++    "Background browser automation activated the browser tab",
++  );
+   try {
+     await callBrowserTool(client, "browser_screenshot", { browserId });
+   } catch (error) {
+@@ -1080,6 +1093,7 @@ async function runRegression({
+     viewport: "passed",
+     guestFocus: "passed",
+     overlayPlane: "passed",
++    backgroundTabActivation: "passed",
+     inactiveCapture: "passed",
+     hiddenWindowCapture: "passed",
+     list: "passed",
+@@ -1267,7 +1281,7 @@ async function main() {
+     const pluginLinks = await checkPluginLinks();
+     writeJson(path.join(artifactDir, "result.json"), { ...report, settingsMemory, pluginLinks });
+     console.log(
+-      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,
++      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, background tab activation, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,
+     );
+   } catch (error) {
+     console.error(`Browser desktop browser E2E failed. Artifacts: ${artifactDir}`);
+diff --git a/packages/desktop/electron-builder.yml b/packages/desktop/electron-builder.yml
+index 8634d1f0589996e12fa5944af7305489d5d8e588..350aa04c3b5271ed29012de7ec5986d6a33e9e94 100644
+--- a/packages/desktop/electron-builder.yml
++++ b/packages/desktop/electron-builder.yml
+@@ -37,7 +37,7 @@ extraResources:
+     to: editor-target-icons
+ publish:
+   provider: github
+-  owner: getpaseo
++  owner: yooztech
+   repo: paseo
+ mac:
+   artifactName: "Paseo-${version}-${arch}.${ext}"
+diff --git a/packages/desktop/scripts/dev-runner-config.test.mjs b/packages/desktop/scripts/dev-runner-config.test.mjs
+index ca34fe8c16c6fb0afb47ee310bca7c28dcacf695..09ec8c185ca23f6f685fdd753fa87bc6a80ebfde 100644
+--- a/packages/desktop/scripts/dev-runner-config.test.mjs
++++ b/packages/desktop/scripts/dev-runner-config.test.mjs
+@@ -1,5 +1,4 @@
+ import { describe, expect, test } from "vitest";
+-import { readFileSync } from "node:fs";
+ import {
+   createElectronSpawnOptions,
+   registerDevRunnerShutdownSignals,
+@@ -7,17 +6,6 @@ import {
+ } from "./dev-runner-config.mjs";
+ 
+ describe("desktop dev process ownership", () => {
+-  test("makes the signal-handling runner the workspace terminal process", () => {
+-    const paseoConfig = JSON.parse(
+-      readFileSync(new URL("../../../paseo.json", import.meta.url), "utf8"),
+-    );
+-    const devScript = readFileSync(new URL("./dev.sh", import.meta.url), "utf8");
+-
+-    expect(paseoConfig.scripts.desktop.command).toContain("exec ./packages/desktop/scripts/dev.sh");
+-    expect(devScript).toContain('npm --prefix "$DESKTOP_DIR" run build:main');
+-    expect(devScript).toContain('exec node "$SCRIPT_DIR/dev-runner.mjs"');
+-  });
+-
+   test("keeps Electron in the runner process group", () => {
+     const options = createElectronSpawnOptions({
+       env: { PATH: "/usr/bin" },
+diff --git a/packages/desktop/src/features/app-update-service.test.ts b/packages/desktop/src/features/app-update-service.test.ts
+index 5f55ff609916107d30beb0fa0df5dfa81188da34..8bffda0e2843fcb976327440b0b70ab5860035f8 100644
+--- a/packages/desktop/src/features/app-update-service.test.ts
++++ b/packages/desktop/src/features/app-update-service.test.ts
+@@ -577,6 +577,27 @@ describe("app update service", () => {
+     });
+   });
+ 
++  it("reports no update when the runtime has no channel manifest", async () => {
++    const { runtime, service } = createService();
++    runtime.nextCheck(null);
++
++    const result = await service.checkForAppUpdate({
++      currentVersion: "1.2.3",
++      releaseChannel: "stable",
++      intent: "manual",
++    });
++
++    expect(result).toEqual({
++      hasUpdate: false,
++      readyToInstall: false,
++      currentVersion: "1.2.3",
++      latestVersion: "1.2.3",
++      body: null,
++      date: null,
++      errorMessage: null,
++    });
++  });
++
+   it("returns check errors so the renderer can show feedback", async () => {
+     const { runtime, service } = createService();
+     runtime.failNextCheck(new Error("network down"));
+diff --git a/packages/desktop/src/features/app-update-service.ts b/packages/desktop/src/features/app-update-service.ts
+index 21789950bfbc3fb39538d29591338c1d38786ee0..0690839b3b2ff13372430034a0991095fc2dd21c 100644
+--- a/packages/desktop/src/features/app-update-service.ts
++++ b/packages/desktop/src/features/app-update-service.ts
+@@ -38,6 +38,7 @@ export interface AppUpdateRuntimeConfiguration {
+   shouldAdmitUpdate(info: RuntimeUpdateInfo): boolean | Promise<boolean>;
+   onUpdateAvailable(info: RuntimeUpdateInfo): void;
+   onUpdateDownloaded(info: RuntimeUpdateInfo): void;
++  onUpdateNotAvailable(): void;
+   onError(error: unknown): void;
+ }
+ 
+@@ -215,6 +216,9 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
+           preparationError = null;
+         }
+       },
++      onUpdateNotAvailable() {
++        clearUpdateState();
++      },
+       onError(error) {
+         if (preparingUpdateVersion) {
+           preparationError = {
+diff --git a/packages/desktop/src/features/auto-updater.test.ts b/packages/desktop/src/features/auto-updater.test.ts
+index 6cd6da2c7e44074304fc3638667a97d330184383..47b7738a6596b9c89230122a279d1fd1b3e1262d 100644
+--- a/packages/desktop/src/features/auto-updater.test.ts
++++ b/packages/desktop/src/features/auto-updater.test.ts
+@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
+ import { UUID } from "builder-util-runtime";
++import { autoUpdater } from "electron-updater";
+ import { describe, expect, it, vi } from "vitest";
+ 
+ const { autoUpdaterMock } = vi.hoisted(() => {
+@@ -28,6 +29,7 @@ const { autoUpdaterMock } = vi.hoisted(() => {
+ vi.mock("electron", () => ({
+   app: {
+     getPath: vi.fn(),
++    getVersion: vi.fn(() => "1.2.3"),
+     isPackaged: true,
+   },
+ }));
+@@ -38,6 +40,8 @@ vi.mock("electron-updater", () => ({
+ 
+ import {
+   bucketFromStagingUserId,
++  ElectronAppUpdateRuntime,
++  resolveElectronUpdateChannel,
+   checkForAppUpdate,
+   createAppUpdateLifecycleLogger,
+   resolveStagingUserId,
+@@ -46,6 +50,39 @@ import {
+   shouldInstallAppUpdateOnQuit,
+ } from "./auto-updater";
+ 
++function updaterError(code: string): Error {
++  return Object.assign(new Error(code), { code });
++}
++
++describe("missing update channel", () => {
++  it("makes a missing manifest an unavailable update result", async () => {
++    vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(
++      updaterError("ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"),
++    );
++
++    await expect(new ElectronAppUpdateRuntime().checkForUpdates()).resolves.toBeNull();
++  });
++
++  it("keeps other updater failures actionable", async () => {
++    const error = updaterError("ERR_UPDATER_INVALID_UPDATE_INFO");
++    vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(error);
++
++    await expect(new ElectronAppUpdateRuntime().checkForUpdates()).rejects.toBe(error);
++  });
++});
++
++describe("resolveElectronUpdateChannel", () => {
++  it("keeps fork builds on their isolated update channel", () => {
++    expect(resolveElectronUpdateChannel("0.2.5-fork.1", "stable")).toBe("fork");
++    expect(resolveElectronUpdateChannel("0.2.5-fork.1", "beta")).toBe("fork");
++  });
++
++  it("maps upstream builds to the selected release channel", () => {
++    expect(resolveElectronUpdateChannel("0.2.5", "stable")).toBe("latest");
++    expect(resolveElectronUpdateChannel("0.2.6-beta.1", "beta")).toBe("beta");
++  });
++});
++
+ describe("checkForAppUpdate", () => {
+   it("treats an unpublished channel manifest as an unavailable update", async () => {
+     const error = Object.assign(new Error("Cannot find latest-mac.yml"), {
+diff --git a/packages/desktop/src/features/auto-updater.ts b/packages/desktop/src/features/auto-updater.ts
+index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3a2655e08 100644
+--- a/packages/desktop/src/features/auto-updater.ts
++++ b/packages/desktop/src/features/auto-updater.ts
+@@ -33,6 +33,16 @@ export {
+   type AppUpdateInstallResult,
+ };
+ 
++export function resolveElectronUpdateChannel(
++  currentVersion: string,
++  releaseChannel: AppReleaseChannel,
++): "latest" | "beta" | "fork" {
++  if (/^\d+\.\d+\.\d+-fork\.\d+$/.test(currentVersion)) {
++    return "fork";
++  }
++  return releaseChannel === "beta" ? "beta" : "latest";
++}
++
+ let cachedStagingUserIdPromise: Promise<string> | null = null;
+ 
+ const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
+@@ -140,18 +150,20 @@ export function shouldInstallAppUpdateOnQuit(input: {
+   return !(input.platform === "linux" && input.isAppImage);
+ }
+ 
+-class ElectronAppUpdateRuntime implements AppUpdateRuntime {
++export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
+   private configured = false;
+ 
+   configure(input: AppUpdateRuntimeConfiguration): void {
++    const updateChannel = resolveElectronUpdateChannel(app.getVersion(), input.releaseChannel);
++    autoUpdater.logger = log;
+     autoUpdater.autoDownload = true;
+     autoUpdater.autoRunAppAfterInstall = true;
+     // Paseo revalidates the current manifest before explicitly installing on quit.
+     // Electron's built-in handler would install an older download without checking
+     // whether a newer release has superseded it.
+     autoUpdater.autoInstallOnAppQuit = false;
+-    autoUpdater.allowPrerelease = input.releaseChannel === "beta";
+-    autoUpdater.channel = input.releaseChannel === "beta" ? "beta" : "latest";
++    autoUpdater.allowPrerelease = updateChannel !== "latest";
++    autoUpdater.channel = updateChannel;
+     autoUpdater.allowDowngrade = false;
+     autoUpdater.isUserWithinRollout = async (info) => {
+       try {
+@@ -161,6 +173,14 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
+       }
+     };
+ 
++    log.info("[auto-updater] configured", {
++      currentVersion: app.getVersion(),
++      releaseChannel: input.releaseChannel,
++      updateChannel,
++      autoDownload: autoUpdater.autoDownload,
++      autoInstallOnAppQuit: autoUpdater.autoInstallOnAppQuit,
++    });
++
+     if (this.configured) return;
+     this.configured = true;
+ 
+@@ -186,24 +206,49 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
+       updateLifecycleLog.updateDownloaded(updateInfo.version);
+       input.onUpdateDownloaded(updateInfo);
+     });
++    autoUpdater.on("update-not-available", () => {
++      log.info("[auto-updater] update-not-available");
++      input.onUpdateNotAvailable();
++    });
+     autoUpdater.on("error", (error) => {
+-      if (isUpdateChannelNotPublished(error)) return;
++      if (isUpdateChannelNotPublished(error)) {
++        log.info("[auto-updater] update-not-available", { reason: "manifest-not-found" });
++        input.onUpdateNotAvailable();
++        return;
++      }
++      log.error("[auto-updater] error", error);
+       input.onError(error);
+     });
+   }
+ 
+   async checkForUpdates(): Promise<RuntimeUpdateCheckResult | null> {
++    log.info("[auto-updater] check-for-updates.start");
++    let result;
+     try {
+-      const result = await autoUpdater.checkForUpdates();
+-      if (!result) return null;
+-      return {
+-        isUpdateAvailable: result.isUpdateAvailable,
+-        updateInfo: result.updateInfo as RuntimeUpdateInfo,
+-      };
++      result = await autoUpdater.checkForUpdates();
+     } catch (error) {
+-      if (isUpdateChannelNotPublished(error)) return null;
++      if (isUpdateChannelNotPublished(error)) {
++        log.info("[auto-updater] check-for-updates.done", {
++          result: null,
++          reason: "manifest-not-found",
++        });
++        return null;
++      }
+       throw error;
+     }
++    if (!result) {
++      log.info("[auto-updater] check-for-updates.done", { result: null });
++      return null;
++    }
++    log.info("[auto-updater] check-for-updates.done", {
++      isUpdateAvailable: result.isUpdateAvailable,
++      version: result.updateInfo.version,
++      hasDownloadPromise: result.downloadPromise != null,
++    });
++    return {
++      isUpdateAvailable: result.isUpdateAvailable,
++      updateInfo: result.updateInfo as RuntimeUpdateInfo,
++    };
+   }
+ 
+   downloadUpdate(targetVersion: string): Promise<unknown> {
+diff --git a/packages/relay/src/e2e.test.ts b/packages/relay/src/e2e.test.ts
+index cbc19f57b65236027559712b92975efe85dd1ecb..9c9a8957e1b877d880b43b382647767cba7a285e 100644
+--- a/packages/relay/src/e2e.test.ts
++++ b/packages/relay/src/e2e.test.ts
+@@ -56,6 +56,9 @@ function spawnRelayDevServer(port: number): ChildProcess {
+       wranglerCliPath,
+       "dev",
+       "--local",
++      // Local execution still inherits production vars; exercise the local Durable Object.
++      "--var",
++      "PASEO_RELAY_UPSTREAM:",
+       "--ip",
+       "127.0.0.1",
+       "--port",
+diff --git a/packages/website/e2e/plugins.spec.ts b/packages/website/e2e/plugins.spec.ts
+index 22baf9e7f1086007bbb5d42401643cbea88728f9..6477d1cb359fc8912e8049e3739e2f85fa18f981 100644
+--- a/packages/website/e2e/plugins.spec.ts
++++ b/packages/website/e2e/plugins.spec.ts
+@@ -61,6 +61,30 @@ async function scrollPluginCarousel(page: Page, section: string) {
+   await expect(cards.first()).not.toBeInViewport();
+ }
+ 
++test("enables copying the install command only after hydration", async ({ page, context }) => {
++  await context.addInitScript(() => {
++    Object.defineProperty(navigator, "clipboard", {
++      configurable: true,
++      value: {
++        writeText: (text: string) => {
++          Reflect.set(window, "__copied", text);
++          return Promise.resolve();
++        },
++      },
++    });
++  });
++  const releaseScripts = await holdScripts(page);
++  await page.goto("/plugins/omercnet/fresh-worktrees", { waitUntil: "commit" });
++  const copyButton = page.getByRole("button", { name: "Copy to clipboard" });
++  await expect(copyButton).toBeDisabled();
++  await releaseScripts();
++  await expect(copyButton).toBeEnabled();
++  await copyButton.click();
++  await expect
++    .poll(() => page.evaluate(() => Reflect.get(window, "__copied")))
++    .toBe("paseo plugin add omercnet/fresh-worktrees");
++});
++
+ test("browses from the directory into a category, a plugin, and its author", async ({
+   page,
+   context,
+diff --git a/packages/website/src/components/code-block.tsx b/packages/website/src/components/code-block.tsx
+index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5a633eb75 100644
+--- a/packages/website/src/components/code-block.tsx
++++ b/packages/website/src/components/code-block.tsx
+@@ -14,6 +14,9 @@ const SIZE_PADDING: Record<NonNullable<CodeBlockProps["size"]>, string> = {
+ export function CodeBlock({ children, size = "md" }: CodeBlockProps) {
+   const { t } = useTranslation();
+   const [copied, setCopied] = React.useState(false);
++  const [hydrated, setHydrated] = React.useState(false);
++
++  React.useEffect(() => setHydrated(true), []);
+ 
+   const handleCopy = React.useCallback(() => {
+     navigator.clipboard.writeText(children);
+@@ -31,6 +34,7 @@ export function CodeBlock({ children, size = "md" }: CodeBlockProps) {
+       </div>
+       <button
+         type="button"
++        disabled={!hydrated}
+         onClick={handleCopy}
+         className="text-muted-foreground hover:text-foreground transition-colors p-1"
+         title={t("common.copyToClipboard")}
+diff --git a/paseo.json b/paseo.json
+index 4e7b0e81167c9a27e01597c2a4d8d79ad6823c32..f5add06be40f5f1f4d9d9e7acf55787f4099d151 100644
+--- a/paseo.json
++++ b/paseo.json
+@@ -1,4 +1,9 @@
+ {
++  "metadataGeneration": {
++    "commitMessage": {
++      "instructions": "必须使用 Conventional Commits 格式：<type>[可选的 (scope)][破坏性变更时的 !]: <简体中文描述>，不得省略类型前缀。根据实际改动选择英文 type：feat、fix、docs、style、refactor、perf、test、build、ci、chore 或 revert；仅在范围明确时添加 scope，并保留其原文。描述简洁、准确，使用祈使语气，不加句末句号。代码标识符、文件名和专有名词保留原文。必要时添加简体中文正文解释原因与影响；若存在破坏性变更，添加 BREAKING CHANGE: 页脚说明不兼容之处及迁移方式，不得虚构。"
++    }
++  },
+   "worktree": {
+     "setup": [
+       "npm ci",
+@@ -27,6 +32,22 @@
+     },
+     "typecheck": {
+       "command": "npm run typecheck"
++    },
++    "release-fork-daemon": {
++      "type": "script",
++      "command": "node ./scripts/release-fork-daemon.mjs; status=$?; exit $status"
++    },
++    "release-fork-desktop": {
++      "type": "script",
++      "command": "node ./scripts/release-fork-desktop.mjs; status=$?; exit $status"
++    },
++    "release-fork-app": {
++      "type": "script",
++      "command": "node ./scripts/release-fork-app.mjs; status=$?; exit $status"
++    },
++    "release-fork-app-eas": {
++      "type": "script",
++      "command": "node ./scripts/trigger-fork-app-eas.mjs; status=$?; exit $status"
+     }
+   }
+ }
+diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
+index 37508cad7d87d8b63afe623f8dfd8e7c35937f12..45c38759e44e77d91b68e528f54a5808b04d7a65 100644
+--- a/scripts/ci-workflow.test.mjs
++++ b/scripts/ci-workflow.test.mjs
+@@ -11,6 +11,12 @@ const repoRoot = new URL("../", import.meta.url);
+ const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
+ const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
+ const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
++const websiteWorkflowPath = new URL(".github/workflows/deploy-website.yml", repoRoot);
++const desktopReleaseWorkflowPath = new URL(".github/workflows/desktop-release.yml", repoRoot);
++const packagePath = new URL("package.json", repoRoot);
++const daemonReleaseScriptPath = new URL("scripts/release-fork-daemon.mjs", repoRoot);
++const desktopReleaseScriptPath = new URL("scripts/release-fork-desktop.mjs", repoRoot);
++const appReleaseScriptPath = new URL("scripts/release-fork-app.mjs", repoRoot);
+ const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
+ const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
+ const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
+@@ -101,6 +107,16 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+     const job = jobs.get(jobId)?.join("\n");
+     assert.ok(job, `missing static job ${jobId}`);
+     assert.match(job, new RegExp(`^    name: ${expected.name.replace(/[()]/g, "\\$&")}$`, "m"));
++    const condition = /^    if: \$\{\{ (.+) \}\}$/m.exec(job)?.[1];
++    assert.ok(condition, `missing job-level condition for ${jobId}`);
++    assert.match(condition, /needs\.changes\.result == 'success'/);
++    for (const result of ["skipped", "failure", "cancelled"]) {
++      assert.equal(
++        runInNewContext(condition, { needs: { changes: { outputs: {}, result } } }),
++        false,
++        `${jobId} must not run after changes is ${result}`,
++      );
++    }
+     assert.match(job, /needs\.changes\.outputs\.full != 'false'/);
+     for (const contract of expected.contracts ?? [expected.contract]) {
+       assert.match(job, new RegExp(`needs\\.changes\\.outputs\\.${contract} != 'false'`));
+@@ -108,6 +124,17 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+   }
+ });
+ 
++test("main push CI skips GitHub pull-request merge commits", () => {
++  const changes = jobBlocks(readFileSync(ciWorkflowPath, "utf8")).get("changes")?.join("\n") ?? "";
++
++  assert.ok(
++    changes.includes(
++      `    if: "\${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request #') }}"`,
++    ),
++    "merge-commit guard must quote the complete expression so YAML does not treat # as a comment",
++  );
++});
++
+ test("pull-request checks run for every base branch, including stacked PRs", () => {
+   for (const workflowPath of [
+     ciWorkflowPath,
+@@ -132,7 +159,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
+     assert.doesNotMatch(
+       source,
+       /\$\{\{\s*always\(\)/,
+-      "always() keeps jobs alive after concurrency cancellation; use !cancelled() for fail-open gating",
++      "always() keeps jobs alive after concurrency cancellation",
+     );
+   }
+ });
+@@ -317,12 +344,14 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
+   ]);
+ });
+ 
+-test("packaging runs on main without allocating pull-request runners", () => {
+-  for (const workflowPath of [dockerWorkflowPath, nixWorkflowPath]) {
++test("non-required publish workflows avoid runners with path filters or manual dispatch", () => {
++  for (const workflowPath of [dockerWorkflowPath, nixWorkflowPath, websiteWorkflowPath]) {
+     const source = readFileSync(workflowPath, "utf8");
+     const trigger = source.split("jobs:", 1)[0];
+-    assert.match(trigger, /push:\s*\n\s+branches: \[main\]/);
+-    assert.doesNotMatch(trigger, /pull_request/);
++    const hasPathFilter = /^\s+paths:\s*$/m.test(trigger);
++    const isManualOnly =
++      /^\s+workflow_dispatch:\s*$/m.test(trigger) && !/^\s+pull_request:\s*$/m.test(trigger);
++    assert.ok(hasPathFilter || isManualOnly, "workflow must use path filters or be manual-only");
+     assert.doesNotMatch(source, /dorny\/paths-filter/);
+   }
+ });
+@@ -339,32 +368,40 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
+   }
+ });
+ 
+-test("stable iOS releases upload once and distribute to external testers before App Store review", () => {
+-  const source = readFileSync(
+-    new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot),
+-    "utf8",
+-  );
+-  const jobs = jobBlocks(source);
+-  const uploads = [...jobs.entries()].filter(
+-    ([, lines]) =>
+-      lines.some((line) => /^    type: (submit|testflight)$/.test(line)) &&
+-      lines.some((line) => line.includes("needs.build_ios.outputs.build_id")),
++test("fork daemon, desktop, and app releases use separate commands and tags", () => {
++  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
++  const paseoJson = JSON.parse(readFileSync(new URL("paseo.json", repoRoot), "utf8"));
++  assert.equal(packageJson.scripts["release:fork:daemon"], "node scripts/release-fork-daemon.mjs");
++  assert.equal(
++    packageJson.scripts["release:fork:desktop"],
++    "node scripts/release-fork-desktop.mjs",
+   );
+-  assert.equal(uploads.length, 1, "the iOS binary must be uploaded exactly once");
+-  const [distributionId, distributionLines] = uploads[0];
+-  const distribution = distributionLines.join("\n");
+-  assert.match(distribution, /^    type: testflight$/m);
+-  assert.match(distribution, /external_groups:\s*\n\s+- Paseo Beta/);
+-  assert.match(distribution, /^      submit_beta_review: true$/m);
+-
+-  const review = jobs.get("submit_ios_for_review").join("\n");
+-  assert.match(review, new RegExp(`needs: \\[build_ios, ${distributionId}\\]`));
+-  assert.match(review, /APP_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_version \}\}"/);
++  assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
+   assert.match(
+-    review,
+-    /APP_BUILD_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_build_version \}\}"/,
++    paseoJson.scripts["release-fork-app-eas"].command,
++    /^node \.\/scripts\/trigger-fork-app-eas\.mjs(?:;|$)/,
++  );
++
++  const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
++  assert.match(daemonScript, /releaseForkDaemon/);
++
++  const desktopScript = readFileSync(desktopReleaseScriptPath, "utf8");
++  assert.match(desktopScript, /releaseForkDesktop/);
++
++  const appScript = readFileSync(appReleaseScriptPath, "utf8");
++  assert.match(appScript, /releaseForkApp/);
++});
++
++test("desktop fork publication uses pre-created same-commit tags", () => {
++  const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
++  assert.doesNotMatch(workflow, /checkout_ref:/);
++  assert.match(workflow, /CHECKOUT_REF: .*github\.event\.inputs\.tag.*github\.ref_name/);
++  assert.match(workflow, /--verify-checkout/g);
++  assert.match(workflow, /--verify-tag/);
++  assert.equal(
++    workflow.match(/uses: actions\/checkout@v4/g)?.length,
++    workflow.match(/fetch-depth: 0/g)?.length,
+   );
+-  assert.match(review, /bundle exec fastlane ios submit_review/);
+ });
+ 
+ test("eight Playwright shards share two-worker coverage", () => {
+@@ -421,12 +458,13 @@ test("quality preserves commands and routes each domain independently after fail
+     Object.values(commands).flat(),
+   );
+   const domains = Object.keys(commands);
+-  function accepts(expression, outputs, { cancelled = false, installed = true } = {}) {
+-    // Prior checks have failed: success() is false. Explicit !cancelled() must
+-    // override Actions' default success condition so later domains still run.
+-    assert.match(expression, /!cancelled\(\)/);
++  function accepts(
++    expression,
++    outputs,
++    { cancelled = false, installed = true, result = "success" } = {},
++  ) {
+     return runInNewContext(expression, {
+-      needs: { changes: { outputs } },
++      needs: { changes: { outputs, result } },
+       steps: { install: { outcome: installed ? "success" : "failure" } },
+       cancelled: () => cancelled,
+       success: () => false,
+@@ -434,6 +472,7 @@ test("quality preserves commands and routes each domain independently after fail
+   }
+   const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
+   const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
++  assert.match(jobCondition, /needs\.changes\.result == 'success'/);
+   assert.equal(accepts(jobCondition, disabled), false);
+   for (const selected of domains) {
+     const outputs = { ...disabled, [selected]: "true" };
+@@ -443,12 +482,24 @@ test("quality preserves commands and routes each domain independently after fail
+     }
+   }
+   for (const [, expression] of checks) {
++    // Prior checks have failed: success() is false. Explicit !cancelled() must
++    // override Actions' default success condition so later domains still run.
++    assert.match(expression, /!cancelled\(\)/);
+     assert.equal(accepts(expression, { ...disabled, full: "true" }), true);
+     assert.equal(accepts(expression, {}), true, "missing routing outputs fail open");
+     assert.equal(accepts(expression, {}, { cancelled: true }), false);
+     assert.equal(accepts(expression, {}, { installed: false }), false);
+   }
+-  assert.equal(accepts(jobCondition, {}, { cancelled: true }), false);
++  assert.equal(
++    accepts(jobCondition, {}),
++    true,
++    "successful changes with missing outputs fail open",
++  );
++  assert.equal(accepts(jobCondition, { ...disabled, full: "true" }), true);
++  for (const result of ["skipped", "failure", "cancelled"]) {
++    assert.equal(accepts(jobCondition, {}, { result }), false);
++    assert.equal(accepts(jobCondition, { ...disabled, full: "true" }, { result }), false);
++  }
+ });
+ 
+ test("Windows units and integration run independently with complete routed coverage", () => {
+@@ -506,10 +557,9 @@ test("Windows units and integration run independently with complete routed cover
+   function condition(job) {
+     return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
+   }
+-  function selected(expression, outputs, cancelled = false) {
++  function selected(expression, outputs, result = "success") {
+     return runInNewContext(expression, {
+-      needs: { changes: { outputs } },
+-      cancelled: () => cancelled,
++      needs: { changes: { outputs, result } },
+     });
+   }
+   const unitCondition = condition(windows);
+@@ -537,8 +587,10 @@ test("Windows units and integration run independently with complete routed cover
+     assert.equal(selected(unitStep, outputs), integrations);
+     assert.equal(selected(pluginStep, outputs), integrations);
+     assert.equal(selected(hubStep, outputs), hub);
+-    assert.equal(selected(unitCondition, outputs, true), false);
+-    assert.equal(selected(integrationCondition, outputs, true), false);
++    for (const result of ["skipped", "failure", "cancelled"]) {
++      assert.equal(selected(unitCondition, outputs, result), false);
++      assert.equal(selected(integrationCondition, outputs, result), false);
++    }
+   }
+ });
+ 
+diff --git a/scripts/emit-release-env.mjs b/scripts/emit-release-env.mjs
+index 50327cade68faa09b4ef6fa4caf0fe01de53bc69..4da6e3f60e1c2fc68ff48d73d272c3910f951490 100644
+--- a/scripts/emit-release-env.mjs
++++ b/scripts/emit-release-env.mjs
+@@ -1,12 +1,16 @@
+ import { getReleaseInfoFromSourceTag } from "./release-version-utils.mjs";
++import { execFileSync } from "node:child_process";
+ 
+ function usageAndExit(code = 1) {
+-  process.stderr.write(`Usage: node scripts/emit-release-env.mjs --source-tag <tag>\n`);
++  process.stderr.write(
++    `Usage: node scripts/emit-release-env.mjs --source-tag <tag> [--verify-checkout]\n`,
++  );
+   process.exit(code);
+ }
+ 
+ function parseArgs(argv) {
+   let sourceTag = "";
++  let verifyCheckout = false;
+ 
+   for (let index = 0; index < argv.length; index += 1) {
+     const arg = argv[index];
+@@ -18,6 +22,10 @@ function parseArgs(argv) {
+     if (arg === "--help" || arg === "-h") {
+       usageAndExit(0);
+     }
++    if (arg === "--verify-checkout") {
++      verifyCheckout = true;
++      continue;
++    }
+     usageAndExit();
+   }
+ 
+@@ -25,14 +33,29 @@ function parseArgs(argv) {
+     usageAndExit();
+   }
+ 
+-  return sourceTag;
++  return { sourceTag, verifyCheckout };
+ }
+ 
+-const sourceTag = parseArgs(process.argv.slice(2));
++const { sourceTag, verifyCheckout } = parseArgs(process.argv.slice(2));
+ const info = getReleaseInfoFromSourceTag(sourceTag);
+ 
++if (verifyCheckout) {
++  const resolve = (ref) =>
++    execFileSync("git", ["rev-parse", `${ref}^{commit}`], { encoding: "utf8" }).trim();
++  const sourceSha = resolve(info.sourceTag);
++  const publicationSha = resolve(info.publicationTag);
++  const checkoutSha = resolve("HEAD");
++  if (sourceSha !== publicationSha || sourceSha !== checkoutSha) {
++    throw new Error(
++      `Release refs must resolve to one commit: source=${sourceSha}, publication=${publicationSha}, checkout=${checkoutSha}`,
++    );
++  }
++}
++
+ const entries = [
+   ["SOURCE_TAG", info.sourceTag],
++  ["PUBLICATION_TAG", info.publicationTag],
++  ["CHANGELOG_VERSION", info.changelogVersion],
+   ["RELEASE_TAG", info.releaseTag],
+   ["RELEASE_VERSION", info.version],
+   ["RELEASE_BASE_VERSION", info.baseVersion],
+diff --git a/scripts/release-version-utils.mjs b/scripts/release-version-utils.mjs
+index a38d7ae483a9a9b5de0f1221eb13bd92d4af49f9..6d34fa0995afeb002d9e03e905a81ea6b9a02502 100644
+--- a/scripts/release-version-utils.mjs
++++ b/scripts/release-version-utils.mjs
+@@ -1,7 +1,7 @@
+ const versionPattern =
+   /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<prerelease>[0-9A-Za-z.-]+))?$/;
+ const sourceTagPattern =
+-  /^(?:(?:desktop(?:-(?:windows|linux|macos))?|android)-)?v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
++  /^(?:(?:desktop(?:-(?:windows|linux|macos))?|android|app)-)?v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+ 
+ function assertInteger(value, label) {
+   if (!Number.isInteger(value) || value < 0) {
+@@ -23,11 +23,12 @@ export function parseReleaseVersion(version) {
+   const patch = Number.parseInt(match.groups.patch, 10);
+   const prerelease = match.groups.prerelease ?? null;
+   const betaMatch = prerelease?.match(/^beta\.(?<beta>\d+)$/) ?? null;
++  const forkMatch = prerelease?.match(/^fork\.\d+$/) ?? null;
+   const betaNumber = betaMatch?.groups?.beta ? Number.parseInt(betaMatch.groups.beta, 10) : null;
+ 
+-  if (prerelease !== null && betaNumber === null) {
++  if (prerelease !== null && betaNumber === null && forkMatch === null) {
+     throw new Error(
+-      `Unsupported release version "${version}". Expected beta prerelease versions like 0.1.41-beta.1.`,
++      `Unsupported release version "${version}". Expected prerelease versions like 0.1.41-beta.1 or 0.1.41-fork.1.`,
+     );
+   }
+ 
+@@ -59,11 +60,14 @@ export function formatReleaseVersion({ major, minor, patch, prerelease = null })
+ }
+ 
+ export function normalizeReleaseTag(rawTag) {
+-  const trimmed = rawTag.trim().replace(/^refs\/tags\//, "");
++  const trimmed = rawTag
++    .trim()
++    .replace(/^refs\/tags\//, "")
++    .replace(/^(v\d+\.\d+\.\d+-fork\.\d+)-app$/, "$1");
+   const match = trimmed.match(sourceTagPattern);
+   if (!match?.groups?.version) {
+     throw new Error(
+-      `Unsupported release tag "${rawTag}". Expected vX.Y.Z, vX.Y.Z-beta.N, desktop-v..., or android-v...`,
++      `Unsupported release tag "${rawTag}". Expected vX.Y.Z, vX.Y.Z-beta.N, desktop-v..., app-v..., or android-v...`,
+     );
+   }
+   return `v${match.groups.version}`;
+@@ -72,8 +76,11 @@ export function normalizeReleaseTag(rawTag) {
+ export function getReleaseInfoFromSourceTag(sourceTag) {
+   const releaseTag = normalizeReleaseTag(sourceTag);
+   const parsed = parseReleaseVersion(releaseTag.slice(1));
++  const releaseChannel = parsed.isBeta ? "beta" : (parsed.prerelease?.split(".")[0] ?? "latest");
+   return {
+     sourceTag,
++    publicationTag: releaseTag,
++    changelogVersion: releaseChannel === "fork" ? parsed.baseVersion : parsed.version,
+     releaseTag,
+     version: parsed.version,
+     baseVersion: parsed.baseVersion,
+@@ -82,7 +89,7 @@ export function getReleaseInfoFromSourceTag(sourceTag) {
+     isBeta: parsed.isBeta,
+     betaNumber: parsed.betaNumber,
+     releaseType: parsed.isPrerelease ? "prerelease" : "release",
+-    releaseChannel: parsed.isBeta ? "beta" : "latest",
++    releaseChannel,
+     isSmokeTag: sourceTag.includes("gha-smoke"),
+   };
+ }
+diff --git a/scripts/release-version-utils.test.mjs b/scripts/release-version-utils.test.mjs
+index 6a435f6dd99adc8c63ffe9593c3a229a9220df3c..abdb6cecf17dde68b7816582ccb3a1fc967314aa 100644
+--- a/scripts/release-version-utils.test.mjs
++++ b/scripts/release-version-utils.test.mjs
+@@ -35,6 +35,8 @@ test("parses beta release metadata", () => {
+ test("emits beta release info from tags", () => {
+   assert.deepEqual(getReleaseInfoFromSourceTag("v0.1.60-beta.1"), {
+     sourceTag: "v0.1.60-beta.1",
++    publicationTag: "v0.1.60-beta.1",
++    changelogVersion: "0.1.60-beta.1",
+     releaseTag: "v0.1.60-beta.1",
+     version: "0.1.60-beta.1",
+     baseVersion: "0.1.60",
+@@ -48,6 +50,42 @@ test("emits beta release info from tags", () => {
+   });
+ });
+ 
+-test("rejects non-beta prerelease versions", () => {
+-  assert.throws(() => parseReleaseVersion("0.1.60-canary.1"), /Expected beta prerelease versions/);
++test("emits fork release info from desktop tags", () => {
++  assert.deepEqual(getReleaseInfoFromSourceTag("desktop-macos-v0.2.5-fork.1"), {
++    sourceTag: "desktop-macos-v0.2.5-fork.1",
++    publicationTag: "v0.2.5-fork.1",
++    changelogVersion: "0.2.5",
++    releaseTag: "v0.2.5-fork.1",
++    version: "0.2.5-fork.1",
++    baseVersion: "0.2.5",
++    prerelease: "fork.1",
++    isPrerelease: true,
++    isBeta: false,
++    betaNumber: null,
++    releaseType: "prerelease",
++    releaseChannel: "fork",
++    isSmokeTag: false,
++  });
++});
++
++test("normalizes current and historical app release tags", () => {
++  assert.deepEqual(getReleaseInfoFromSourceTag("app-v0.2.5-fork.3"), {
++    sourceTag: "app-v0.2.5-fork.3",
++    publicationTag: "v0.2.5-fork.3",
++    changelogVersion: "0.2.5",
++    releaseTag: "v0.2.5-fork.3",
++    version: "0.2.5-fork.3",
++    baseVersion: "0.2.5",
++    prerelease: "fork.3",
++    isPrerelease: true,
++    isBeta: false,
++    betaNumber: null,
++    releaseType: "prerelease",
++    releaseChannel: "fork",
++    isSmokeTag: false,
++  });
++  assert.equal(getReleaseInfoFromSourceTag("v0.2.5-fork.2-app").publicationTag, "v0.2.5-fork.2");
++});
++test("rejects unsupported prerelease versions", () => {
++  assert.throws(() => parseReleaseVersion("0.1.60-canary.1"), /Expected prerelease versions/);
+ });
+diff --git a/scripts/sync-release-notes-from-changelog.mjs b/scripts/sync-release-notes-from-changelog.mjs
+index 95c9baec4c28bc2a111e38fa705fd897bf824060..4e98392088a2d2b3488aa96c4984f4f508a768c3 100644
+--- a/scripts/sync-release-notes-from-changelog.mjs
++++ b/scripts/sync-release-notes-from-changelog.mjs
+@@ -4,12 +4,8 @@ import { tmpdir } from "node:os";
+ import path from "node:path";
+ import { parseChangelogEntries } from "./changelog-utils.mjs";
+ import { getGitHubRelease } from "./github-release.mjs";
+-import {
+-  getReleaseInfoFromSourceTag,
+-  normalizeReleaseTag,
+-  parseReleaseVersion,
+-} from "./release-version-utils.mjs";
+ import { isMainModule } from "./is-main-module.mjs";
++import { getReleaseInfoFromSourceTag, parseReleaseVersion } from "./release-version-utils.mjs";
+ 
+ function usageAndExit(code = 1) {
+   const usage = `
+@@ -118,13 +114,19 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
+   const changelogText = readFileSync(changelogPath, "utf8");
+   const entries = parseChangelog(changelogText);
+ 
+-  const targetTag = args.tag ? normalizeReleaseTag(args.tag) : entries[0].tag;
+-  const releaseInfo = getReleaseInfoFromSourceTag(targetTag);
+-  const targetEntry = entries.find((entry) => entry.tag === targetTag);
++  const sourceTag = args.tag || entries[0].tag;
++  const releaseInfo = getReleaseInfoFromSourceTag(sourceTag);
++  const targetTag = releaseInfo.publicationTag;
++  const targetEntry = entries.find((entry) => entry.version === releaseInfo.changelogVersion);
+ 
+   let notes = targetEntry?.notes ?? null;
+ 
+   if (!notes) {
++    if (/^desktop(?:-(?:windows|linux|macos))?-v\d+\.\d+\.\d+-fork\.\d+$/.test(sourceTag)) {
++      throw new Error(
++        `No matching changelog section found for fork desktop ${sourceTag}; expected ${releaseInfo.changelogVersion}.`,
++      );
++    }
+     console.log(`No matching changelog section found for ${targetTag}. Skipping.`);
+     return;
+   }
+diff --git a/scripts/sync-release-notes-from-changelog.test.mjs b/scripts/sync-release-notes-from-changelog.test.mjs
+index 5cb172df2e29886ed9381ade6786bfa1d1f5f6b2..c8f079d3cc1a03388da95dce49b0b9bfbe0a29a6 100644
+--- a/scripts/sync-release-notes-from-changelog.test.mjs
++++ b/scripts/sync-release-notes-from-changelog.test.mjs
+@@ -227,3 +227,40 @@ test("converts contributor profile links to mentions in synced release notes", (
+     assert.doesNotMatch(syncedNotes, /\[@therainisme\]\(https:\/\/github\.com\/therainisme\)/);
+   }, changelogText);
+ });
++
++test("uses the base changelog section for fork desktop publication", () => {
++  const changelogText = "## 0.2.5 - 2026-04-20\n\n- Desktop notes.\n";
++  withTempChangelog(() => {
++    let syncedNotes = "";
++    const execFileSync = (_command, args) => {
++      if (args[0] === "api" && args[1] === "repos/yooztech/paseo/releases/tags/v0.2.5-fork.8") {
++        return JSON.stringify({ id: 8 });
++      }
++      if (args[0] === "api" && args[1] === "-X") {
++        const notesArg = args.find((arg) => arg.startsWith("body=@"));
++        syncedNotes = readFileSync(notesArg.slice("body=@".length), "utf8");
++        return "";
++      }
++      throw new Error(`Unexpected gh call: ${args.join(" ")}`);
++    };
++
++    syncReleaseNotes(["--repo", "yooztech/paseo", "--tag", "desktop-v0.2.5-fork.8"], {
++      execFileSync,
++    });
++    assert.match(syncedNotes, /^## 0\.2\.5 - 2026-04-20/m);
++  }, changelogText);
++});
++
++test("fails when a fork desktop changelog section is missing", () => {
++  withTempChangelog(() => {
++    assert.throws(
++      () =>
++        syncReleaseNotes(["--repo", "yooztech/paseo", "--tag", "desktop-v0.2.5-fork.8"], {
++          execFileSync: () => {
++            throw new Error("gh should not run");
++          },
++        }),
++      /expected 0\.2\.5/,
++    );
++  });
++});

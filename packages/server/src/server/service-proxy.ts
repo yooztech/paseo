@@ -91,11 +91,6 @@ const HOP_BY_HOP_HEADERS = new Set([
   "te",
   "trailer",
 ]);
-const serviceProxyUpgradeRequests = new WeakSet<IncomingMessage>();
-
-export function isServiceProxyUpgradeRequest(req: IncomingMessage): boolean {
-  return serviceProxyUpgradeRequests.has(req);
-}
 
 function normalizeHostHeader(host: string): string {
   return host.trim().toLowerCase().replace(/:\d+$/, "");
@@ -641,7 +636,7 @@ export class ServiceProxyRouteRegistry {
       return { type: "known-service-miss" };
     }
     for (const baseHostname of this.publicBaseHostnames) {
-      if (hostname.endsWith(`.${baseHostname}`)) {
+      if (hostname === baseHostname || hostname.endsWith(`.${baseHostname}`)) {
         return { type: "known-service-miss" };
       }
     }
@@ -798,7 +793,6 @@ export function createScriptProxyUpgradeHandler({
       }
       return;
     }
-    serviceProxyUpgradeRequests.add(req);
     proxyUpgradeRequest({ req, socket, head, route: classification.route, logger });
   };
 }

@@ -1,6 +1,5 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import type { Logger } from "pino";
 import { createPaseoDaemon, formatListenTarget } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
 import { resolvePaseoHome } from "./paseo-home.js";
@@ -27,7 +26,7 @@ type SupervisorLifecycleMessage =
 
 interface BootstrapResult {
   paseoHome: string;
-  logger: Logger;
+  logger: ReturnType<typeof createRootLogger>;
   config: ReturnType<typeof loadConfig>;
 }
 
@@ -68,11 +67,11 @@ function writeWorkerLifecycleLog(
   }
 }
 
-async function bootstrapFromEnvironment(): Promise<BootstrapResult> {
+function bootstrapFromEnvironment(): BootstrapResult {
   try {
     const paseoHome = resolvePaseoHome();
     const config = loadConfig(paseoHome);
-    const logger = await createRootLogger({ log: config.log }, { paseoHome, file: false });
+    const logger = createRootLogger({ log: config.log }, { paseoHome, file: false });
     return { paseoHome, logger, config };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -130,7 +129,7 @@ function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
 }
 
 async function main() {
-  const { paseoHome, logger, config } = await bootstrapFromEnvironment();
+  const { paseoHome, logger, config } = bootstrapFromEnvironment();
   let daemon: Awaited<ReturnType<typeof createPaseoDaemon>> | null = null;
   let shutdownPromise: Promise<number> | null = null;
   let exitHookInstalled = false;

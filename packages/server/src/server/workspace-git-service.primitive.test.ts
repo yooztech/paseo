@@ -345,7 +345,6 @@ function buildDefaultServiceDeps() {
     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
     getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
       ...current,
-      hasChangesFromBase: current.hasChangesFromBase ?? null,
       upstreamStatus: facts.upstreamStatus,
     })),
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
@@ -581,10 +580,6 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(createSnapshot(REPO_CWD));
     expect(listener.mock.lastCall?.[0] ?? null).toEqual(createSnapshot(REPO_CWD));
-
-    await vi.waitFor(() => {
-      expect(listener).toHaveBeenLastCalledWith(createSnapshot(REPO_CWD));
-    });
 
     subscription.unsubscribe();
     service.dispose();

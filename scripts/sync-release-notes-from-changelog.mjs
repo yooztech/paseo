@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseChangelogEntries } from "./changelog-utils.mjs";
 import { getGitHubRelease } from "./github-release.mjs";
+import {
+  getReleaseInfoFromSourceTag,
+  normalizeReleaseTag,
+  parseReleaseVersion,
+} from "./release-version-utils.mjs";
 import { isMainModule } from "./is-main-module.mjs";
-import { getReleaseInfoFromSourceTag, parseReleaseVersion } from "./release-version-utils.mjs";
 
 function usageAndExit(code = 1) {
   const usage = `
@@ -114,19 +118,13 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
   const changelogText = readFileSync(changelogPath, "utf8");
   const entries = parseChangelog(changelogText);
 
-  const sourceTag = args.tag || entries[0].tag;
-  const releaseInfo = getReleaseInfoFromSourceTag(sourceTag);
-  const targetTag = releaseInfo.publicationTag;
-  const targetEntry = entries.find((entry) => entry.version === releaseInfo.changelogVersion);
+  const targetTag = args.tag ? normalizeReleaseTag(args.tag) : entries[0].tag;
+  const releaseInfo = getReleaseInfoFromSourceTag(targetTag);
+  const targetEntry = entries.find((entry) => entry.tag === targetTag);
 
   let notes = targetEntry?.notes ?? null;
 
   if (!notes) {
-    if (/^desktop(?:-(?:windows|linux|macos))?-v\d+\.\d+\.\d+-fork\.\d+$/.test(sourceTag)) {
-      throw new Error(
-        `No matching changelog section found for fork desktop ${sourceTag}; expected ${releaseInfo.changelogVersion}.`,
-      );
-    }
     console.log(`No matching changelog section found for ${targetTag}. Skipping.`);
     return;
   }

@@ -34,8 +34,6 @@ function getFallbackTabOptionLabel(
     changes: string;
     files: string;
     pullRequest: string;
-    repositoryGraph: string;
-    ci: string;
   },
 ): string {
   if (tab.target.kind === "new_tab") {
@@ -65,20 +63,8 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "pull_request") {
     return labels.pullRequest;
   }
-  if (tab.target.kind === "repository_graph") {
-    return labels.repositoryGraph;
-  }
-  if (tab.target.kind === "branch_ci") {
-    return labels.ci;
-  }
   if (tab.target.kind === "commit_diff") {
     return tab.target.sha.slice(0, 7);
-  }
-  if (tab.target.kind === "repository_graph_file_diff") {
-    return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
-  }
-  if (tab.target.kind === "plugin") {
-    return tab.target.panelId;
   }
   return labels.agent;
 }
@@ -95,8 +81,6 @@ function getFallbackTabOptionDescription(
     changes: string;
     files: string;
     pullRequest: string;
-    repositoryGraph: string;
-    ci: string;
   },
 ): string {
   if (tab.target.kind === "new_tab") {
@@ -126,20 +110,11 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "working_diff" || tab.target.kind === "changes_tree") {
     return labels.changes;
   }
-  if (tab.target.kind === "repository_graph_file_diff") {
-    return tab.target.path;
-  }
   if (tab.target.kind === "files") {
     return labels.files;
   }
   if (tab.target.kind === "pull_request") {
     return labels.pullRequest;
-  }
-  if (tab.target.kind === "repository_graph") {
-    return labels.repositoryGraph;
-  }
-  if (tab.target.kind === "branch_ci") {
-    return labels.ci;
   }
   if (tab.target.kind === "plugin") {
     return tab.target.panelId;
@@ -257,8 +232,6 @@ function MobileWorkspaceTabOption({
       changes: t("panels.diff.changesLabel"),
       files: t("panels.files.label"),
       pullRequest: t("panels.pullRequest.label"),
-      repositoryGraph: t("workspace.tabs.explorerSidebar.repositoryGraph"),
-      ci: t("workspace.tabs.explorerSidebar.ci"),
     }),
     [t],
   );
@@ -336,8 +309,6 @@ export const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitch
       changes: t("panels.diff.changesLabel"),
       files: t("panels.files.label"),
       pullRequest: t("panels.pullRequest.label"),
-      repositoryGraph: t("workspace.tabs.explorerSidebar.repositoryGraph"),
-      ci: t("workspace.tabs.explorerSidebar.ci"),
     }),
     [t],
   );

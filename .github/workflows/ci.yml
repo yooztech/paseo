@@ -48,6 +48,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate pristine fork sources
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          node scripts/fork/upstream.mjs check
+          node --test scripts/fork/upstream.test.mjs
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+      - name: Validate fork release wrappers
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node --test scripts/fork/release/release.test.mjs scripts/app-build.test.mjs scripts/trigger-fork-app-eas.test.mjs
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -68,6 +83,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -144,6 +166,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -196,6 +225,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - &server_node
         uses: actions/setup-node@v4
         with:
@@ -246,6 +280,11 @@ jobs:
     steps:
       - *server_capacity
       - *server_checkout
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - *server_node
       - *server_fetch
       - *server_install
@@ -269,6 +308,11 @@ jobs:
     steps:
       - *server_capacity
       - *server_checkout
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
       - *server_node
       - *server_fetch
       - *server_install
@@ -290,6 +334,13 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -320,6 +371,13 @@ jobs:
       contents: read
     steps: &desktop_test_steps
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -402,6 +460,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -435,6 +500,13 @@ jobs:
           node -e "const os = require('node:os'); console.log(JSON.stringify({cpus: os.cpus().length, model: os.cpus()[0].model, ramGiB: os.totalmem() / 2 ** 30}))"
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:
@@ -560,6 +632,13 @@ jobs:
       PASEO_CLI_TEST_SHARD_TOTAL: "3"
     steps: &cli_test_steps
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
 
       - uses: actions/setup-node@v4
         with:

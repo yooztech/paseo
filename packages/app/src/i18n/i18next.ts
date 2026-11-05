@@ -1,6 +1,5 @@
 import { createInstance, type BackendModule } from "i18next";
 import { initReactI18next } from "react-i18next";
-import { withForkTranslations } from "@/fork/i18n-resources";
 import { observeI18nInit } from "./init";
 import { en } from "./resources/en";
 
@@ -13,31 +12,31 @@ const bundledTranslations: BackendModule = {
   read(language, _namespace, callback) {
     switch (language) {
       case "en":
-        callback(null, withForkTranslations(en, "en"));
+        callback(null, en);
         return;
       case "ar":
-        callback(null, withForkTranslations(require("./resources/ar").ar, "ar"));
+        callback(null, require("./resources/ar").ar);
         return;
       case "es":
-        callback(null, withForkTranslations(require("./resources/es").es, "es"));
+        callback(null, require("./resources/es").es);
         return;
       case "fr":
-        callback(null, withForkTranslations(require("./resources/fr").fr, "fr"));
+        callback(null, require("./resources/fr").fr);
         return;
       case "ja":
-        callback(null, withForkTranslations(require("./resources/ja").ja, "ja"));
+        callback(null, require("./resources/ja").ja);
         return;
       case "ko":
-        callback(null, withForkTranslations(require("./resources/ko").ko, "ko"));
+        callback(null, require("./resources/ko").ko);
         return;
       case "pt-BR":
-        callback(null, withForkTranslations(require("./resources/pt-BR").ptBR, "pt-BR"));
+        callback(null, require("./resources/pt-BR").ptBR);
         return;
       case "ru":
-        callback(null, withForkTranslations(require("./resources/ru").ru, "ru"));
+        callback(null, require("./resources/ru").ru);
         return;
       case "zh-CN":
-        callback(null, withForkTranslations(require("./resources/zh-CN").zhCN, "zh-CN"));
+        callback(null, require("./resources/zh-CN").zhCN);
         return;
       default:
         callback(null, undefined);
@@ -57,7 +56,7 @@ observeI18nInit(
       lng: "en",
       partialBundledLanguages: true,
       resources: {
-        en: { translation: withForkTranslations(en, "en") },
+        en: { translation: en },
       },
       interpolation: {
         escapeValue: false,

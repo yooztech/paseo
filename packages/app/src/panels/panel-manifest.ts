@@ -142,30 +142,6 @@ const manifests = {
         ? `${target.pluginId}:${target.panelId}:agent:${target.agentId}`
         : `${target.pluginId}:${target.panelId}:workspace`,
   },
-  repository_graph: {
-    kind: "repository_graph",
-    supportedHosts: ["main", "explorer"],
-    showCloseButton: true,
-    singleton: false,
-    compactSheet: null,
-    resourceKey: () => "repository_graph",
-  },
-  branch_ci: {
-    kind: "branch_ci",
-    supportedHosts: ["main", "explorer"],
-    showCloseButton: true,
-    singleton: false,
-    compactSheet: null,
-    resourceKey: () => "branch_ci",
-  },
-  repository_graph_file_diff: {
-    kind: "repository_graph_file_diff",
-    supportedHosts: ["main", "explorer"],
-    showCloseButton: true,
-    singleton: false,
-    compactSheet: null,
-    resourceKey: (target) => `${target.sha}:${target.path}`,
-  },
   setup: {
     kind: "setup",
     supportedHosts: ["main"],

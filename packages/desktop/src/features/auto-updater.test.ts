@@ -2,7 +2,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { UUID } from "builder-util-runtime";
-import { autoUpdater } from "electron-updater";
 import { describe, expect, it, vi } from "vitest";
 
 const { autoUpdaterMock } = vi.hoisted(() => {
@@ -29,7 +28,6 @@ const { autoUpdaterMock } = vi.hoisted(() => {
 vi.mock("electron", () => ({
   app: {
     getPath: vi.fn(),
-    getVersion: vi.fn(() => "1.2.3"),
     isPackaged: true,
   },
 }));
@@ -40,8 +38,6 @@ vi.mock("electron-updater", () => ({
 
 import {
   bucketFromStagingUserId,
-  ElectronAppUpdateRuntime,
-  resolveElectronUpdateChannel,
   checkForAppUpdate,
   createAppUpdateLifecycleLogger,
   resolveStagingUserId,
@@ -49,39 +45,6 @@ import {
   shouldAdmitToRollout,
   shouldInstallAppUpdateOnQuit,
 } from "./auto-updater";
-
-function updaterError(code: string): Error {
-  return Object.assign(new Error(code), { code });
-}
-
-describe("missing update channel", () => {
-  it("makes a missing manifest an unavailable update result", async () => {
-    vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(
-      updaterError("ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"),
-    );
-
-    await expect(new ElectronAppUpdateRuntime().checkForUpdates()).resolves.toBeNull();
-  });
-
-  it("keeps other updater failures actionable", async () => {
-    const error = updaterError("ERR_UPDATER_INVALID_UPDATE_INFO");
-    vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(error);
-
-    await expect(new ElectronAppUpdateRuntime().checkForUpdates()).rejects.toBe(error);
-  });
-});
-
-describe("resolveElectronUpdateChannel", () => {
-  it("keeps fork builds on their isolated update channel", () => {
-    expect(resolveElectronUpdateChannel("0.2.5-fork.1", "stable")).toBe("fork");
-    expect(resolveElectronUpdateChannel("0.2.5-fork.1", "beta")).toBe("fork");
-  });
-
-  it("maps upstream builds to the selected release channel", () => {
-    expect(resolveElectronUpdateChannel("0.2.5", "stable")).toBe("latest");
-    expect(resolveElectronUpdateChannel("0.2.6-beta.1", "beta")).toBe("beta");
-  });
-});
 
 describe("checkForAppUpdate", () => {
   it("treats an unpublished channel manifest as an unavailable update", async () => {

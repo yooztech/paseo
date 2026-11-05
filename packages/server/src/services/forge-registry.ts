@@ -1,6 +1,5 @@
 import { getForgeDefinition } from "@getpaseo/protocol/forge-manifest";
 import { normalizeHost } from "@getpaseo/protocol/git-remote";
-import { getForkForgeKnownHosts } from "@getpaseo/protocol/fork/forges/self-hosted";
 import { createGitHubService, probeGitHubHost } from "./github-service.js";
 import type { ForgeService } from "./forge-service.js";
 import { createGiteaService, resolveGiteaFamilyForge } from "./gitea-service.js";
@@ -131,14 +130,6 @@ function matchesCloudHost(forgeId: string): ((host: string) => boolean) | undefi
   return (host) => normalized.has(normalizeHost(host));
 }
 
-function matchesForkGitLabHost(): (host: string) => boolean {
-  const definition = getForgeDefinition("gitlab");
-  const normalized = new Set(
-    definition ? getForkForgeKnownHosts(definition).map(normalizeHost) : [],
-  );
-  return (host) => normalized.has(normalizeHost(host));
-}
-
 export const defaultForgeRegistry = new ForgeRegistry([
   // GitHub Enterprise Server is recognized at runtime by probeHost, exactly like
   // self-hosted GitLab/Gitea: github.com short-circuits via matchHost, so the
@@ -156,7 +147,7 @@ export const defaultForgeRegistry = new ForgeRegistry([
     "gitlab",
     {
       createService: createGitLabService,
-      matchesHost: matchesForkGitLabHost(),
+      matchesHost: matchesCloudHost("gitlab"),
       probeHost: probeGitLabHost,
     },
   ],

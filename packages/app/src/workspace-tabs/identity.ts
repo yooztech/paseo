@@ -38,18 +38,6 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "plugin") {
     return normalizePluginTabTarget(value);
   }
-  if (value.kind === "repository_graph_file_diff") {
-    const sha = trimNonEmpty(value.sha);
-    const path = trimNonEmpty(value.path);
-    return sha && path
-      ? {
-          kind: "repository_graph_file_diff",
-          sha,
-          path,
-          ...(value.requestId === undefined ? {} : { requestId: value.requestId }),
-        }
-      : null;
-  }
   return normalizeSimpleWorkspaceTabTarget(value);
 }
 
@@ -70,8 +58,6 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
     case "changes_tree":
     case "files":
     case "pull_request":
-    case "repository_graph":
-    case "branch_ci":
       return { kind: value.kind };
     case "setup": {
       const workspaceId = trimNonEmpty(value.workspaceId);
@@ -141,35 +127,10 @@ export function workspaceTabTargetsEqual(
   return secondaryWorkspaceTabTargetsEqual(left, right);
 }
 
-function forkWorkspaceTabTargetsEqual(
-  left: WorkspaceTabTarget,
-  right: WorkspaceTabTarget,
-): boolean | null {
-  if (left.kind === "repository_graph") {
-    return right.kind === "repository_graph";
-  }
-  if (left.kind === "branch_ci") {
-    return right.kind === "branch_ci";
-  }
-  if (left.kind === "repository_graph_file_diff") {
-    return (
-      right.kind === "repository_graph_file_diff" &&
-      left.sha === right.sha &&
-      left.path === right.path &&
-      left.requestId === right.requestId
-    );
-  }
-  return null;
-}
-
 function secondaryWorkspaceTabTargetsEqual(
   left: WorkspaceTabTarget,
   right: WorkspaceTabTarget,
 ): boolean {
-  const forkResult = forkWorkspaceTabTargetsEqual(left, right);
-  if (forkResult !== null) {
-    return forkResult;
-  }
   if (left.kind === "browser" && right.kind === "browser") {
     return left.browserId === right.browserId;
   }
@@ -258,16 +219,7 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "working_diff") {
     return "working_diff";
   }
-  if (target.kind === "repository_graph_file_diff") {
-    return `repository_graph_file_diff_${target.sha}`;
-  }
-  if (
-    target.kind === "changes_tree" ||
-    target.kind === "files" ||
-    target.kind === "pull_request" ||
-    target.kind === "repository_graph" ||
-    target.kind === "branch_ci"
-  ) {
+  if (target.kind === "changes_tree" || target.kind === "files" || target.kind === "pull_request") {
     return target.kind;
   }
   if (target.kind === "plugin") {

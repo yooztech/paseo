@@ -1,9 +1,5 @@
 import type { Query, QueryClient } from "@tanstack/react-query";
-import { branchCiPipelineQueryKind } from "@/fork/branch-ci/query-keys";
-import { repositoryGraphQueryKind } from "@/fork/repository-graph/query-keys";
 import { prPanePipelineQueryKind, prPaneTimelineQueryKind } from "./pull-request-panel/query-keys";
-
-const forkCheckoutQueryKinds = [repositoryGraphQueryKind, branchCiPipelineQueryKind] as const;
 
 interface CheckoutQueryIdentity {
   serverId: string;
@@ -76,15 +72,6 @@ export async function invalidateCheckoutGitQueriesForClient(
       predicate: checkoutQueryPredicate(prPanePipelineQueryKind, identity),
     }),
   ]);
-
-  // Fork-only views should refresh after a mutation without extending the upstream action wait.
-  void Promise.all(
-    forkCheckoutQueryKinds.map((kind) =>
-      queryClient.invalidateQueries({
-        predicate: checkoutQueryPredicate(kind, identity),
-      }),
-    ),
-  ).catch(() => undefined);
 }
 
 // checkoutDiff is excluded: diff queries are subscription-fed (queryFn: skipToken) and
@@ -100,7 +87,6 @@ export async function invalidateCheckoutGitQueriesForServer(
     "checkoutCommits",
     prPaneTimelineQueryKind,
     prPanePipelineQueryKind,
-    ...forkCheckoutQueryKinds,
   ];
   await Promise.all(
     kinds.map((kind) =>

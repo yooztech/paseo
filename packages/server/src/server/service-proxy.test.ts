@@ -101,7 +101,7 @@ describe("service proxy subsystem shape", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("classifies public service subdomains without swallowing the daemon base host", async () => {
+  it("classifies the configured public namespace before any route exists", async () => {
     const serviceProxy = createServiceProxySubsystem({
       logger,
       publicBaseUrl: "https://services.example.com",
@@ -120,10 +120,6 @@ describe("service proxy subsystem shape", () => {
         body: "404 Not Found",
       });
       await expect(httpGet(port, `daemon.localhost:${port}`)).resolves.toEqual({
-        status: 200,
-        body: "daemon-api",
-      });
-      await expect(httpGet(port, `services.example.com:${port}`)).resolves.toEqual({
         status: 200,
         body: "daemon-api",
       });

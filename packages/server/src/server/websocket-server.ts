@@ -17,7 +17,6 @@ import { CreationService } from "./creation/index.js";
 import { MessageReceipts } from "./message-receipts/index.js";
 import { WebSocket, WebSocketServer } from "ws";
 import type { IncomingMessage, Server as HTTPServer } from "http";
-import type { Duplex } from "node:stream";
 import { join } from "path";
 import { getHostName } from "./host-name.js";
 import { randomUUID } from "node:crypto";
@@ -78,7 +77,7 @@ import {
   type PushNotificationSender,
 } from "./push/index.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
-import { isServiceProxyUpgradeRequest, type ServiceProxySubsystem } from "./service-proxy.js";
+import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
@@ -273,7 +272,6 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     resolveDefaultBranch: async () => "main",
     resolveRepoRemoteUrl: async () => null,
     refresh: async () => {},
-    requestFetch: async () => {},
     requestWorkingTreeWatch: async () => ({
       repoRoot: null,
       unsubscribe: () => {},
@@ -876,7 +874,7 @@ export class VoiceAssistantWebSocketServer {
   ): WebSocketServer {
     const password = auth?.password;
     const wss = new WebSocketServer({
-      noServer: true,
+      server,
       path: "/ws",
       maxPayload: MAX_WEBSOCKET_MESSAGE_BYTES,
       handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
@@ -889,16 +887,6 @@ export class VoiceAssistantWebSocketServer {
         );
       },
     });
-    const handleUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-      if (isServiceProxyUpgradeRequest(req)) {
-        return;
-      }
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req);
-      });
-    };
-    server.on("upgrade", handleUpgrade);
-    wss.once("close", () => server.off("upgrade", handleUpgrade));
     wss.on("connection", (ws, request) => {
       void this.attachAuthenticatedSocket(ws, request, password);
     });
@@ -1996,8 +1984,6 @@ export class VoiceAssistantWebSocketServer {
         // gate and legacy fallback after 2027-01-17 once the supported daemon
         // floor is >= v0.2.0.
         forgeCheckDetails: true,
-        // COMPAT(forgeBranchPipeline): added in v0.2.5, remove gate after 2027-02-08.
-        forgeBranchPipeline: true,
         // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
         // and legacy fallback after 2027-01-17 once the supported daemon floor
         // is >= v0.2.0.
@@ -2095,12 +2081,6 @@ export class VoiceAssistantWebSocketServer {
         commitsList: true,
         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
         commitBaseClassification: true,
-        // FORK(repository-graph): advertise fork-only graph functionality.
-        repositoryGraph: true,
-        repositoryGraphCommitDetails: true,
-        repositoryGraphRefActions: true,
-        repositoryGraphTagActions: true,
-        repositoryGraphCheckout: true,
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: true,
         hopliteProvider: this.providerSnapshotManager.supportsConfigRequiredProvider("hoplite"),

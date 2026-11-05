@@ -122,29 +122,3 @@ it("discards obsolete checkout selection while preserving other panel preference
   expect(state).not.toHaveProperty("explorerTabByCheckout");
   expect(state.sidebarWidth).toBe(400);
 });
-
-it.each(["repository_graph", "branch_ci"])(
-  "discards obsolete fork checkout selection %s while preserving panel preferences",
-  (explorerTab) => {
-    const state = migratePanelState(
-      {
-        explorerTab,
-        explorerTabByCheckout: { checkout: explorerTab },
-        sidebarWidth: 400,
-        expandedPathsByWorkspace: { workspace: ["src", "src/app"] },
-        explorerSortOption: "modified",
-        explorerShowHiddenFiles: false,
-        desktop: { agentListOpen: true, focusModeEnabled: true },
-      },
-      16,
-    );
-
-    expect(state).not.toHaveProperty("explorerTab");
-    expect(state).not.toHaveProperty("explorerTabByCheckout");
-    expect(state.sidebarWidth).toBe(400);
-    expect(state.expandedPathsByWorkspace).toEqual({ workspace: ["src", "src/app"] });
-    expect(state.explorerSortOption).toBe("modified");
-    expect(state.explorerShowHiddenFiles).toBe(false);
-    expect(state.desktop).toEqual({ agentListOpen: true, focusModeEnabled: true });
-  },
-);

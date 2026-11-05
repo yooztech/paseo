@@ -1,0 +1,4 @@
+pre-commit:
+  jobs:
+    - name: typecheck
+      run: node scripts/fork/hook-typecheck.mjs

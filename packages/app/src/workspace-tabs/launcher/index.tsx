@@ -41,8 +41,6 @@ export interface NewTabLauncher {
   showChanges: boolean;
   showPullRequest: boolean;
   showBrowser: boolean;
-  showRepositoryGraph: boolean;
-  showBranchCi: boolean;
   terminalDisabled: boolean;
   launch: (selection: NewTabSelection, destination: WorkspaceTabLaunchDestination) => void;
 }
@@ -55,7 +53,6 @@ export interface WorkspaceTabLaunchItem {
   shortcutActionId?: string;
   disabled: boolean;
   panelKind: WorkspaceTabTarget["kind"];
-  toggleTarget?: WorkspaceTabTarget;
   launch: (destination: WorkspaceTabLaunchDestination) => void;
 }
 
@@ -89,14 +86,6 @@ const BUILT_IN_SELECTIONS = {
   browser: { kind: "browser" },
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
 } satisfies Record<BuiltInLaunchItemId, NewTabSelection>;
-const REPOSITORY_GRAPH_SELECTION = {
-  kind: "target",
-  target: { kind: "repository_graph" },
-} satisfies NewTabSelection;
-const BRANCH_CI_SELECTION = {
-  kind: "target",
-  target: { kind: "branch_ci" },
-} satisfies NewTabSelection;
 
 function getLaunchPresentation(kind: WorkspaceTabTarget["kind"]): PanelPresentation {
   const registration = getPanelRegistration(kind);
@@ -131,7 +120,6 @@ export function useWorkspaceTabLaunchCatalog(input: {
   }, [router, serverId]);
 
   return useMemo(() => {
-    const isExplorerMenu = host === "explorer" && surface === "menu";
     const changesPresentation = getLaunchPresentation("changes_tree");
     const diffPresentation = getLaunchPresentation("working_diff");
     const filesPresentation = getLaunchPresentation("files");
@@ -161,7 +149,6 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: changesPresentation.icon,
         disabled: false,
         panelKind: "changes_tree",
-        toggleTarget: { kind: "changes_tree" },
         hidden: !launcher.showChanges,
         launch: launchSelection(BUILT_IN_SELECTIONS.changes),
       },
@@ -172,7 +159,6 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-changes",
         disabled: false,
         panelKind: "working_diff",
-        toggleTarget: { kind: "working_diff" },
         // Compact Changes shows each file's diff inline, so a separate Diff panel is redundant.
         hidden: !launcher.showChanges || isCompact,
         launch: launchSelection(BUILT_IN_SELECTIONS.diff),
@@ -184,7 +170,6 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-files",
         disabled: false,
         panelKind: "files",
-        toggleTarget: { kind: "files" },
         launch: launchSelection(BUILT_IN_SELECTIONS.files),
       },
       browser: {
@@ -207,34 +192,10 @@ export function useWorkspaceTabLaunchCatalog(input: {
         launch: launchSelection(BUILT_IN_SELECTIONS.pullRequest),
       },
     };
-    const tabItems: WorkspaceTabLaunchItem[] = getBuiltInLaunchOrder(purpose).flatMap((id) => {
+    const tabItems = getBuiltInLaunchOrder(purpose).flatMap((id) => {
       const item = builtIns[id];
       return item.hidden || !panelSupportsHost(item.panelKind, host) ? [] : [item];
     });
-    if (launcher.showRepositoryGraph && panelSupportsHost("repository_graph", host)) {
-      const presentation = getLaunchPresentation("repository_graph");
-      tabItems.push({
-        id: "repository-graph",
-        label: presentation.label(t),
-        Icon: presentation.icon,
-        disabled: false,
-        panelKind: "repository_graph",
-        toggleTarget: REPOSITORY_GRAPH_SELECTION.target,
-        launch: launchSelection(REPOSITORY_GRAPH_SELECTION),
-      });
-    }
-    if (launcher.showBranchCi && panelSupportsHost("branch_ci", host)) {
-      const presentation = getLaunchPresentation("branch_ci");
-      tabItems.push({
-        id: "branch-ci",
-        label: presentation.label(t),
-        Icon: presentation.icon,
-        disabled: false,
-        panelKind: "branch_ci",
-        toggleTarget: BRANCH_CI_SELECTION.target,
-        launch: launchSelection(BRANCH_CI_SELECTION),
-      });
-    }
 
     const pluginItems: WorkspaceTabLaunchItem[] = [];
     for (const plugin of plugins) {
@@ -253,7 +214,6 @@ export function useWorkspaceTabLaunchCatalog(input: {
           Icon: pluginIconComponent(panel.icon),
           disabled: false,
           panelKind: "plugin",
-          toggleTarget: selection.kind === "target" ? selection.target : undefined,
           launch: launchSelection(selection),
         });
       }
@@ -283,7 +243,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         },
       });
     }
-    if (surface !== "menu" || isExplorerMenu) return groups;
+    if (surface !== "menu") return groups;
     return groups.flatMap((group) => {
       const items = group.items.filter((item) =>
         panelCanLaunchInPane(item.panelKind, panePanelKinds),

@@ -2962,15 +2962,6 @@ export class Session {
         return this.checkoutSession.handleStatusRequest(msg);
       case "checkout.commits.list.request":
         return this.checkoutSession.handleCommitsListRequest(msg);
-      // FORK(repository-graph): route fork-only RPCs to the checkout adapter.
-      case "checkout.repository_graph.get_history.request":
-        return this.checkoutSession.handleRepositoryGraphGetHistoryRequest(msg);
-      case "checkout.repository_graph.get_commit_details.request":
-        return this.checkoutSession.handleRepositoryGraphGetCommitDetailsRequest(msg);
-      case "checkout.repository_graph.mutate_ref.request":
-        return this.checkoutSession.handleRepositoryGraphMutateRefRequest(msg);
-      case "checkout.repository_graph.checkout.request":
-        return this.checkoutSession.handleRepositoryGraphCheckoutRequest(msg);
       case "checkout.commits.file_diff.request":
         return this.checkoutSession.handleCommitFileDiffRequest(msg, this.delivery.requestSignal);
       case "validate_branch_request":
@@ -3013,8 +3004,6 @@ export class Session {
       case "checkout.forge.get_check_details.request":
       case "checkout.github.get_check_details.request":
         return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);
-      case "checkout.forge.get_branch_pipeline.request":
-        return this.checkoutSession.handleCheckoutForgeGetBranchPipelineRequest(msg);
       case "checkout_pr_status_request":
         return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
       case "pull_request_timeline_request":
@@ -5702,10 +5691,8 @@ export class Session {
       isPaseoOwnedWorktree: snapshot.git.isPaseoOwnedWorktree,
       isDirty: snapshot.git.isDirty,
       aheadBehind: snapshot.git.aheadBehind,
-      hasChangesFromBase: snapshot.git.hasChangesFromBase,
       aheadOfOrigin: snapshot.git.aheadOfOrigin,
       behindOfOrigin: snapshot.git.behindOfOrigin,
-      hasChangesFromOrigin: snapshot.git.hasChangesFromOrigin,
     };
   }
 

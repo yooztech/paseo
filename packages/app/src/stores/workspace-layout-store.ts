@@ -352,9 +352,7 @@ function migrateVersionOneWorkspaceLayout(input: {
     (tab) =>
       legacyExplorerPane.tabIds.includes(tab.tabId) &&
       tab.target.kind !== "files" &&
-      tab.target.kind !== "changes_tree" &&
-      tab.target.kind !== "repository_graph" &&
-      tab.target.kind !== "branch_ci",
+      tab.target.kind !== "changes_tree",
   );
   const preservedSide = preserveVersionOneSideTabs({
     layout: strippedLayout,

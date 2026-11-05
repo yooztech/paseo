@@ -104,10 +104,6 @@ export async function openWorkspacePanelFromExplorerMenu(
   await expect(
     menu.getByRole("menuitem", { name: "Other review summary", exact: true }),
   ).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Review", exact: true })).toHaveAttribute(
-    "aria-checked",
-    "false",
-  );
   await menu.getByRole("menuitem", { name: "Review", exact: true }).click();
   await expect(
     page.getByText(`Review workspace ${workspace.workspaceId}`, { exact: true }),
@@ -137,17 +133,15 @@ export async function expectIndependentExplorerPanelTabs(
   const files = tabs.getByRole("button", { name: "Browse workspace files", exact: true });
   await expect(files).toHaveCount(1);
   const menu = await openExplorerMenu(page);
-  const filesMenuItem = menu.getByRole("menuitem", { name: /^Files/ });
-  await expect(filesMenuItem).toHaveAttribute("aria-checked", "true");
-  await filesMenuItem.click();
+  await expect(menu.getByRole("menuitem", { name: /^Files/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await files.click({ button: "right", position: { x: 12, y: 13 } });
+  await page.getByRole("menuitem", { name: "Close", exact: true }).click();
   await expect(files).toHaveCount(0);
   await launchExplorerView(page, /^Files/);
   await expect(files).toHaveCount(1);
   const restoredMenu = await openExplorerMenu(page);
-  await expect(restoredMenu.getByRole("menuitem", { name: /^Files/ })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(restoredMenu.getByRole("menuitem", { name: /^Files/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 }
 

@@ -305,7 +305,6 @@ interface SessionForTestOptions {
     getCheckout?: ReturnType<typeof vi.fn>;
     getCheckoutDiff?: ReturnType<typeof vi.fn>;
     getSnapshot?: ReturnType<typeof vi.fn>;
-    requestFetch?: ReturnType<typeof vi.fn>;
     suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
     listStashes?: ReturnType<typeof vi.fn>;
     validateBranchRef?: ReturnType<typeof vi.fn>;
@@ -356,7 +355,6 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     getCheckout: vi.fn(),
     getCheckoutDiff: vi.fn(),
     getSnapshot: vi.fn(),
-    requestFetch: vi.fn(),
     suggestBranchesForCwd: vi.fn(),
     listStashes: vi.fn(),
 
@@ -3935,8 +3933,6 @@ describe("session checkout status handling", () => {
         aheadOfOrigin: 2,
         behindOfOrigin: 1,
         upstreamRef: null,
-        hasChangesFromBase: null,
-        hasChangesFromOrigin: null,
         hasRemote: true,
         remoteUrl: "https://github.com/getpaseo/paseo.git",
         isPaseoOwnedWorktree: false,

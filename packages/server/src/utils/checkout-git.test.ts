@@ -875,7 +875,6 @@ const x = 1;
     }
     expect(behindStatus.aheadOfOrigin).toBe(0);
     expect(behindStatus.behindOfOrigin).toBe(1);
-    expect(behindStatus.hasChangesFromOrigin).toBe(true);
 
     commitFile(repoDir, "local-1.txt", "local 1\n", "local update 1");
     commitFile(repoDir, "local-2.txt", "local 2\n", "local update 2");
@@ -900,33 +899,12 @@ const x = 1;
     expect(divergedStatus.upstreamRef).toBe("refs/remotes/origin/main");
     expect(divergedStatus.aheadOfOrigin).toBe(3);
     expect(divergedStatus.behindOfOrigin).toBe(2);
-    expect(divergedStatus.hasChangesFromOrigin).toBe(true);
     expect(upstreamCountCommands).toHaveLength(1);
     expect(upstreamCountCommands[0]?.args).toEqual([
       "for-each-ref",
       "--format=%(upstream)%00%(upstream:track,nobracket)",
       "refs/heads/main",
     ]);
-  });
-
-  it("reports no base changes when a merge commit has the same tree as the base", async () => {
-    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    commitFile(repoDir, "feature.txt", "merged content\n", "feature commit");
-    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
-    commitFile(repoDir, "feature.txt", "merged content\n", "merge feature independently");
-    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
-    execFileSync("git", ["-c", "commit.gpgsign=false", "merge", "main", "--no-edit"], {
-      cwd: repoDir,
-    });
-
-    const status = await getCheckoutStatus(repoDir);
-
-    expect(status.isGit).toBe(true);
-    if (!status.isGit) {
-      return;
-    }
-    expect(status.aheadBehind?.ahead).toBeGreaterThan(0);
-    expect(status.hasChangesFromBase).toBe(false);
   });
 
   it("reports the fork remote, not origin, when the branch tracks a second remote", async () => {
@@ -942,29 +920,6 @@ const x = 1;
       return;
     }
     expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
-    expect(status.hasChangesFromOrigin).toBe(false);
-  });
-
-  it("compares a feature branch against the same most-ahead base ref used for updates", async () => {
-    const remoteDir = join(tempDir, "remote.git");
-    execFileSync("git", ["init", "--bare", "-b", "main", remoteDir]);
-    execFileSync("git", ["remote", "add", "origin", remoteDir], { cwd: repoDir });
-    execFileSync("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
-
-    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    commitFile(repoDir, "feature.txt", "feature\n", "feature commit");
-    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
-    execFileSync("git", ["merge", "--no-ff", "feature", "-m", "merge feature"], { cwd: repoDir });
-    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
-
-    const status = await getCheckoutStatus(repoDir);
-
-    expect(status.isGit).toBe(true);
-    if (!status.isGit) {
-      return;
-    }
-    expect(status.aheadBehind?.behind).toBe(1);
-    expect(status.hasChangesFromBase).toBe(false);
   });
 
   it("reports the upstream branch name when it differs from the local branch name", async () => {
@@ -2106,23 +2061,6 @@ const x = 1;
     execFileSync("git", ["merge-base", "--is-ancestor", localOnlyCommit, "feature"], {
       cwd: repoDir,
     });
-  });
-
-  it("does not create a merge commit when the base has the same tree", async () => {
-    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    commitFile(repoDir, "feature.txt", "same content\n", "feature commit");
-    const featureCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir })
-      .toString()
-      .trim();
-    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
-    commitFile(repoDir, "feature.txt", "same content\n", "independent base commit");
-    execFileSync("git", ["checkout", "feature"], { cwd: repoDir });
-
-    await mergeFromBase(repoDir, { baseRef: "main", requireCleanTarget: true });
-
-    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir }).toString().trim()).toBe(
-      featureCommit,
-    );
   });
 
   it("aborts merge-from-base on conflicts and leaves no merge in progress", async () => {

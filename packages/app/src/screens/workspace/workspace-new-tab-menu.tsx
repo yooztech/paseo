@@ -1,5 +1,4 @@
 import { useCallback, useMemo, type ComponentType, type ReactElement } from "react";
-import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
 import {
@@ -12,8 +11,6 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { TerminalProfileIcon } from "@/components/terminal-profile-icon";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import type { Theme } from "@/styles/theme";
-import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import {
   useWorkspaceTabLaunchCatalog,
   type WorkspaceTabLaunchItem,
@@ -54,37 +51,23 @@ function LaunchItemIcon({ item }: { item: WorkspaceTabLaunchItem }): ReactElemen
 function WorkspaceNewTabMenuItem({
   item,
   paneId,
-  openTab,
-  onCloseTab,
 }: {
   item: WorkspaceTabLaunchItem;
   paneId?: string;
-  openTab?: WorkspaceTabDescriptor;
-  onCloseTab?: (tabId: string) => Promise<void> | void;
 }) {
   const leading = useMemo(() => <LaunchItemIcon item={item} />, [item]);
   const trailing = useMemo(
     () =>
-      onCloseTab || !item.shortcutActionId ? undefined : (
-        <LaunchItemShortcut actionId={item.shortcutActionId} />
-      ),
-    [item.shortcutActionId, onCloseTab],
+      item.shortcutActionId ? <LaunchItemShortcut actionId={item.shortcutActionId} /> : undefined,
+    [item.shortcutActionId],
   );
-  const handleSelect = useCallback(() => {
-    if (openTab && onCloseTab) {
-      void onCloseTab(openTab.tabId);
-    } else {
-      item.launch({ kind: "open", paneId });
-    }
-  }, [item, onCloseTab, openTab, paneId]);
+  const handleSelect = useCallback(() => item.launch({ kind: "open", paneId }), [item, paneId]);
 
   return (
     <DropdownMenuItem
       testID={`workspace-new-tab-menu-${item.id}`}
       leading={leading}
       trailing={trailing}
-      selected={onCloseTab ? Boolean(openTab) : undefined}
-      showSelectedCheck={Boolean(onCloseTab)}
       disabled={item.disabled}
       onSelect={handleSelect}
     >
@@ -104,20 +87,13 @@ export function WorkspaceNewTabMenuContent({
   host,
   panePanelKinds,
   paneId,
-  explorerTabs,
-  onCloseExplorerTab,
-  onCreateNewTab,
 }: {
   serverId: string;
   purpose: WorkspaceTabLaunchPurpose;
   host: PaneHost;
   panePanelKinds: readonly WorkspaceTabTarget["kind"][];
   paneId?: string;
-  explorerTabs?: readonly WorkspaceTabDescriptor[];
-  onCloseExplorerTab?: (tabId: string) => Promise<void> | void;
-  onCreateNewTab?: () => void;
 }) {
-  const { t } = useTranslation();
   const groups = useWorkspaceTabLaunchCatalog({
     serverId,
     purpose,
@@ -134,29 +110,12 @@ export function WorkspaceNewTabMenuContent({
       minWidth={200}
       testID="workspace-new-tab-menu"
     >
-      {onCreateNewTab ? (
-        <>
-          <DropdownMenuItem onSelect={onCreateNewTab}>
-            {t("workspace.tabs.actions.newTab")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-        </>
-      ) : null}
       {groups.map((group, index) => (
         <View key={group.id}>
           {index > 0 ? <DropdownMenuSeparator /> : null}
           {group.label ? <DropdownMenuLabel>{group.label}</DropdownMenuLabel> : null}
           {group.items.map((item) => (
-            <WorkspaceNewTabMenuItem
-              key={item.id}
-              item={item}
-              paneId={paneId}
-              openTab={explorerTabs?.find(
-                (tab) =>
-                  item.toggleTarget && workspaceTabTargetsEqual(item.toggleTarget, tab.target),
-              )}
-              onCloseTab={onCloseExplorerTab}
-            />
+            <WorkspaceNewTabMenuItem key={item.id} item={item} paneId={paneId} />
           ))}
           {group.accessory ? (
             <>

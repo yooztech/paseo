@@ -9,7 +9,7 @@ import { runInNewContext } from "node:vm";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { EventEmitter, once } from "node:events";
-import { resolveDaemonVersion } from "../fork/daemon-version.js";
+import { resolveDaemonVersion } from "../daemon-version.js";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -86,7 +86,7 @@ test("plugin handlers create workspaces and agents through their Paseo API", asy
     path.join(pluginDirectory, "paseo-plugin.json"),
     JSON.stringify({
       id: "paseo-api",
-      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
     }),
   );
   await writeFile(
@@ -258,7 +258,7 @@ test("daemon config reload enables and disables configured plugins without resta
     path.join(pluginDirectory, "paseo-plugin.json"),
     JSON.stringify({
       id: "reloadable-plugin",
-      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
     }),
   );
   await writeFile(
