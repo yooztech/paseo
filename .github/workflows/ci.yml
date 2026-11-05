@@ -237,9 +237,9 @@ jobs:
           cache: "npm"
 
       - &server_fetch
-        name: Fetch origin/main (worktree tests)
+        name: Fetch origin/downstream/patch-build (worktree tests)
         if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: git fetch --no-tags origin main:refs/remotes/origin/main
+        run: git fetch --no-tags origin downstream/patch-build:refs/remotes/origin/downstream/patch-build
 
       - &server_install
         name: Install dependencies
