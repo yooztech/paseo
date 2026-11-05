@@ -122,7 +122,7 @@ index e2e2cdb34f4863af7442f69fc4a001270d0e4b0d..2b8cf416a3407062bdcd14fd6952204c
 +  await expect(page.getByTestId("changes-header").filter({ visible: true })).toBeVisible();
 +});
 diff --git a/packages/app/e2e/browser/composer-diff-stat.spec.ts b/packages/app/e2e/browser/composer-diff-stat.spec.ts
-index 9b80222432842b2c258390da0aa2356e15a7b74a..22c522e5e35c4d350cb5897535e07dca0c4d0f6e 100644
+index 9b80222432842b2c258390da0aa2356e15a7b74a..e82ecf7979ef0fef85fc05b867bb9f6ca4e2df3b 100644
 --- a/packages/app/e2e/browser/composer-diff-stat.spec.ts
 +++ b/packages/app/e2e/browser/composer-diff-stat.spec.ts
 @@ -10,6 +10,7 @@ import {
@@ -133,7 +133,7 @@ index 9b80222432842b2c258390da0aa2356e15a7b74a..22c522e5e35c4d350cb5897535e07dca
  
  const APP_SETTINGS_KEY = "@paseo:app-settings";
  
-@@ -18,14 +19,20 @@ function visibleMainPane(page: Page) {
+@@ -18,7 +19,11 @@ function visibleMainPane(page: Page) {
  }
  
  function composerChangesPill(page: Page) {
@@ -146,51 +146,7 @@ index 9b80222432842b2c258390da0aa2356e15a7b74a..22c522e5e35c4d350cb5897535e07dca
  }
  
  async function revealComposerChangesInExplorer(page: Page) {
-   await composerChangesPill(page).click();
- 
-   const explorer = await ensureExplorerSidebar(page);
--  await expect(explorer.getByTestId("changes-tree-panel")).toBeVisible({ timeout: 30_000 });
-+  await expect(explorer.getByTestId("changes-tree-panel")).toBeVisible({
-+    timeout: 30_000,
-+  });
-   await expect(page.getByTestId("workspace-tab-working_diff")).toHaveCount(0);
- }
- 
-@@ -98,7 +105,9 @@ test("composer diff stat reveals Changes, then opens the diff in the configured
-     await expect(sidePane.getByTestId("workspace-tab-working_diff")).toBeVisible({
-       timeout: 30_000,
-     });
--    await expect(sidePane.getByTestId("working-diff-panel")).toBeVisible({ timeout: 30_000 });
-+    await expect(sidePane.getByTestId("working-diff-panel")).toBeVisible({
-+      timeout: 30_000,
-+    });
-     await expect(visibleMainPane(page).getByTestId("working-diff-panel")).toHaveCount(0);
- 
-     await test.step("Explorer navigation does not replace the side pane", async () => {
-@@ -160,7 +169,9 @@ test("composer diff stat reveals Changes, then opens the diff in the focused pan
-     await expect(mainPane.getByTestId("workspace-tab-working_diff")).toBeVisible({
-       timeout: 30_000,
-     });
--    await expect(mainPane.getByTestId("working-diff-panel")).toBeVisible({ timeout: 30_000 });
-+    await expect(mainPane.getByTestId("working-diff-panel")).toBeVisible({
-+      timeout: 30_000,
-+    });
-     await expect(
-       page.locator('[data-testid^="workspace-pane-"]').filter({ visible: true }),
-     ).toHaveCount(1);
-@@ -185,7 +196,10 @@ async function tapFirstAddedDiffLine(
- 
- async function openReviewDiff(page: Page, workspace: Awaited<ReturnType<typeof seedChangedAgent>>) {
-   await page.setViewportSize({ width: 1400, height: 900 });
--  await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: workspace.agentId });
-+  await openAgentRoute(page, {
-+    workspaceId: workspace.workspaceId,
-+    agentId: workspace.agentId,
-+  });
-   await expect(composerChangesPill(page)).toBeVisible({ timeout: 30000 });
-   if (await page.getByTestId("workspace-tab-working_diff").count()) {
-     await selectDiffTab(page);
-@@ -506,9 +520,25 @@ test.describe("send review feedback", () => {
+@@ -506,6 +511,19 @@ test.describe("send review feedback", () => {
        await test.step("Open two local tabs and a tab in another workspace", async () => {
          await openReviewDiff(page, other);
          await addSavedReview(page, "Other workspace review");
@@ -209,109 +165,7 @@ index 9b80222432842b2c258390da0aa2356e15a7b74a..22c522e5e35c4d350cb5897535e07dca
 +        await expect(composerChangesPill(page)).toBeVisible({ timeout: 30000 });
          await openReviewDiff(page, workspace);
          await closeAgentTab(page, historical.id);
--        await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: second.id });
-+        await openAgentRoute(page, {
-+          workspaceId: workspace.workspaceId,
-+          agentId: second.id,
-+        });
-         await selectDiffTab(page);
-         await addSavedReview(page, "Review for second agent");
-       });
-@@ -546,7 +576,9 @@ test.describe("send review feedback", () => {
-   test("failed feedback remains editable and retries through the real provider", async ({
-     page,
-   }) => {
--    const workspace = await seedChangedAgent("review-feedback-retry-", { mockPromptRejections: 1 });
-+    const workspace = await seedChangedAgent("review-feedback-retry-", {
-+      mockPromptRejections: 1,
-+    });
-     try {
-       await test.step("A provider rejection retains the saved review", async () => {
-         await openReviewDiff(page, workspace);
-@@ -592,7 +624,12 @@ test.describe("send review feedback", () => {
-                 filePath: "README.md",
-                 lineNumber: 2,
-                 body: "Sent version",
--                context: { targetLine: { content: "export const one = 1;", newLineNumber: 2 } },
-+                context: {
-+                  targetLine: {
-+                    content: "export const one = 1;",
-+                    newLineNumber: 2,
-+                  },
-+                },
-               },
-             ],
-           },
-@@ -642,7 +679,9 @@ async function expectReviewAbsent(page: Page, body: string) {
- }
- async function reloadReview(page: Page) {
-   await page.reload();
--  await expect(page.getByTestId("working-diff-panel")).toBeVisible({ timeout: 30000 });
-+  await expect(page.getByTestId("working-diff-panel")).toBeVisible({
-+    timeout: 30000,
-+  });
- }
- async function expectInlineCommentEditor(page: Page) {
-   await expect(page.getByTestId("inline-review-editor")).toBeVisible();
-@@ -654,7 +693,10 @@ async function expectCompactCommentSheet(page: Page) {
-   await expect(page.getByRole("textbox", { name: "Review comment" })).toBeInViewport({ ratio: 1 });
-   for (const action of ["Save", "Cancel"])
-     await expect(
--      page.getByRole("button", { name: `${action} review comment`, exact: true }),
-+      page.getByRole("button", {
-+        name: `${action} review comment`,
-+        exact: true,
-+      }),
-     ).toBeInViewport({ ratio: 1 });
-   await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
-   await expect(
-@@ -672,7 +714,10 @@ async function openFeedbackWithKeyboard(page: Page) {
- async function reopenFeedbackWithKeyboard(page: Page) {
-   await page.keyboard.press("Enter");
-   await expectRecipientMenu(page);
--  const recipient = page.getByRole("menuitem", { name: "Composer diff stat", exact: true });
-+  const recipient = page.getByRole("menuitem", {
-+    name: "Composer diff stat",
-+    exact: true,
-+  });
-   await recipient.focus();
-   await expect(recipient).toBeFocused();
- }
-@@ -705,7 +750,9 @@ async function closeAgentTab(page: Page, agentId: string) {
- async function expectFeedbackUnavailable(page: Page) {
-   await expect(page.getByRole("button", { name: "Send feedback (1)", exact: true })).toBeDisabled();
-   await expect(
--    page.getByText("Open an agent tab in this workspace to send feedback.", { exact: true }),
-+    page.getByText("Open an agent tab in this workspace to send feedback.", {
-+      exact: true,
-+    }),
-   ).toBeVisible();
- }
- async function createReviewRecipient(
-@@ -742,7 +789,10 @@ async function expectFeedbackFailure(page: Page) {
- }
- async function expectFeedbackPending(page: Page, count = 1) {
-   await expect(
--    page.getByRole("button", { name: `Sending feedback (${count})`, exact: true }),
-+    page.getByRole("button", {
-+      name: `Sending feedback (${count})`,
-+      exact: true,
-+    }),
-   ).toBeDisabled();
- }
- 
-@@ -816,7 +866,10 @@ async function openCompactReviewExplorer(
-   workspace: Awaited<ReturnType<typeof seedChangedAgent>>,
- ) {
-   await showWideLayout(page);
--  await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: workspace.agentId });
-+  await openAgentRoute(page, {
-+    workspaceId: workspace.workspaceId,
-+    agentId: workspace.agentId,
-+  });
-   await selectAgentTab(page, workspace.agentId);
-   await showCompactLayout(page);
-   await composerChangesPill(page).click();
+         await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: second.id });
 diff --git a/packages/app/e2e/browser/explorer-pane-placement.spec.ts b/packages/app/e2e/browser/explorer-pane-placement.spec.ts
 index 55f96cc0cf13aed37530ae2445fa33db4b128633..e4d0304ea3ab459af0f395695a5edffd89d024e5 100644
 --- a/packages/app/e2e/browser/explorer-pane-placement.spec.ts
