@@ -1,32 +1,52 @@
 {
+  "metadataGeneration": {
+    "commitMessage": {
+      "instructions": "必须使用 Conventional Commits 格式：<type>[可选的 (scope)][破坏性变更时的 !]: <简体中文描述>，不得省略类型前缀。根据实际改动选择英文 type：feat、fix、docs、style、refactor、perf、test、build、ci、chore 或 revert；仅在范围明确时添加 scope，并保留其原文。描述简洁、准确，使用祈使语气，不加句末句号。代码标识符、文件名和专有名词保留原文。必要时添加简体中文正文解释原因与影响；若存在破坏性变更，添加 BREAKING CHANGE: 页脚说明不兼容之处及迁移方式，不得虚构。"
+    }
+  },
   "worktree": {
     "setup": [
-      "npm ci",
-      "node ./scripts/seed-ios-native-cache.mjs",
-      "node ./scripts/seed-worktree-dev-state.mjs",
-      "npm run build:server",
-      "npm run build --workspace=@getpaseo/expo-two-way-audio"
+      "node ./scripts/fork/upstream.mjs run -- node ./scripts/seed-ios-native-cache.mjs",
+      "node ./scripts/fork/upstream.mjs run -- node ./scripts/seed-worktree-dev-state.mjs",
+      "node ./scripts/fork/upstream.mjs run -- npm run build:server",
+      "node ./scripts/fork/upstream.mjs run -- npm run build --workspace=@getpaseo/expo-two-way-audio"
     ]
   },
   "scripts": {
     "daemon": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_SKIP_DEV_SERVER_BUILD=1 PASEO_LISTEN=0.0.0.0:${PASEO_PORT:-6768} ./scripts/dev-daemon.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_SKIP_DEV_SERVER_BUILD=1 PASEO_LISTEN=0.0.0.0:${PASEO_PORT:-6768} node ./scripts/fork/upstream.mjs run -- ./scripts/dev-daemon.sh"
     },
     "app": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT:-6768} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${PASEO_PORT:-} ./scripts/dev-app.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT:-6768} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${PASEO_PORT:-} node ./scripts/fork/upstream.mjs run -- ./scripts/dev-app.sh"
     },
     "desktop": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT:-6768} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${PASEO_PORT:-} exec ./packages/desktop/scripts/dev.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT:-6768} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${PASEO_PORT:-} exec node ./scripts/fork/upstream.mjs run -- ./packages/desktop/scripts/dev.sh"
     },
     "ios-simulator": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"$PWD\" PASEO_HOME=\"$PWD/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT} ./scripts/paseo-ios-simulator-service.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"$PWD\" PASEO_HOME=\"$PWD/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT} node ./scripts/fork/upstream.mjs run -- ./scripts/paseo-ios-simulator-service.sh"
     },
     "typecheck": {
-      "command": "npm run typecheck"
+      "command": "node ./scripts/fork/upstream.mjs run -- npm run typecheck; status=$?; exit $status"
+    },
+    "release-fork-daemon": {
+      "type": "script",
+      "command": "node ./scripts/release-fork-daemon.mjs; status=$?; exit $status"
+    },
+    "release-fork-desktop": {
+      "type": "script",
+      "command": "node ./scripts/release-fork-desktop.mjs; status=$?; exit $status"
+    },
+    "release-fork-app": {
+      "type": "script",
+      "command": "node ./scripts/release-fork-app.mjs; status=$?; exit $status"
+    },
+    "release-fork-app-eas": {
+      "type": "script",
+      "command": "node ./scripts/trigger-fork-app-eas.mjs; status=$?; exit $status"
     }
   }
 }

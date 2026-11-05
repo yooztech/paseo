@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -23,6 +24,7 @@ const bootstrap = [
   "packages/app/eas.json",
   "packages/app/native-release-version.js",
 ];
+const directOverrides = [...bootstrap, "paseo.json"];
 
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), "pristine-upstream-"));
@@ -63,7 +65,7 @@ function fixture(t) {
   git("config", "user.email", "test@example.invalid");
   put(".gitignore", ".dev/\nnode_modules/\n");
   put("packages/app/view.txt", "base app\n");
-  for (const name of bootstrap)
+  for (const name of directOverrides)
     put(name, "base\nunchanged 1\nunchanged 2\nunchanged 3\nunchanged 4\nend\n");
   put("packages/server/runtime.txt", "base runtime\n");
   put("tools/config.txt", "base tooling\n");
@@ -218,8 +220,8 @@ test("tree, materialize and ci-apply retain modified, added and deleted canonica
   assert.equal(again.status, 0, `${again.stdout}\n${again.stderr}`);
 });
 
-test("product patches cannot alter direct CI or AGENTS overrides", (t) => {
-  for (const name of [".github/workflows/build.yml", "AGENTS.md", ...bootstrap]) {
+test("product patches cannot alter direct overrides", (t) => {
+  for (const name of [".github/workflows/build.yml", "AGENTS.md", ...directOverrides]) {
     const f = fixture(t);
     nextBase(f, () => f.put("tools/new.txt", "new upstream\n"));
     f.put(name, "forbidden patch edit\n");
@@ -254,19 +256,22 @@ test("refresh refuses generated CI changes without modifying patches", (t) => {
   assert.equal(f.get(".github/workflows/build.yml", f.workspace), "generated edit\n");
 });
 
-test("bootstrap overrides materialize, rebase in prepare and reject generated edits", (t) => {
+test("direct overrides materialize, rebase in prepare and reject generated edits", (t) => {
   const f = fixture(t);
   nextBase(f, () => {
-    for (const name of bootstrap)
-      f.put(name, "base\nunchanged 1\nunchanged 2\nunchanged 3\nunchanged 4\nupstream end\n");
+    for (const name of directOverrides)
+      f.put(
+        name,
+        "base\nunchanged 1\nunchanged 2\nunchanged 3\nunchanged 4\nend\nupstream addition\n",
+      );
   });
-  for (const name of bootstrap)
+  for (const name of directOverrides)
     f.put(name, "fork\nunchanged 1\nunchanged 2\nunchanged 3\nunchanged 4\nend\n");
   f.ok("check");
   f.ok("materialize", "--directory", f.workspace);
-  for (const name of bootstrap) assert.equal(f.get(name, f.workspace), f.get(name));
+  for (const name of directOverrides) assert.equal(f.get(name, f.workspace), f.get(name));
   const before = patches.map((name) => f.get(`${store}/${name}`));
-  for (const name of bootstrap) {
+  for (const name of directOverrides) {
     f.put(name, "generated edit\n", f.workspace);
     assert.match(f.fail("refresh", "--directory", f.workspace), /CI|bootstrap|direct/i);
     f.put(name, f.get(name), f.workspace);
@@ -277,15 +282,15 @@ test("bootstrap overrides materialize, rebase in prepare and reject generated ed
   );
   const dest = path.join(f.root, "bootstrap-upgrade");
   f.ok("prepare", "--upstream", "upstream-next", "--directory", dest);
-  for (const name of bootstrap)
+  for (const name of directOverrides)
     assert.equal(
       f.get(name, dest),
-      "fork\nunchanged 1\nunchanged 2\nunchanged 3\nunchanged 4\nupstream end\n",
+      "fork\nunchanged 1\nunchanged 2\nunchanged 3\nunchanged 4\nend\nupstream addition\n",
     );
 });
 
-test("conflicting bootstrap overrides stop prepare without creating a worktree", (t) => {
-  for (const name of bootstrap) {
+test("conflicting direct overrides stop prepare without creating a worktree", (t) => {
+  for (const name of directOverrides) {
     const f = fixture(t);
     nextBase(f, () => f.put(name, "upstream conflict\n"));
     f.put(name, "fork conflict\n");
@@ -293,6 +298,210 @@ test("conflicting bootstrap overrides stop prepare without creating a worktree",
     assert.ok(f.fail("prepare", "--upstream", "upstream-next", "--directory", dest).includes(name));
     assert.equal(existsSync(dest), false);
   }
+});
+
+test("fork setup seeds native caches and server config into runtime while keeping home canonical", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "paseo-seed-runtime-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = fileURLToPath(new URL("../../", import.meta.url));
+  const { tree } = JSON.parse(
+    execFileSync(process.execPath, [cli, "tree"], { cwd: repo, encoding: "utf8" }),
+  );
+  const scripts = ["seed-ios-native-cache.mjs", "seed-worktree-dev-state.mjs"];
+  for (const script of scripts) {
+    const content = execFileSync("git", ["show", `${tree}:scripts/${script}`], { cwd: repo });
+    writeFileSync(path.join(root, script), content);
+  }
+  for (const migrated of [false, true]) {
+    const source = path.join(root, migrated ? "source-runtime" : "source-legacy");
+    const target = path.join(root, migrated ? "target-runtime" : "target-legacy");
+    const runtime = path.join(target, ".dev/fork-build");
+    const sourceCode = migrated ? path.join(source, ".dev/fork-build") : source;
+    const put = (file, value) => {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, value);
+    };
+    put(path.join(source, ".dev/paseo-home/config.json"), '{"source":true}');
+    put(path.join(sourceCode, "packages/server/.env"), "RUNTIME_TEST=1\n");
+    put(path.join(sourceCode, "packages/app/ios/project.pbxproj"), "native project");
+    put(path.join(sourceCode, ".dev/ios-build/old-cache/data"), "derived data");
+    const env = {
+      ...process.env,
+      PASEO_SOURCE_CHECKOUT_PATH: source,
+      PASEO_WORKTREE_PATH: target,
+      PASEO_FORK_RUNTIME_ROOT: runtime,
+      PASEO_BRANCH_NAME: "feature/seed",
+      PASEO_SKIP_IOS_NATIVE_CACHE: "0",
+      PASEO_DEV_RESET_HOME: "0",
+      PASEO_DEV_SEED_HOME: "",
+    };
+    for (const script of scripts)
+      execFileSync(process.execPath, [path.join(root, script)], { env });
+    assert.equal(
+      readFileSync(path.join(target, ".dev/paseo-home/config.json"), "utf8"),
+      '{"source":true}',
+    );
+    assert.equal(
+      readFileSync(path.join(runtime, "packages/server/.env"), "utf8"),
+      "RUNTIME_TEST=1\n",
+    );
+    assert.equal(
+      readFileSync(path.join(runtime, "packages/app/ios/project.pbxproj"), "utf8"),
+      "native project",
+    );
+    const [cache] = readdirSync(path.join(runtime, ".dev/ios-build"));
+    assert.match(cache, /^Paseo-feature-seed-/);
+    assert.equal(
+      readFileSync(path.join(runtime, ".dev/ios-build", cache, "data"), "utf8"),
+      "derived data",
+    );
+  }
+});
+
+test("the actual canonical paseo configuration materializes directly", (t) => {
+  const f = fixture(t);
+  const canonical = readFileSync(new URL("../../paseo.json", import.meta.url), "utf8");
+  f.put("paseo.json", canonical);
+  f.ok("check");
+  f.ok("materialize", "--directory", f.workspace);
+  assert.equal(f.get("paseo.json", f.workspace), canonical);
+  assert.deepEqual(JSON.parse(f.get("paseo.json", f.workspace)), JSON.parse(canonical));
+});
+
+test("the configured typecheck runs from the effective fork worktree", (t) => {
+  const f = fixture(t);
+  const config = JSON.parse(readFileSync(new URL("../../paseo.json", import.meta.url), "utf8"));
+  f.put("paseo.json", JSON.stringify(config));
+  f.put("scripts/fork/upstream.mjs", readFileSync(cli));
+  const bin = path.join(f.root, "bin");
+  mkdirSync(bin);
+  const npm = path.join(bin, "npm");
+  writeFileSync(npm, '#!/bin/sh\nprintf "%s|%s\\n" "$PWD" "$*"\n');
+  chmodSync(npm, 0o755);
+  const result = spawnSync("sh", ["-c", config.scripts.typecheck.command], {
+    cwd: f.repo,
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const workspace = path.join(f.repo, ".dev/fork-build");
+  assert.ok(result.stdout.includes(`${workspace}|run typecheck`));
+  const managedConfig = JSON.parse(f.get("paseo.json", workspace));
+  const managed = spawnSync("sh", ["-c", managedConfig.scripts.typecheck.command], {
+    cwd: workspace,
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+  });
+  assert.equal(managed.status, 0, managed.stderr);
+  assert.ok(managed.stdout.includes(`${workspace}|run typecheck`));
+  assert.equal(existsSync(path.join(workspace, ".dev/fork-build")), false);
+});
+
+test("the configured app receives the managed runtime and canonical branch", (t) => {
+  const f = fixture(t);
+  const config = JSON.parse(readFileSync(new URL("../../paseo.json", import.meta.url), "utf8"));
+  f.put("paseo.json", JSON.stringify(config));
+  f.put("scripts/fork/upstream.mjs", readFileSync(cli));
+  for (const name of ["scripts/dev-app.sh", "scripts/dev-home.sh"]) {
+    f.put(name, readFileSync(new URL(`../../${name}`, import.meta.url)));
+  }
+  execFileSync(
+    "git",
+    [
+      "apply",
+      "--include=scripts/dev-app.sh",
+      fileURLToPath(new URL("./upstream/03-tooling.patch", import.meta.url)),
+    ],
+    { cwd: f.repo },
+  );
+  chmodSync(path.join(f.repo, "scripts/dev-app.sh"), 0o755);
+  const bin = path.join(f.root, "bin");
+  mkdirSync(bin);
+  const npm = path.join(bin, "npm");
+  writeFileSync(npm, "#!/bin/sh\nexit 0\n");
+  chmodSync(npm, 0o755);
+  const crossEnv = path.join(bin, "cross-env");
+  writeFileSync(
+    crossEnv,
+    '#!/bin/sh\nprintf "runtime=%s\\n" "$PASEO_FORK_RUNTIME_ROOT"\nprintf "%s\\n" "$@"\n',
+  );
+  chmodSync(crossEnv, 0o755);
+  const env = {
+    ...process.env,
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    PASEO_WORKTREE_PATH: f.repo,
+    PASEO_BRANCH_NAME: undefined,
+  };
+  const workspace = path.join(f.repo, ".dev/fork-build");
+  const invoke = (extraEnv) =>
+    spawnSync("sh", ["-c", config.scripts.app.command], {
+      cwd: f.repo,
+      encoding: "utf8",
+      env: { ...env, ...extraEnv },
+    });
+  const result = invoke({});
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes(`runtime=${workspace}\n`));
+  assert.ok(result.stdout.includes("EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL=fork\n"));
+  const overridden = invoke({ PASEO_BRANCH_NAME: "explicit-branch" });
+  assert.equal(overridden.status, 0, overridden.stderr);
+  assert.ok(overridden.stdout.includes("EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL=explicit-branch\n"));
+  const empty = invoke({ PASEO_BRANCH_NAME: "" });
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.ok(empty.stdout.includes("EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL=\n"));
+});
+
+test("the configured desktop release uses the real fork runtime and canonical Git checkout", (t) => {
+  const f = fixture(t);
+  const config = JSON.parse(readFileSync(new URL("../../paseo.json", import.meta.url), "utf8"));
+  f.put("paseo.json", JSON.stringify(config));
+  for (const name of [
+    "scripts/fork/upstream.mjs",
+    "scripts/release-fork-desktop.mjs",
+    "scripts/fork/release/launch.mjs",
+    "scripts/fork/release/release.mjs",
+    "scripts/trigger-fork-app-eas.mjs",
+  ]) {
+    f.put(name, readFileSync(new URL(`../../${name}`, import.meta.url)));
+  }
+  f.git("branch", "-m", "main");
+  f.git("add", "-A");
+  f.git("commit", "-qm", "configure desktop release");
+  const remote = path.join(f.root, "origin.git");
+  execFileSync("git", ["clone", "--bare", f.repo, remote], { stdio: "pipe" });
+  f.git("remote", "add", "origin", remote);
+  const bin = path.join(f.root, "bin");
+  mkdirSync(bin);
+  const npm = path.join(bin, "npm");
+  writeFileSync(npm, "#!/bin/sh\nexit 0\n");
+  chmodSync(npm, 0o755);
+  const result = spawnSync("sh", ["-c", config.scripts["release-fork-desktop"].command], {
+    cwd: f.repo,
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Desktop Release is now queued/);
+  assert.equal(f.git("rev-parse", "desktop-v1.0.0-fork.1"), f.git("rev-parse", "HEAD"));
+  assert.equal(
+    execFileSync("git", ["--git-dir", remote, "rev-parse", "desktop-v1.0.0-fork.1"], {
+      encoding: "utf8",
+    }).trim(),
+    f.git("rev-parse", "HEAD"),
+  );
+});
+
+test("run from a managed worktree uses its canonical source without nesting", (t) => {
+  const f = fixture(t);
+  f.ok("materialize", "--directory", f.workspace);
+  const result = spawnSync(
+    process.execPath,
+    [cli, "run", "--no-install", "--", process.execPath, "-e", "console.log(process.cwd())"],
+    { cwd: f.workspace, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), f.workspace);
+  assert.equal(existsSync(path.join(f.workspace, ".dev/fork-build")), false);
 });
 
 test("canonical bootstrap edits invalidate a materialized worktree without discarding edits", (t) => {
