@@ -412,6 +412,30 @@ index 22baf9e7f1086007bbb5d42401643cbea88728f9..6477d1cb359fc8912e8049e3739e2f85
  test("browses from the directory into a category, a plugin, and its author", async ({
    page,
    context,
+diff --git a/packages/website/public/schemas/paseo.config.v1.json b/packages/website/public/schemas/paseo.config.v1.json
+index bae380d4c8a5510adb59cb6ba3be922a92e0435b..914c4bfe99abaa3f1d8eb75b2864d7d5d3523fba 100644
+--- a/packages/website/public/schemas/paseo.config.v1.json
++++ b/packages/website/public/schemas/paseo.config.v1.json
+@@ -556,6 +556,19 @@
+                 "required": ["provider"],
+                 "additionalProperties": false
+               }
++            },
++            "commitMessage": {
++              "type": "object",
++              "properties": {
++                "onFailure": {
++                  "type": "string",
++                  "enum": ["placeholder", "fail"]
++                },
++                "instructions": {
++                  "type": "string"
++                }
++              },
++              "additionalProperties": false
+             }
+           },
+           "additionalProperties": false
 diff --git a/packages/website/src/components/code-block.tsx b/packages/website/src/components/code-block.tsx
 index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5a633eb75 100644
 --- a/packages/website/src/components/code-block.tsx

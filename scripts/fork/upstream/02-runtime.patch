@@ -215,7 +215,7 @@ index d6b96f2eb4bd05c8437866c54adf8261f7f5d297..00000000000000000000000000000000
 -  });
 -});
 diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
-index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f797e413f 100644
+index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5795eb75b 100644
 --- a/packages/protocol/src/messages.ts
 +++ b/packages/protocol/src/messages.ts
 @@ -110,6 +110,37 @@ import {
@@ -256,7 +256,21 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
  import {
    PaseoConfigRawSchema,
    PaseoLifecycleCommandRawSchema,
-@@ -2384,7 +2415,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
+@@ -186,6 +217,13 @@ const MutableStructuredGenerationProviderSchema = z
+ const MutableMetadataGenerationConfigSchema = z
+   .object({
+     providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
++    commitMessage: z
++      .object({
++        onFailure: z.enum(["placeholder", "fail"]).optional(),
++        instructions: z.string().optional(),
++      })
++      .passthrough()
++      .optional(),
+   })
+   .passthrough();
+ 
+@@ -2384,7 +2422,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
    cwd: z.string(),
    requestId: z.string(),
  });
@@ -264,7 +278,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
  export const CheckoutCommitFileDiffRequestSchema = z.object({
    type: z.literal("checkout.commits.file_diff.request"),
    cwd: z.string(),
-@@ -2427,6 +2457,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
+@@ -2427,6 +2464,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
    CheckoutCheckDetailsRequestPayloadSchema.extend({
      type: z.literal("checkout.github.get_check_details.request"),
    });
@@ -278,7 +292,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
  
  export const CheckoutPrStatusRequestSchema = z.object({
    type: z.literal("checkout_pr_status_request"),
-@@ -3401,9 +3438,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+@@ -3401,9 +3445,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeRequestSchema,
    CheckoutGithubSetAutoMergeRequestSchema,
    CheckoutCommitsListRequestSchema,
@@ -293,7 +307,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
    CheckoutPrStatusRequestSchema,
    PullRequestTimelineRequestSchema,
    CheckoutSwitchBranchRequestSchema,
-@@ -3707,6 +3749,8 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -3707,6 +3756,8 @@ export const ServerInfoStatusPayloadSchema = z
          // gate and githubCheckDetails fallback after 2027-01-17 once the
          // supported daemon floor is >= v0.2.0.
          forgeCheckDetails: z.boolean().optional(),
@@ -302,7 +316,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
          // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
          // and github_search fallback after 2027-01-17 once the supported daemon
          // floor is >= v0.2.0.
-@@ -3819,6 +3863,13 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -3819,6 +3870,13 @@ export const ServerInfoStatusPayloadSchema = z
          commitsList: z.boolean().optional(),
          // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
          commitBaseClassification: z.boolean().optional(),
@@ -316,7 +330,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
          // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
          providerRemoval: z.boolean().optional(),
          // COMPAT(hopliteProvider): added after v0.11.2, remove after 2027-04-15 once host floor includes the bundled adapter.
-@@ -4084,8 +4135,10 @@ const WorkspaceGitRuntimePayloadSchema = z
+@@ -4084,8 +4142,10 @@ const WorkspaceGitRuntimePayloadSchema = z
        })
        .nullable()
        .optional(),
@@ -327,7 +341,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
    })
    .optional()
    .nullable();
-@@ -5375,8 +5428,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
+@@ -5375,8 +5435,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.null(),
    baseRef: z.null(),
    aheadBehind: z.null(),
@@ -338,7 +352,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
    hasRemote: z.boolean(),
    remoteUrl: z.null(),
  });
-@@ -5390,8 +5445,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5390,8 +5452,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string().nullable(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -349,7 +363,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -5405,8 +5462,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5405,8 +5469,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -360,7 +374,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -5716,7 +5775,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
+@@ -5716,7 +5782,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -368,7 +382,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
  export const CheckoutCommitFileDiffResponseSchema = z.object({
    type: z.literal("checkout.commits.file_diff.response"),
    payload: z.object({
-@@ -5833,6 +5891,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
+@@ -5833,6 +5898,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -387,7 +401,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
  
  export const CheckoutPrStatusResponseSchema = z.object({
    type: z.literal("checkout_pr_status_response"),
-@@ -7161,9 +7231,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+@@ -7161,9 +7238,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeResponseSchema,
    CheckoutGithubSetAutoMergeResponseSchema,
    CheckoutCommitsListResponseSchema,
@@ -402,7 +416,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
    CheckoutPrStatusResponseSchema,
    PullRequestTimelineResponseSchema,
    CheckoutSwitchBranchResponseSchema,
-@@ -7528,6 +7603,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
+@@ -7528,6 +7610,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
  export type CheckoutCommit = z.infer<typeof CheckoutCommitSchema>;
  export type CheckoutCommitsListRequest = z.infer<typeof CheckoutCommitsListRequestSchema>;
  export type CheckoutCommitsListResponse = z.infer<typeof CheckoutCommitsListResponseSchema>;
@@ -433,7 +447,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
  export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
  export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
  export type ParsedDiffFile = z.infer<typeof ParsedDiffFileSchema>;
-@@ -7554,6 +7653,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
+@@ -7554,6 +7660,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
  export type CheckoutGithubGetCheckDetailsRequest = z.infer<
    typeof CheckoutGithubGetCheckDetailsRequestSchema
  >;
@@ -443,7 +457,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..774158178e0de83b759160732acefd4f
  export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
  export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
  export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
-@@ -7565,6 +7667,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
+@@ -7565,6 +7674,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
  export type CheckoutGithubGetCheckDetailsResponse = z.infer<
    typeof CheckoutGithubGetCheckDetailsResponseSchema
  >;
@@ -761,7 +775,7 @@ index 76fa8cc7d19d4d98b4675946cc3b2140b4925f0c..32f255c7f4bd2c094bfeae0652f9c084
        );
        await writeFile(
 diff --git a/packages/server/src/server/bootstrap.ts b/packages/server/src/server/bootstrap.ts
-index cf62c525ba7495561616650275167ba982df1805..7f78dd7d514077e4947c604050378bfe046de515 100644
+index cf62c525ba7495561616650275167ba982df1805..e8140ab73be702af155e173903dace3b057f28ee 100644
 --- a/packages/server/src/server/bootstrap.ts
 +++ b/packages/server/src/server/bootstrap.ts
 @@ -189,7 +189,7 @@ import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
@@ -773,7 +787,28 @@ index cf62c525ba7495561616650275167ba982df1805..7f78dd7d514077e4947c604050378bfe
  import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
  import type {
    AgentProfile,
-@@ -635,7 +635,7 @@ export async function createPaseoDaemon(
+@@ -476,6 +476,10 @@ export interface PaseoDaemonConfig {
+       model?: string;
+       thinkingOptionId?: string;
+     }>;
++    commitMessage?: {
++      onFailure?: "placeholder" | "fail";
++      instructions?: string;
++    };
+   };
+   providerOverrides?: Record<string, ProviderOverride>;
+   log?: PersistedConfig["log"];
+@@ -596,6 +600,9 @@ function createInitialMutableDaemonConfig(config: ResolvedDaemonSettings): Mutab
+     providers,
+     metadataGeneration: {
+       providers: config.metadataGeneration?.providers ?? [],
++      ...(config.metadataGeneration?.commitMessage !== undefined
++        ? { commitMessage: config.metadataGeneration.commitMessage }
++        : {}),
+     },
+     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
+     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
+@@ -635,7 +642,7 @@ export async function createPaseoDaemon(
    });
    const bootstrapStart = performance.now();
    const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
@@ -849,6 +884,250 @@ index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245
      hasRemote: snapshot.git.hasRemote,
      remoteUrl: snapshot.git.remoteUrl,
      isPaseoOwnedWorktree: false,
+diff --git a/packages/server/src/server/daemon-config-store.test.ts b/packages/server/src/server/daemon-config-store.test.ts
+index d9b2e941813208fe07397a898f07282f4c362ec2..5d59b33912d690d82bdfe5759cd4bd90f4c48b17 100644
+--- a/packages/server/src/server/daemon-config-store.test.ts
++++ b/packages/server/src/server/daemon-config-store.test.ts
+@@ -997,6 +997,186 @@ describe("DaemonConfigStore", () => {
+   });
+ });
+ 
++describe("metadata generation commit message settings", () => {
++  const tempDirs: string[] = [];
++
++  afterEach(() => {
++    for (const dir of tempDirs) {
++      rmSync(dir, { recursive: true, force: true });
++    }
++  });
++
++  const initialMetadataGeneration: MutableDaemonConfig["metadataGeneration"] = {
++    providers: [{ provider: "claude", model: "haiku" }],
++    commitMessage: { onFailure: "placeholder", instructions: "Conventional Commits" },
++  };
++
++  function createHome(): string {
++    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
++    tempDirs.push(paseoHome);
++    return paseoHome;
++  }
++
++  function createStore(
++    paseoHome: string,
++    persistedAgents: Record<string, unknown> = {
++      metadataGeneration: initialMetadataGeneration,
++    },
++    initial: MutableDaemonConfig = {
++      mcp: { injectIntoAgents: false },
++      browserTools: { enabled: false },
++      providers: {},
++      metadataGeneration: initialMetadataGeneration,
++      autoArchiveAfterMerge: false,
++      enableTerminalAgentHooks: false,
++      appendSystemPrompt: "",
++    },
++  ): DaemonConfigStore {
++    writeFileSync(
++      path.join(paseoHome, "config.json"),
++      `${JSON.stringify({ version: 1, agents: persistedAgents }, null, 2)}\n`,
++    );
++    return new DaemonConfigStore(paseoHome, initial, undefined);
++  }
++
++  test("merges a commit message onFailure patch into the existing settings", async () => {
++    const paseoHome = createHome();
++    const store = createStore(paseoHome);
++
++    const next = await store.patch({
++      metadataGeneration: { commitMessage: { onFailure: "fail" } },
++    });
++
++    const expected = {
++      providers: [{ provider: "claude", model: "haiku" }],
++      commitMessage: { onFailure: "fail", instructions: "Conventional Commits" },
++    };
++    expect(next.metadataGeneration.commitMessage).toEqual(expected.commitMessage);
++    expect(next.metadataGeneration.providers).toEqual(expected.providers);
++    expect(loadPersistedConfig(paseoHome).agents?.metadataGeneration).toEqual(expected);
++  });
++
++  test("merges a commit message instructions patch without dropping onFailure", async () => {
++    const paseoHome = createHome();
++    const store = createStore(paseoHome);
++    await store.patch({ metadataGeneration: { commitMessage: { onFailure: "fail" } } });
++
++    const next = await store.patch({
++      metadataGeneration: { commitMessage: { instructions: "New style" } },
++    });
++
++    expect(next.metadataGeneration.commitMessage).toEqual({
++      onFailure: "fail",
++      instructions: "New style",
++    });
++    expect(next.metadataGeneration.providers).toEqual([{ provider: "claude", model: "haiku" }]);
++    expect(loadPersistedConfig(paseoHome).agents?.metadataGeneration).toEqual({
++      providers: [{ provider: "claude", model: "haiku" }],
++      commitMessage: { onFailure: "fail", instructions: "New style" },
++    });
++  });
++
++  test("keeps commit message settings when patching metadata generation providers", async () => {
++    const paseoHome = createHome();
++    const store = createStore(paseoHome);
++
++    const next = await store.patch({
++      metadataGeneration: { providers: [{ provider: "codex" }] },
++    });
++
++    const expectedCommitMessage = {
++      onFailure: "placeholder",
++      instructions: "Conventional Commits",
++    };
++    expect(next.metadataGeneration.providers).toEqual([{ provider: "codex" }]);
++    expect(next.metadataGeneration.commitMessage).toEqual(expectedCommitMessage);
++    expect(loadPersistedConfig(paseoHome).agents?.metadataGeneration).toEqual({
++      providers: [{ provider: "codex" }],
++      commitMessage: expectedCommitMessage,
++    });
++  });
++
++  test("keeps commit message settings when removing providers", async () => {
++    const paseoHome = createHome();
++    const store = createStore(
++      paseoHome,
++      {
++        providers: { claude: { enabled: false }, gemini: { enabled: false } },
++        metadataGeneration: {
++          providers: [
++            { provider: "claude", model: "haiku" },
++            { provider: "gemini", model: "flash" },
++          ],
++          commitMessage: { onFailure: "fail", instructions: "Conventional Commits" },
++        },
++      },
++      {
++        mcp: { injectIntoAgents: false },
++        browserTools: { enabled: false },
++        providers: { claude: { enabled: false }, gemini: { enabled: false } },
++        metadataGeneration: {
++          providers: [
++            { provider: "claude", model: "haiku" },
++            { provider: "gemini", model: "flash" },
++          ],
++          commitMessage: { onFailure: "fail", instructions: "Conventional Commits" },
++        },
++        autoArchiveAfterMerge: false,
++        enableTerminalAgentHooks: false,
++        appendSystemPrompt: "",
++      },
++    );
++
++    const next = await store.patch({ removeProviders: ["claude"] });
++
++    const expected = {
++      providers: [{ provider: "gemini", model: "flash" }],
++      commitMessage: { onFailure: "fail", instructions: "Conventional Commits" },
++    };
++    expect(next.metadataGeneration).toEqual(expected);
++    expect(loadPersistedConfig(paseoHome).agents?.metadataGeneration).toEqual(expected);
++  });
++
++  test("keeps commit message settings across reload", async () => {
++    const paseoHome = createHome();
++    const store = createStore(paseoHome);
++    await store.patch({ metadataGeneration: { commitMessage: { onFailure: "fail" } } });
++
++    const reloadStore = new DaemonConfigStore(
++      paseoHome,
++      {
++        mcp: { injectIntoAgents: false },
++        browserTools: { enabled: false },
++        providers: {},
++        metadataGeneration: initialMetadataGeneration,
++        autoArchiveAfterMerge: false,
++        enableTerminalAgentHooks: false,
++        appendSystemPrompt: "",
++      },
++      undefined,
++      {
++        reloadSource: {
++          resolve: (persisted) => ({
++            mutable: {
++              ...reloadableConfig(persisted),
++              metadataGeneration: persisted.agents?.metadataGeneration ?? { providers: [] },
++            },
++            overrideControlledPaths: [],
++          }),
++        },
++      },
++    );
++
++    const result = await reloadStore.reload();
++
++    expect(result.appliedPaths).toContain("agents.metadataGeneration");
++    expect(reloadStore.get().metadataGeneration.commitMessage).toEqual({
++      onFailure: "fail",
++      instructions: "Conventional Commits",
++    });
++  });
++});
++
+ describe("DaemonConfigStore reload", () => {
+   const tempDirs: string[] = [];
+ 
+diff --git a/packages/server/src/server/daemon-config-store.ts b/packages/server/src/server/daemon-config-store.ts
+index e83874235f462b2c7ffae3c5a7b4b7f7454d8940..3984f699af9a5d88c8cd3726e78029721cf9dfed 100644
+--- a/packages/server/src/server/daemon-config-store.ts
++++ b/packages/server/src/server/daemon-config-store.ts
+@@ -26,7 +26,7 @@ interface SupportedMutableConfigPatch {
+   browserTools?: { enabled?: boolean };
+   providers?: MutableDaemonConfig["providers"];
+   removeProviders?: string[];
+-  metadataGeneration?: MutableDaemonConfig["metadataGeneration"];
++  metadataGeneration?: Partial<MutableDaemonConfig["metadataGeneration"]>;
+   autoArchiveAfterMerge?: boolean;
+   enableTerminalAgentHooks?: boolean;
+   idleRuntimeCleanup?: boolean;
+@@ -293,8 +293,8 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
+       : {}),
+     ...(patch.providers !== undefined ? { providers: patch.providers } : {}),
+     ...(patch.removeProviders !== undefined ? { removeProviders: patch.removeProviders } : {}),
+-    ...(patch.metadataGeneration?.providers !== undefined
+-      ? { metadataGeneration: { providers: patch.metadataGeneration.providers } }
++    ...(patch.metadataGeneration !== undefined
++      ? { metadataGeneration: patch.metadataGeneration }
+       : {}),
+     ...(patch.autoArchiveAfterMerge !== undefined
+       ? { autoArchiveAfterMerge: patch.autoArchiveAfterMerge }
+@@ -733,11 +733,26 @@ function mergeMutableAgentPatch(
+   if (providerOverrides) next["providers"] = providerOverrides;
+   else delete next["providers"];
+ 
+-  if (patch.metadataGeneration?.providers !== undefined) {
+-    next["metadataGeneration"] = { providers: patch.metadataGeneration.providers };
++  const metadataPatch = patch.metadataGeneration;
++  if (metadataPatch !== undefined) {
++    const base = persistedAgents?.metadataGeneration;
++    const nextMetadata: Record<string, unknown> = { ...base };
++    if (metadataPatch.providers !== undefined) {
++      nextMetadata["providers"] = metadataPatch.providers;
++    }
++    if (metadataPatch.commitMessage !== undefined) {
++      nextMetadata["commitMessage"] = {
++        ...(base?.commitMessage ?? {}),
++        ...Object.fromEntries(
++          Object.entries(metadataPatch.commitMessage).filter(([, value]) => value !== undefined),
++        ),
++      };
++    }
++    next["metadataGeneration"] = nextMetadata;
+   } else if (removeProviders.length > 0 && persistedAgents?.metadataGeneration?.providers) {
+     const removed = new Set(removeProviders);
+     next["metadataGeneration"] = {
++      ...persistedAgents.metadataGeneration,
+       providers: persistedAgents.metadataGeneration.providers.filter(
+         (entry) => !removed.has(entry.provider),
+       ),
 diff --git a/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts b/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
 index 862923dec62292556b4c0f572a23f2c3f661698c..ee9832e9358d75e4f8ad5905e7e218e7d04f152f 100644
 --- a/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
@@ -1113,6 +1392,101 @@ index 118ce9bbe9f3b3d4eb1219ab2c4725c4b8591f1d..06683e522e3edfc711a18d5d272e4bd3
  }
  
  export function createChildLogger(parent: pino.Logger, name: string): pino.Logger {
+diff --git a/packages/server/src/server/persisted-config.test.ts b/packages/server/src/server/persisted-config.test.ts
+index fb38e4159189d2744b5fd122eb2a364c5ccf3679..ccefa47d4f51b92b1d221b8aa35356c0305f4a81 100644
+--- a/packages/server/src/server/persisted-config.test.ts
++++ b/packages/server/src/server/persisted-config.test.ts
+@@ -273,6 +273,68 @@ describe("PersistedConfigSchema agent provider runtime settings", () => {
+     });
+   });
+ 
++  test("accepts metadata generation commit message settings", () => {
++    const parsed = PersistedConfigSchema.parse({
++      agents: {
++        metadataGeneration: {
++          commitMessage: {
++            onFailure: "fail",
++            instructions: "Conventional Commits",
++          },
++        },
++      },
++    });
++
++    expect(parsed.agents?.metadataGeneration).toEqual({
++      commitMessage: {
++        onFailure: "fail",
++        instructions: "Conventional Commits",
++      },
++    });
++  });
++
++  test("accepts commit message settings alongside provider fallbacks", () => {
++    const parsed = PersistedConfigSchema.parse({
++      agents: {
++        metadataGeneration: {
++          providers: [{ provider: "claude", model: "haiku" }],
++          commitMessage: { onFailure: "placeholder", instructions: "Short subject line" },
++        },
++      },
++    });
++
++    expect(parsed.agents?.metadataGeneration).toEqual({
++      providers: [{ provider: "claude", model: "haiku" }],
++      commitMessage: { onFailure: "placeholder", instructions: "Short subject line" },
++    });
++  });
++
++  test("allows commit message settings with only one field", () => {
++    const parsed = PersistedConfigSchema.parse({
++      agents: { metadataGeneration: { commitMessage: { instructions: "Conventional Commits" } } },
++    });
++
++    expect(parsed.agents?.metadataGeneration).toEqual({
++      commitMessage: { instructions: "Conventional Commits" },
++    });
++  });
++
++  test("rejects an invalid commit message onFailure value", () => {
++    expect(() =>
++      PersistedConfigSchema.parse({
++        agents: { metadataGeneration: { commitMessage: { onFailure: "explode" } } },
++      }),
++    ).toThrow();
++  });
++
++  test("rejects unknown keys inside commit message settings", () => {
++    expect(() =>
++      PersistedConfigSchema.parse({
++        agents: { metadataGeneration: { commitMessage: { enabled: true } } },
++      }),
++    ).toThrow();
++  });
++
+   test("accepts a custom provider catalog refresh timeout", () => {
+     const parsed = PersistedConfigSchema.parse({
+       agents: { catalogRefreshTimeoutMs: 180_000 },
+diff --git a/packages/server/src/server/persisted-config.ts b/packages/server/src/server/persisted-config.ts
+index 3138ec9132c2fb62d1927519ac946131eb6bde94..4e48030d4fa296d6bcca7054458ed80d66fe7586 100644
+--- a/packages/server/src/server/persisted-config.ts
++++ b/packages/server/src/server/persisted-config.ts
+@@ -177,9 +177,17 @@ const StructuredGenerationProviderConfigSchema = z
+   })
+   .strict();
+ 
++const AgentMetadataGenerationCommitMessageSchema = z
++  .object({
++    onFailure: z.enum(["placeholder", "fail"]).optional(),
++    instructions: z.string().optional(),
++  })
++  .strict();
++
+ const AgentMetadataGenerationSchema = z
+   .object({
+     providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
++    commitMessage: AgentMetadataGenerationCommitMessageSchema.optional(),
+   })
+   .strict();
+ 
 diff --git a/packages/server/src/server/plugins/lifecycle.e2e.test.ts b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
 index bd1dfa88592095e165ff579316b3781ea096f38e..4514a92c9ece7ca93b253e9d53c710f013524722 100644
 --- a/packages/server/src/server/plugins/lifecycle.e2e.test.ts
@@ -1263,10 +1637,19 @@ index d1408f988011a684fa7bd854d6436caa62c8e3ad..945057c921a4731d3026c9a09022baa7
          remoteUrl: "https://github.com/getpaseo/paseo.git",
          isPaseoOwnedWorktree: false,
 diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
-index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..b5f46de38f87a86860c8ff7b7b6b4ae0b5bb55bd 100644
+index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..ee408e2a6fefce7a9cbe62e718aab26454db5d9e 100644
 --- a/packages/server/src/server/session.ts
 +++ b/packages/server/src/server/session.ts
-@@ -2994,6 +2994,15 @@ export class Session {
+@@ -990,6 +990,8 @@ export class Session {
+           logger: this.sessionLogger,
+         }),
+         logger: this.sessionLogger,
++        readCommitMessageConfig: () =>
++          this.daemonConfigStore.get().metadataGeneration.commitMessage,
+       }),
+       paseoHome: this.paseoHome,
+       worktreesRoot: this.worktreesRoot,
+@@ -2994,6 +2996,15 @@ export class Session {
          return this.checkoutSession.handleStatusRequest(msg);
        case "checkout.commits.list.request":
          return this.checkoutSession.handleCommitsListRequest(msg);
@@ -1282,7 +1665,7 @@ index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..b5f46de38f87a86860c8ff7b7b6b4ae0
        case "checkout.commits.file_diff.request":
          return this.checkoutSession.handleCommitFileDiffRequest(msg, this.delivery.requestSignal);
        case "validate_branch_request":
-@@ -3036,6 +3045,8 @@ export class Session {
+@@ -3036,6 +3047,8 @@ export class Session {
        case "checkout.forge.get_check_details.request":
        case "checkout.github.get_check_details.request":
          return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);
@@ -1291,7 +1674,7 @@ index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..b5f46de38f87a86860c8ff7b7b6b4ae0
        case "checkout_pr_status_request":
          return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
        case "pull_request_timeline_request":
-@@ -5735,8 +5746,10 @@ export class Session {
+@@ -5735,8 +5748,10 @@ export class Session {
        isPaseoOwnedWorktree: snapshot.git.isPaseoOwnedWorktree,
        isDirty: snapshot.git.isDirty,
        aheadBehind: snapshot.git.aheadBehind,
@@ -1682,8 +2065,281 @@ index ceb69e9623c184be95c57140f2e9e3fd7563e454..06895845c817b8f70f2f50af90b4777c
    async handleForgeSearchRequest(
      msg: Extract<SessionInboundMessage, { type: "forge.search.request" | "github_search_request" }>,
    ): Promise<void> {
+diff --git a/packages/server/src/server/session/checkout/git-metadata-generator.test.ts b/packages/server/src/server/session/checkout/git-metadata-generator.test.ts
+index a09f08f2fdf1906b28f6a2c5068894c89f906c52..53712b41f63de8136ee69834dec1f5c241874c9b 100644
+--- a/packages/server/src/server/session/checkout/git-metadata-generator.test.ts
++++ b/packages/server/src/server/session/checkout/git-metadata-generator.test.ts
+@@ -1,3 +1,6 @@
++import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
+ import { describe, expect, it } from "vitest";
+ import {
+   StructuredAgentFallbackError,
+@@ -14,7 +17,7 @@ import {
+ 
+ type DiffSource = Pick<WorkspaceGitService, "getCheckoutDiff" | "resolveRepoRoot">;
+ 
+-function createDiffSource(result: CheckoutDiffResult) {
++function createDiffSource(result: CheckoutDiffResult, repoRoot?: string) {
+   const diffCalls: Array<{ cwd: string; options: CheckoutDiffCompare }> = [];
+   const diffSource: DiffSource = {
+     getCheckoutDiff: async (cwd, options) => {
+@@ -23,7 +26,7 @@ function createDiffSource(result: CheckoutDiffResult) {
+     },
+     // buildMetadataPrompt reads paseo.json overrides from here; an unknown root
+     // means no override applies, so the default style is used.
+-    resolveRepoRoot: async () => "/tmp/git-metadata-generator-test-missing-root",
++    resolveRepoRoot: async () => repoRoot ?? "/tmp/git-metadata-generator-test-missing-root",
+   };
+   return { diffSource, diffCalls };
+ }
+@@ -51,6 +54,9 @@ const MANUAL_MODEL_FAILURE = new StructuredAgentFallbackError([
+   { provider: "local-llm", model: "qwen-local", available: true, error: "connection refused" },
+ ]);
+ 
++const COMMIT_MESSAGE_FAIL_MODE_ERROR =
++  'Commit message generation failed and the placeholder fallback is disabled by agents.metadataGeneration.commitMessage.onFailure = "fail". Enter a commit message manually or set that option to "placeholder".';
++
+ const DIFF_WITH_ONE_FILE: CheckoutDiffResult = {
+   diff: "diff --git a/src/foo.ts b/src/foo.ts\n+added\n",
+   structured: [
+@@ -229,4 +235,233 @@ describe("createGitMetadataGenerator", () => {
+       },
+     ]);
+   });
++
++  it("generateCommitMessage defaults to placeholder mode when no commit-message config reader is provided", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation } = createGeneration(() => {
++      throw MANUAL_MODEL_FAILURE;
++    });
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger: createLogger().logger,
++    });
++
++    await expect(generator.generateCommitMessage("/repo")).resolves.toBe("Update files");
++  });
++
++  it("generateCommitMessage treats an undefined commit-message config as placeholder mode", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation } = createGeneration(() => {
++      throw MANUAL_MODEL_FAILURE;
++    });
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger: createLogger().logger,
++      readCommitMessageConfig: () => undefined,
++    });
++
++    await expect(generator.generateCommitMessage("/repo")).resolves.toBe("Update files");
++  });
++
++  it("generateCommitMessage rejects with the fail-mode error when generation exhausts its providers", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation } = createGeneration(() => {
++      throw MANUAL_MODEL_FAILURE;
++    });
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger: createLogger().logger,
++      readCommitMessageConfig: () => ({ onFailure: "fail" }),
++    });
++
++    await expect(generator.generateCommitMessage("/repo")).rejects.toThrow(
++      COMMIT_MESSAGE_FAIL_MODE_ERROR,
++    );
++  });
++
++  it("generateCommitMessage rejects with the fail-mode error when the generated response is invalid", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation } = createGeneration(() => {
++      throw new StructuredAgentResponseError("invalid", {
++        lastResponse: "{}",
++        validationErrors: ["message: required"],
++      });
++    });
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger: createLogger().logger,
++      readCommitMessageConfig: () => ({ onFailure: "fail" }),
++    });
++
++    await expect(generator.generateCommitMessage("/repo")).rejects.toThrow(
++      COMMIT_MESSAGE_FAIL_MODE_ERROR,
++    );
++  });
++
++  it("generateCommitMessage propagates non-structured errors in fail mode", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation } = createGeneration(() => {
++      throw new Error("network down");
++    });
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger: createLogger().logger,
++      readCommitMessageConfig: () => ({ onFailure: "fail" }),
++    });
++
++    await expect(generator.generateCommitMessage("/repo")).rejects.toThrow("network down");
++  });
++
++  it("generatePullRequestText keeps the placeholder fallback even when fail mode is configured", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation } = createGeneration(() => {
++      throw MANUAL_MODEL_FAILURE;
++    });
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger: createLogger().logger,
++      readCommitMessageConfig: () => ({ onFailure: "fail" }),
++    });
++
++    await expect(generator.generatePullRequestText("/repo", "main")).resolves.toEqual({
++      title: "Update changes",
++      body: "Automated PR generated by Paseo.",
++    });
++  });
++
++  it("applies global commit-message instructions when the project has no override", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation, generateCalls } = createGeneration((request) =>
++      request.schemaName === "CommitMessage"
++        ? { message: "feat: add retry" }
++        : { title: "Add retry", body: "Adds retry." },
++    );
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger: createLogger().logger,
++      readCommitMessageConfig: () => ({ instructions: "  Conventional Commits  " }),
++    });
++
++    await expect(generator.generateCommitMessage("/repo")).resolves.toBe("feat: add retry");
++    await expect(generator.generatePullRequestText("/repo", "main")).resolves.toEqual({
++      title: "Add retry",
++      body: "Adds retry.",
++    });
++
++    const commitPrompt = generateCalls[0].prompt;
++    expect(commitPrompt).toContain("Conventional Commits");
++    expect(commitPrompt).not.toContain("Concise, imperative mood, no trailing period.");
++
++    const pullRequestPrompt = generateCalls[1].prompt;
++    expect(pullRequestPrompt).not.toContain("Conventional Commits");
++    expect(pullRequestPrompt).toContain(
++      "Clear, descriptive title; body explaining what changed and why.",
++    );
++  });
++
++  it("prefers project commit-message instructions over global instructions", async () => {
++    const repoRoot = mkdtempSync(join(tmpdir(), "paseo-git-metadata-generator-"));
++    try {
++      writeFileSync(
++        join(repoRoot, "paseo.json"),
++        JSON.stringify({
++          metadataGeneration: { commitMessage: { instructions: "PROJECT STYLE" } },
++        }),
++        "utf8",
++      );
++      const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE, repoRoot);
++      const { generation, generateCalls } = createGeneration(() => ({
++        message: "feat: add retry",
++      }));
++      const generator = createGitMetadataGenerator({
++        workspaceGitService: diffSource,
++        generation,
++        logger: createLogger().logger,
++        readCommitMessageConfig: () => ({ instructions: "GLOBAL STYLE" }),
++      });
++
++      await expect(generator.generateCommitMessage("/repo")).resolves.toBe("feat: add retry");
++
++      expect(generateCalls[0].prompt).toContain("PROJECT STYLE");
++      expect(generateCalls[0].prompt).not.toContain("GLOBAL STYLE");
++    } finally {
++      rmSync(repoRoot, { recursive: true, force: true });
++    }
++  });
++
++  it("falls back to global instructions when project instructions are whitespace", async () => {
++    const repoRoot = mkdtempSync(join(tmpdir(), "paseo-git-metadata-generator-"));
++    try {
++      writeFileSync(
++        join(repoRoot, "paseo.json"),
++        JSON.stringify({
++          metadataGeneration: { commitMessage: { instructions: "   " } },
++        }),
++        "utf8",
++      );
++      const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE, repoRoot);
++      const { generation, generateCalls } = createGeneration(() => ({
++        message: "feat: add retry",
++      }));
++      const generator = createGitMetadataGenerator({
++        workspaceGitService: diffSource,
++        generation,
++        logger: createLogger().logger,
++        readCommitMessageConfig: () => ({ instructions: "GLOBAL STYLE" }),
++      });
++
++      await expect(generator.generateCommitMessage("/repo")).resolves.toBe("feat: add retry");
++
++      expect(generateCalls[0].prompt).toContain("GLOBAL STYLE");
++      expect(generateCalls[0].prompt).not.toContain(
++        "Concise, imperative mood, no trailing period.",
++      );
++    } finally {
++      rmSync(repoRoot, { recursive: true, force: true });
++    }
++  });
++
++  it("logs the structured failure before rejecting in fail mode", async () => {
++    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
++    const { generation } = createGeneration(() => {
++      throw MANUAL_MODEL_FAILURE;
++    });
++    const { logger, errors } = createLogger();
++    const generator = createGitMetadataGenerator({
++      workspaceGitService: diffSource,
++      generation,
++      logger,
++      readCommitMessageConfig: () => ({ onFailure: "fail" }),
++    });
++
++    await expect(generator.generateCommitMessage("/repo")).rejects.toThrow(
++      COMMIT_MESSAGE_FAIL_MODE_ERROR,
++    );
++
++    expect(errors).toEqual([
++      {
++        obj: {
++          err: MANUAL_MODEL_FAILURE,
++          cwd: "/repo",
++          schemaName: "CommitMessage",
++          attempts: [
++            {
++              provider: "local-llm",
++              model: "qwen-local",
++              available: true,
++              error: "connection refused",
++            },
++          ],
++        },
++        msg: "Structured git metadata generation failed",
++      },
++    ]);
++  });
+ });
 diff --git a/packages/server/src/server/session/checkout/git-metadata-generator.ts b/packages/server/src/server/session/checkout/git-metadata-generator.ts
-index 722309213a4d8beb232ad4a9f94957973bb81a4d..c2cd1f5be97ec3892d8c6c0f7a7c9bf1c9b7ae83 100644
+index 722309213a4d8beb232ad4a9f94957973bb81a4d..8a2df02e441a7a799919217241c781f563ba2224 100644
 --- a/packages/server/src/server/session/checkout/git-metadata-generator.ts
 +++ b/packages/server/src/server/session/checkout/git-metadata-generator.ts
 @@ -81,6 +81,7 @@ const PULL_REQUEST_FALLBACK: PullRequestText = {
@@ -1694,7 +2350,78 @@ index 722309213a4d8beb232ad4a9f94957973bb81a4d..c2cd1f5be97ec3892d8c6c0f7a7c9bf1
  
  interface PromptForDiffInput {
    cwd: string;
-@@ -218,6 +219,7 @@ export function createAgentStructuredTextGeneration(deps: {
+@@ -90,18 +91,26 @@ interface PromptForDiffInput {
+   styleConfigKey: MetadataConfigKey;
+   styleDefault: string;
+   jsonFieldsHint: string;
++  globalInstructions?: Partial<Record<MetadataConfigKey, string>>;
++}
++
++interface CommitMessageConfig {
++  onFailure?: "placeholder" | "fail";
++  instructions?: string;
+ }
+ 
+ export function createGitMetadataGenerator(deps: {
+   workspaceGitService: GitMetadataDiffSource;
+   generation: StructuredTextGeneration;
+   logger: GitMetadataLogger;
++  readCommitMessageConfig?: () => CommitMessageConfig | undefined;
+ }): GitMetadataGenerator {
+-  const { workspaceGitService, generation, logger } = deps;
++  const { workspaceGitService, generation, logger, readCommitMessageConfig } = deps;
+ 
+   async function generateOrFallback<T>(
+     request: StructuredTextGenerationRequest<T>,
+     fallback: T,
++    onFailure: "placeholder" | "fail" = "placeholder",
+   ): Promise<T> {
+     try {
+       return await generation.generate(request);
+@@ -118,6 +127,11 @@ export function createGitMetadataGenerator(deps: {
+         },
+         "Structured git metadata generation failed",
+       );
++      if (onFailure === "fail") {
++        throw new Error(
++          'Commit message generation failed and the placeholder fallback is disabled by agents.metadataGeneration.commitMessage.onFailure = "fail". Enter a commit message manually or set that option to "placeholder".',
++        );
++      }
+       return fallback;
+     }
+   }
+@@ -138,11 +152,14 @@ export function createGitMetadataGenerator(deps: {
+         "",
+         patch.length > 0 ? patch : "(No diff available)",
+       ].join("\n"),
++      globalInstructions: input.globalInstructions,
+     });
+   }
+ 
+   return {
+     async generateCommitMessage(cwd) {
++      const commitMessageConfig = readCommitMessageConfig?.();
++      const instructions = commitMessageConfig?.instructions?.trim();
+       const prompt = await buildPromptForDiff({
+         cwd,
+         diffOptions: { mode: "uncommitted", includeStructured: true },
+@@ -151,6 +168,7 @@ export function createGitMetadataGenerator(deps: {
+         styleConfigKey: "commitMessage",
+         styleDefault: "Concise, imperative mood, no trailing period.",
+         jsonFieldsHint: "Return JSON only with a single field 'message'.",
++        globalInstructions: instructions ? { commitMessage: instructions } : undefined,
+       });
+       const result = await generateOrFallback(
+         {
+@@ -161,6 +179,7 @@ export function createGitMetadataGenerator(deps: {
+           agentTitle: "Commit generator",
+         },
+         { message: COMMIT_MESSAGE_FALLBACK },
++        commitMessageConfig?.onFailure ?? "placeholder",
+       );
+       return result.message;
+     },
+@@ -218,6 +237,7 @@ export function createAgentStructuredTextGeneration(deps: {
          schema,
          schemaName,
          maxRetries: 2,
@@ -3672,6 +4399,47 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
      async searchIssuesAndPrs(input: SearchIssuesAndPrsOptions): Promise<SearchResult> {
        if (input.force && !input.reason) {
          throw new Error("ForgeService forced read requires a reason");
+diff --git a/packages/server/src/utils/build-metadata-prompt.ts b/packages/server/src/utils/build-metadata-prompt.ts
+index b68f660515f23e3e2c7638548008ec6b61921f89..fcd30d4295ee88f4c533024c9bb7f5af19dc9753 100644
+--- a/packages/server/src/utils/build-metadata-prompt.ts
++++ b/packages/server/src/utils/build-metadata-prompt.ts
+@@ -25,19 +25,33 @@ export interface BuildMetadataPromptOptions {
+   after: string;
+   trailing?: string;
+   workspaceGitService?: RepoRootResolver;
++  // Host-wide fallback style, used only where the project supplies no override.
++  globalInstructions?: Partial<Record<MetadataConfigKey, string>>;
+ }
+ 
+ export async function buildMetadataPrompt(options: BuildMetadataPromptOptions): Promise<string> {
+   const overrides = await readProjectMetadataOverrides(options);
+   const styleBlocks = options.styles.map((section) =>
+-    renderStyleSection(section, overrides?.[section.configKey]?.instructions),
++    renderStyleSection(
++      section,
++      overrides?.[section.configKey]?.instructions,
++      options.globalInstructions?.[section.configKey],
++    ),
+   );
+   const head = [options.contract, ...styleBlocks, options.after].join("\n\n");
+   return options.trailing ? `${head}\n\n${options.trailing}` : head;
+ }
+ 
+-function renderStyleSection(section: MetadataStyleSection, override: string | undefined): string {
+-  const body = isNonEmptyString(override) ? override.trim() : section.default;
++function renderStyleSection(
++  section: MetadataStyleSection,
++  projectOverride: string | undefined,
++  globalOverride: string | undefined,
++): string {
++  const body = isNonEmptyString(projectOverride)
++    ? projectOverride.trim()
++    : isNonEmptyString(globalOverride)
++      ? globalOverride.trim()
++      : section.default;
+   return section.label ? `${section.label}:\n${body}` : body;
+ }
+ 
 diff --git a/packages/server/src/utils/checkout-git-ref-derived.test.ts b/packages/server/src/utils/checkout-git-ref-derived.test.ts
 index ddafaab6b5bf888e7f295944e0a6b577dc80cf30..4935c9735e083d864065469ffdf6a389c3b6e17b 100644
 --- a/packages/server/src/utils/checkout-git-ref-derived.test.ts
