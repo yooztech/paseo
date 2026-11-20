@@ -42,8 +42,8 @@ async function createHarness(t, submitFailures) {
     join(binDir, "npx"),
     `#!/usr/bin/env bash
 set -euo pipefail
-if [[ "$1" == "eas" && "$2" == "build" ]]; then
-  [[ "\${EAS_NO_VCS:-}" == "1" ]] || exit 43
+if [[ "$1" == "-y" && "$2" == "eas-cli@27.11.0" && "$3" == "build" ]]; then
+  [[ -z "\${EAS_NO_VCS:-}" ]] || exit 43
   [[ "\${PASEO_RELEASE_TAG:-}" == "app-v0.5.0-fork.2" ]] || exit 44
   printf '%s\\n' "$@" > "$BUILD_LOG_FILE"
   case " $* " in *" --non-interactive "*) ;; *) exit 45 ;; esac
@@ -57,7 +57,7 @@ if [[ "$1" == "eas" && "$2" == "build" ]]; then
   done
   exit 2
 fi
-if [[ "$1" == "eas" && "$2" == "submit" ]]; then
+if [[ "$1" == "-y" && "$2" == "eas-cli@27.11.0" && "$3" == "submit" ]]; then
   case " $* " in *" --non-interactive "*) ;; *) exit 46 ;; esac
   count=0
   if [[ -f "$SUBMIT_COUNT_FILE" ]]; then
@@ -119,6 +119,7 @@ test("retries a failed EAS submit with exponential backoff", async (t) => {
   );
   for (const flag of ["--local", "--non-interactive", "--platform", "--output"])
     assert.ok(buildArgs.has(flag), `expected build args to include ${flag}`);
+  assert.ok(buildArgs.has("eas-cli@27.11.0"), "expected the pinned eas-cli build argument");
 });
 
 test("fails after the final EAS submit attempt without another delay", async (t) => {
@@ -205,7 +206,7 @@ test("wrapper builds in a materialized worktree while retaining the real source 
   await writeFile(join(bin, "npm"), "#!/bin/sh\nexit 0\n");
   await writeFile(
     join(bin, "npx"),
-    '#!/bin/bash\nset -e\ntest "$(cat config.txt)" = fork\nif [[ "$2" == build ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --output ]]; then touch "$2"; exit; fi; shift; done; fi\n',
+    '#!/bin/bash\nset -e\ntest "$(cat config.txt)" = fork\nif [[ "$3" == build ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --output ]]; then touch "$2"; exit; fi; shift; done; fi\n',
   );
   await chmod(join(bin, "npm"), 0o755);
   await chmod(join(bin, "npx"), 0o755);
