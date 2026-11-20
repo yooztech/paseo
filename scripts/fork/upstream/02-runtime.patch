@@ -1352,10 +1352,30 @@ index 8af60cd7bca88c004e2bf530d286d264bfca404a..af12fd34709ce6830869dea8b2a201ea
      writeWorkerLifecycleLog(paseoHome, "Ignoring invalid or unsupported HTTP proxy variable", {
        variable,
 diff --git a/packages/server/src/server/file-observer/index.test.ts b/packages/server/src/server/file-observer/index.test.ts
-index 92cb5bced418ee94128dbe06afe180d1304ef0ea..4a05f42a210ab61e500d8c309416caffe7727628 100644
+index 92cb5bced418ee94128dbe06afe180d1304ef0ea..c232ced124b31b243a5df55c89e8dfd3b5d57f35 100644
 --- a/packages/server/src/server/file-observer/index.test.ts
 +++ b/packages/server/src/server/file-observer/index.test.ts
-@@ -185,13 +185,25 @@ test("survives atomic replacement and remains observable", async () => {
+@@ -87,11 +87,17 @@ test("covers files populated immediately inside a newly created directory", asyn
+   await mkdir(createdDirectory, { recursive: true });
+   const firstPath = join(createdDirectory, "first.txt");
+   await writeFile(firstPath, "first");
+-  await expect.poll(() => events.map((event) => event.path)).toContain(firstPath);
++  // macOS FSEvents can deliver the first batch of a new directory well after
++  // Vitest's one-second default, especially on a loaded runner.
++  await expect
++    .poll(() => events.map((event) => event.path), { timeout: 10_000 })
++    .toContain(firstPath);
+ 
+   const secondPath = join(createdDirectory, "second.txt");
+   await writeFile(secondPath, "second");
+-  await expect.poll(() => events.map((event) => event.path)).toContain(secondPath);
++  await expect
++    .poll(() => events.map((event) => event.path), { timeout: 10_000 })
++    .toContain(secondPath);
+   await subscription.unsubscribe();
+ });
+ 
+@@ -185,13 +191,25 @@ test("survives atomic replacement and remains observable", async () => {
  test("classifies a removed file as deleted", async () => {
    const root = await createRoot();
    const target = join(root, "removed.txt");
@@ -1581,7 +1601,7 @@ index 3138ec9132c2fb62d1927519ac946131eb6bde94..4e48030d4fa296d6bcca7054458ed80d
    .strict();
  
 diff --git a/packages/server/src/server/plugins/lifecycle.e2e.test.ts b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
-index d08089ad3d690a62c2628004996767d55df25249..f0c016db3f30c8956e52c341245f376fefda73ba 100644
+index d08089ad3d690a62c2628004996767d55df25249..fcaa96df0f7d43a81e044a176723c8a54ea6deb6 100644
 --- a/packages/server/src/server/plugins/lifecycle.e2e.test.ts
 +++ b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
 @@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
@@ -1593,6 +1613,33 @@ index d08089ad3d690a62c2628004996767d55df25249..f0c016db3f30c8956e52c341245f376f
  import { BuiltinPluginLoader } from "./builtin/index.js";
  import { createPaseoApi } from "@getpaseo/client";
  
+@@ -257,7 +257,7 @@ test("metadata set at creation reaches the hooks, a before hook can add to it, a
+       path.join(directory, "paseo-plugin.json"),
+       JSON.stringify({
+         id: "metadata-hooks",
+-        requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++        requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+       }),
+     );
+     await writeFile(
+@@ -339,7 +339,7 @@ test("hooks tell a background agent from a normal one", async () => {
+       path.join(directory, "paseo-plugin.json"),
+       JSON.stringify({
+         id: "background-hooks",
+-        requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++        requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+       }),
+     );
+     await writeFile(
+@@ -421,7 +421,7 @@ test("metadata set at creation and through setMetadata survives a daemon restart
+       path.join(pluginDirectory, "paseo-plugin.json"),
+       JSON.stringify({
+         id: "metadata-restart",
+-        requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++        requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+       }),
+     );
+     // Returns an explicit object without `metadata`, as a plugin written before metadata existed.
 @@ -641,7 +641,7 @@ async function createProviderPlugin(
      path.join(directory, "paseo-plugin.json"),
      JSON.stringify({
@@ -1634,7 +1681,7 @@ index 042388447b4ae9eed43bd2fabe8373c61a6daab9..544ddf2f7e2c2a8b0061f2d2becd8764
    );
    await writeFile(
 diff --git a/packages/server/src/server/plugins/settings.e2e.test.ts b/packages/server/src/server/plugins/settings.e2e.test.ts
-index a6ccf3f2cc28ea667cd2636a19b2da5c70172e59..23bcd1ae908e869cd3691458eb764ba6ab02aeb7 100644
+index a6ccf3f2cc28ea667cd2636a19b2da5c70172e59..58843e71d10d2c1c8fd789a91350ccaec101e862 100644
 --- a/packages/server/src/server/plugins/settings.e2e.test.ts
 +++ b/packages/server/src/server/plugins/settings.e2e.test.ts
 @@ -1,4 +1,4 @@
@@ -1643,6 +1690,24 @@ index a6ccf3f2cc28ea667cd2636a19b2da5c70172e59..23bcd1ae908e869cd3691458eb764ba6
  import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
  import { tmpdir } from "node:os";
  import path from "node:path";
+@@ -18,7 +18,7 @@ test("server reads saved settings after daemon restart before any client connect
+     path.join(directory, "paseo-plugin.json"),
+     JSON.stringify({
+       id: "settings-startup",
+-      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+     }),
+   );
+   await writeFile(
+@@ -105,7 +105,7 @@ test("two clients share settings, observe changes, and preserve values through p
+       path.join(directory, "paseo-plugin.json"),
+       JSON.stringify({
+         id: "settings-test",
+-        requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++        requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+       }),
+     );
+     await writeFile(
 diff --git a/packages/server/src/server/service-proxy.test.ts b/packages/server/src/server/service-proxy.test.ts
 index eb679d5629825755225a8da50b41455691a3453f..c91be8217990fe7cfff6769433c7545f09c2a028 100644
 --- a/packages/server/src/server/service-proxy.test.ts
@@ -3559,7 +3624,7 @@ index 02aa8d4993ffe50dbb6aea89d741f96c04e84958..bb77d6afc32336cae4840ccb4f3df3ac
      for (let i = 0; i < 10 && runner.calls.length < 2; i += 1) {
        await Promise.resolve();
 diff --git a/packages/server/src/services/github-service.ts b/packages/server/src/services/github-service.ts
-index 189d53de5b2629f271e30c1dfe80c3b2496b59a6..100ba2f41cef8b9bd1471644fa61287bad127fca 100644
+index 189d53de5b2629f271e30c1dfe80c3b2496b59a6..47e24cfd391f66546766b905675b215f52f45f19 100644
 --- a/packages/server/src/services/github-service.ts
 +++ b/packages/server/src/services/github-service.ts
 @@ -13,6 +13,7 @@ import {
@@ -3809,7 +3874,7 @@ index 189d53de5b2629f271e30c1dfe80c3b2496b59a6..100ba2f41cef8b9bd1471644fa61287b
    const viewMatch = viewCandidate
      ? pickPullRequestCandidate({
          candidates: [viewCandidate],
-@@ -3003,40 +3016,75 @@ async function resolveCurrentPullRequestView(options: {
+@@ -3003,40 +3016,78 @@ async function resolveCurrentPullRequestView(options: {
    if (viewMatch?.status.state === "open") {
      return viewMatch.status;
    }
@@ -3858,7 +3923,10 @@ index 189d53de5b2629f271e30c1dfe80c3b2496b59a6..100ba2f41cef8b9bd1471644fa61287b
  
 -  const candidates = await listCurrentPullRequestCandidates({
 -    cwd: options.cwd,
-+  const repo = await getGitHubRepoView({ ...options, repo: originRepo ?? undefined });
++  // Read the checkout's own repository rather than naming the origin: this is
++  // metadata about the cwd, and `gh repo view --repo <origin>` would both
++  // duplicate the forge-web parent lookup and count as one.
++  const repo = await getGitHubRepoView(options);
 +  const forkOwner = repo?.owner?.login;
 +  if (!forkOwner) {
 +    // Repository metadata is unavailable; the single view lookup is all there is.
@@ -3911,7 +3979,7 @@ index 189d53de5b2629f271e30c1dfe80c3b2496b59a6..100ba2f41cef8b9bd1471644fa61287b
  }
  
  // A fork checkout's pull request lives in the parent repository, where only
-@@ -3175,8 +3223,13 @@ async function tryCurrentPullRequestView(options: {
+@@ -3175,8 +3226,13 @@ async function tryCurrentPullRequestView(options: {
    headRef: string;
    args?: string[];
    run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
@@ -3926,7 +3994,7 @@ index 189d53de5b2629f271e30c1dfe80c3b2496b59a6..100ba2f41cef8b9bd1471644fa61287b
    try {
      const stdout = await runCurrentPullRequestStatusCommand({
        cwd: options.cwd,
-@@ -3199,8 +3252,12 @@ async function listCurrentPullRequestCandidates(options: {
+@@ -3199,8 +3255,12 @@ async function listCurrentPullRequestCandidates(options: {
    cwd: string;
    headRef: string;
    run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;

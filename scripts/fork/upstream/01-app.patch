@@ -370,10 +370,33 @@ index d6fa4b762220b200bc5357bceb75a820f0185b95..6003d391fb8e1b96360aa75be65fd24d
        const entries = await menu.getByRole("menuitem").allTextContents();
        expect(entries.findIndex((entry) => entry.startsWith("Terminal"))).toBeLessThan(
 diff --git a/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts b/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts
-index f32812cf16d0c20c80606c3ad20f6d6e215109b9..b0b11389cd2a208165128f0c26fab9df36bd6ceb 100644
+index f32812cf16d0c20c80606c3ad20f6d6e215109b9..b5a6f855b9f3e66fe3964affef3fd4d0fcae5147 100644
 --- a/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts
 +++ b/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts
-@@ -184,8 +184,10 @@ async function relayDaemon(
+@@ -88,9 +88,19 @@ async function answerArchiveWarning(
+   return await warning;
+ }
+ 
+-// A clean Paseo worktree's primary git action in the workspace header is Archive.
+-function gitActionsArchiveButton(page: Page) {
+-  return page.getByTestId("changes-primary-cta").and(page.getByLabel("Archive workspace"));
++// The fork keeps Archive as a secondary action, so a clean Paseo worktree's
++// workspace header presents it inside the actions menu instead of as the
++// primary CTA.
++async function clickGitActionsArchive(page: Page): Promise<void> {
++  await page.locator('[data-testid="changes-actions-menu-trigger"]:visible').first().click();
++  await page.getByTestId("workspace-archive-action").click();
++  // The actions menu stays open after a secondary item runs; leave it the way a
++  // user would before clicking anything behind its backdrop.
++  const backdrop = page.locator('[data-testid="changes-primary-cta-menu-backdrop"]:visible');
++  if ((await backdrop.count()) > 0) {
++    await page.keyboard.press("Escape");
++    await expect(backdrop).toHaveCount(0);
++  }
+ }
+ 
+ async function clickRowArchiveButton(page: Page, workspaceId: string): Promise<void> {
+@@ -184,8 +194,10 @@ async function relayDaemon(
            isDirty: null,
            baseRef: null,
            aheadBehind: null,
@@ -384,6 +407,24 @@ index f32812cf16d0c20c80606c3ad20f6d6e215109b9..b0b11389cd2a208165128f0c26fab9df
            hasRemote: false,
            remoteUrl: null,
            error: { code: "UNKNOWN", message: "git status failed" },
+@@ -427,7 +439,7 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
+     const openedRoute = await archiveWhileOpeningAnotherWorkspace(
+       page,
+       "archive-risk-switch-git",
+-      () => gitActionsArchiveButton(page).click(),
++      () => clickGitActionsArchive(page),
+     );
+     await expectAppRoute(page, openedRoute);
+   });
+@@ -440,7 +452,7 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
+     await workspaceRow(page, worktree.workspaceId).click();
+     await expectAppRoute(page, buildHostWorkspaceRoute(getServerId(), worktree.workspaceId));
+ 
+-    await gitActionsArchiveButton(page).click();
++    await clickGitActionsArchive(page);
+ 
+     await expect.poll(() => new URL(page.url()).pathname).toBe("/new");
+     await expectWorkspaceAbsentFromSidebar(page, worktree.workspaceId);
 diff --git a/packages/app/e2e/support/helpers/explorer-plugin-menu.ts b/packages/app/e2e/support/helpers/explorer-plugin-menu.ts
 index ccccac8570cc8d4d58cb25bc937d848820dcccb0..41acca9ea57807507077e57b3306eb9462392f1f 100644
 --- a/packages/app/e2e/support/helpers/explorer-plugin-menu.ts
@@ -607,6 +648,19 @@ index 77daed289e7a4abac6163270ff57389e143f0608..56d38951d12cdfe7d695071f70f356e8
 +    fontSize: theme.fontSize.base,
 +  },
  }));
+diff --git a/packages/app/src/git/actions-split-button.tsx b/packages/app/src/git/actions-split-button.tsx
+index eb52e5ca538da21d779be552290af52a4bd19dbb..5ab4f21394427695e6e4d8c9b92dcc84b2dafdd9 100644
+--- a/packages/app/src/git/actions-split-button.tsx
++++ b/packages/app/src/git/actions-split-button.tsx
+@@ -134,7 +134,7 @@ export function GitActionsSplitButton({
+     ...actionsWithoutPrimary(gitActions),
+   ];
+ 
+-  if (menuOnly) {
++  if (menuOnly || !gitActions.primary) {
+     if (menuOnlyActions.length === 0) {
+       return null;
+     }
 diff --git a/packages/app/src/git/forge-url.test.ts b/packages/app/src/git/forge-url.test.ts
 index c9efa7b9b0250541ea9d5301cc135de07da82ecb..4a0e9a90bf46e233169a12b0f98cb302cacb81ac 100644
 --- a/packages/app/src/git/forge-url.test.ts
