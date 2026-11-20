@@ -18,6 +18,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 vi.mock("react-native", () => ({
   Keyboard: { dismiss: vi.fn() },
+  Platform: { OS: "web" },
   Pressable: ({ children }: { children: ReactNode }) => <button type="button">{children}</button>,
   Text: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   View: ({ children }: { children: ReactNode }) => <div>{children}</div>,

@@ -60,7 +60,7 @@ jobs:
       - name: Validate fork release wrappers
         shell: bash
         working-directory: ${{ github.workspace }}
-        run: node --test scripts/fork/release/release.test.mjs scripts/app-build.test.mjs scripts/trigger-fork-app-eas.test.mjs
+        run: node --test scripts/fork/release/release.test.mjs scripts/app-build.test.mjs
 
       - uses: actions/setup-node@v4
         with:

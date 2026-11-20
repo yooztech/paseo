@@ -1,0 +1,48 @@
+name: App iOS Release
+
+on:
+  push:
+    tags: ["app-v*-fork.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-ios-release
+  cancel-in-progress: false
+
+jobs:
+  release_ios:
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 180
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Fetch release tags
+        run: git fetch --tags --force origin
+      - name: Apply fork patches
+        run: node scripts/fork/upstream.mjs ci-apply
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+      - name: Build app dependencies
+        run: npm run build:app-deps
+      - name: Build and submit iOS app
+        run: bash scripts/fork/app-build.sh
+      - name: Upload IPA
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-ipa-${{ github.ref_name }}
+          path: packages/app/dist/*.ipa
+          if-no-files-found: ignore
+          retention-days: 7

@@ -23,11 +23,15 @@ if [[ "${#matching_tags[@]}" -ne 1 ]]; then
   exit 1
 fi
 release_tag="${matching_tags[0]}"
+if [[ "$(git -C "$source_root" rev-parse "${release_tag}^{commit}")" != "$(git -C "$source_root" rev-parse HEAD)" ]]; then
+  printf 'Release tag %s does not point at HEAD.\n' "$release_tag" >&2
+  exit 1
+fi
 ipa_path="$app_dir/dist/${release_tag}.ipa"
 mkdir -p "$(dirname "$ipa_path")"
 rm -f "$ipa_path"
 cd "$app_dir"
-PASEO_RELEASE_TAG="$release_tag" npx eas build --platform ios --profile production --local --output "$ipa_path"
+PASEO_RELEASE_TAG="$release_tag" EAS_NO_VCS=1 npx eas build --platform ios --profile production --local --non-interactive --output "$ipa_path"
 if [[ ! -f "$ipa_path" ]]; then
   printf 'Local iOS build completed without producing %s\n' "$ipa_path" >&2
   exit 1
@@ -35,7 +39,7 @@ fi
 submit_attempts=3
 submit_retry_delay_seconds=15
 for ((submit_attempt = 1; submit_attempt <= submit_attempts; submit_attempt++)); do
-  if npx eas submit --platform ios --profile production --path "$ipa_path"; then
+  if npx eas submit --platform ios --profile production --path "$ipa_path" --non-interactive; then
     printf 'Submitted %s from %s\n' "$release_tag" "$ipa_path"
     exit 0
   fi

@@ -32,6 +32,10 @@
     "typecheck": {
       "command": "node ./scripts/fork/upstream.mjs run -- npm run typecheck; status=$?; exit $status"
     },
+    "ci-patch-build": {
+      "type": "script",
+      "command": "node ./scripts/ci-patch-build.mjs; status=$?; exit $status"
+    },
     "release-fork-daemon": {
       "type": "script",
       "command": "node ./scripts/release-fork-daemon.mjs; status=$?; exit $status"
@@ -43,10 +47,6 @@
     "release-fork-app": {
       "type": "script",
       "command": "node ./scripts/release-fork-app.mjs; status=$?; exit $status"
-    },
-    "release-fork-app-eas": {
-      "type": "script",
-      "command": "node ./scripts/trigger-fork-app-eas.mjs; status=$?; exit $status"
     }
   }
 }

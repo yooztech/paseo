@@ -248,10 +248,6 @@ test("release preflight and publication use the pinned version and canonical pat
       path.join(runtime, "scripts/fork/release/release.mjs"),
     );
     copyFileSync(
-      new URL("../../trigger-fork-app-eas.mjs", import.meta.url),
-      path.join(runtime, "scripts/trigger-fork-app-eas.mjs"),
-    );
-    copyFileSync(
       new URL("./launch.mjs", import.meta.url),
       path.join(runtime, "scripts/fork/release/launch.mjs"),
     );

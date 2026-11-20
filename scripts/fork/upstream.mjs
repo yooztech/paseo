@@ -44,11 +44,11 @@ authoritative if its label is absent; moved labels are rejected.
 Daily development and releases use downstream/patch-build. Update selects the latest
 official release tag and commit, replays patches, and leaves changes for review and commit.
 
-App releases use EAS Workflow remote checkout, not local source uploads:
+App releases build locally on the macmini runner, not on EAS build machines:
   node scripts/fork/upstream.mjs run -- npm run release:fork:app
-The fork Expo project must be linked to this GitHub repository. The release command
-publishes the app tag and dispatches release-mobile.yml at its exact commit SHA;
-each cloud checkout applies patches before building or submitting the same iOS build.
+The release command publishes the app tag; that tag push starts app-ios-release.yml
+on the self-hosted macOS runner, which applies patches, runs eas build --local, and
+submits the resulting IPA to TestFlight.
 `;
 
 function fail(message) {

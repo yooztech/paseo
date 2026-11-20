@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PATCH_BRANCH, readPinnedPackage } from "../source.mjs";
-import { triggerForkAppEas } from "../../trigger-fork-app-eas.mjs";
 
 function sourceState() {
   try {
@@ -197,5 +196,7 @@ export function releaseForkDesktop() {
 export function releaseForkApp() {
   const metadata = preflight("app");
   publish(metadata);
-  triggerForkAppEas();
+  console.log(
+    `Published ${metadata.sourceTag}. The macmini runner will build and submit it via GitHub Actions (app-ios-release).`,
+  );
 }

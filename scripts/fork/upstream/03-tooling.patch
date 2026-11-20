@@ -136,6 +136,27 @@ index 008b77d15f39f62b6b702429531fb41768d9af2c..657a7076a227551144ee9be83af2c813
  
  const children = new Map();
  let stopping = false;
+diff --git a/packages/desktop/src/daemon/daemon-manager.ts b/packages/desktop/src/daemon/daemon-manager.ts
+index 44076bbc4bfc5281fad66638d82aade0907c1a42..5d6589e92d8492f448f0837fb22593c77f187b2b 100644
+--- a/packages/desktop/src/daemon/daemon-manager.ts
++++ b/packages/desktop/src/daemon/daemon-manager.ts
+@@ -272,7 +272,15 @@ function shouldRestartForVersion(current: DesktopDaemonStatus): boolean {
+   if (!current.desktopManaged) return false;
+   const appVersion = normalizeVersion(resolveDesktopAppVersion());
+   const daemonVersion = normalizeVersion(current.version);
+-  return Boolean(appVersion && daemonVersion && appVersion !== daemonVersion);
++  if (!appVersion || !daemonVersion) return false;
++  if (appVersion === daemonVersion) return false;
++  // A fork checkout reports the git tag (X-fork.N) while an unstamped desktop
++  // build reports the package version (X). Treat those as the same release, but
++  // still restart between two distinct fork builds of the same base version.
++  const appBase = appVersion.replace(/-fork\.\d+$/, "");
++  const daemonBase = daemonVersion.replace(/-fork\.\d+$/, "");
++  if (appBase !== daemonBase) return true;
++  return appVersion !== appBase && daemonVersion !== daemonBase;
+ }
+ 
+ function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
 diff --git a/packages/desktop/src/features/app-update-service.test.ts b/packages/desktop/src/features/app-update-service.test.ts
 index 5f55ff609916107d30beb0fa0df5dfa81188da34..8bffda0e2843fcb976327440b0b70ab5860035f8 100644
 --- a/packages/desktop/src/features/app-update-service.test.ts
@@ -459,7 +480,7 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
-index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e5537836a76 100644
+index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff4237c62fee 100644
 --- a/scripts/ci-workflow.test.mjs
 +++ b/scripts/ci-workflow.test.mjs
 @@ -11,6 +11,12 @@ const repoRoot = new URL("../", import.meta.url);
@@ -592,11 +613,12 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
    assert.match(trigger, /pull_request:\s*\n\s+paths:/);
    assert.match(trigger, /- "packages\/desktop\/\*\*"/);
    assert.doesNotMatch(source, /dorny\/paths-filter/);
-@@ -379,32 +454,53 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
+@@ -379,32 +454,63 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
    }
  });
  
 -test("stable iOS releases upload once and distribute to external testers before App Store review", () => {
+-  const source = readFileSync(
 +test("fork daemon, desktop, and app releases use separate commands and tags", () => {
 +  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
 +  const paseoJson = JSON.parse(readFileSync(new URL("paseo.json", repoRoot), "utf8"));
@@ -606,9 +628,10 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
 +    "node scripts/release-fork-desktop.mjs",
 +  );
 +  assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
++  assert.equal(paseoJson.scripts["release-fork-app-eas"], undefined);
 +  assert.match(
-+    paseoJson.scripts["release-fork-app-eas"].command,
-+    /^node \.\/scripts\/trigger-fork-app-eas\.mjs(?:;|$)/,
++    paseoJson.scripts["release-fork-app"].command,
++    /^node \.\/scripts\/release-fork-app\.mjs(?:;|$)/,
 +  );
 +
 +  const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
@@ -633,12 +656,12 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
 +  );
 +});
 +
-+test("fork iOS release builds and submits the same artifact", () => {
-   const source = readFileSync(
++test("fork iOS releases build on the macmini runner instead of EAS", () => {
++  const easWorkflow = readFileSync(
      new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot),
      "utf8",
    );
-   const jobs = jobBlocks(source);
+-  const jobs = jobBlocks(source);
 -  const uploads = [...jobs.entries()].filter(
 -    ([, lines]) =>
 -      lines.some((line) => /^    type: (submit|testflight)$/.test(line)) &&
@@ -657,17 +680,26 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
 -  assert.match(
 -    review,
 -    /APP_BUILD_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_build_version \}\}"/,
--  );
++  const easTrigger = easWorkflow.split("jobs:", 1)[0];
++  assert.doesNotMatch(easTrigger, /push:/);
++  assert.match(easTrigger, /workflow_dispatch:/);
++  assert.doesNotMatch(easWorkflow, /type: submit/);
++
++  const source = readFileSync(new URL(".github/workflows/app-ios-release.yml", repoRoot), "utf8");
++  const trigger = source.split("jobs:", 1)[0];
++  assert.match(trigger, /push:\s*\n\s+tags: \["app-v\*-fork\.\*"\]/);
++  const job = jobBlocks(source).get("release_ios").join("\n");
++  assert.match(job, /runs-on: \[self-hosted, macOS\]/);
++  assert.match(job, /secrets\.EXPO_TOKEN/);
++  assert.ok(
++    job.indexOf("node scripts/fork/upstream.mjs ci-apply") <
++      job.indexOf("bash scripts/fork/app-build.sh"),
+   );
 -  assert.match(review, /bundle exec fastlane ios submit_review/);
-+  assert.match(jobs.get("build_ios").join("\n"), /^    type: build$/m);
-+  const submit = jobs.get("submit_ios").join("\n");
-+  assert.match(submit, /^    type: submit$/m);
-+  assert.match(submit, /needs: \[build_ios\]/);
-+  assert.match(submit, /build_id: \$\{\{ needs\.build_ios\.outputs\.build_id \}\}/);
  });
  
  test("eight Playwright shards share two-worker coverage", () => {
-@@ -461,12 +557,13 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -461,12 +567,13 @@ test("quality preserves commands and routes each domain independently after fail
      Object.values(commands).flat(),
    );
    const domains = Object.keys(commands);
@@ -686,7 +718,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
        steps: { install: { outcome: installed ? "success" : "failure" } },
        cancelled: () => cancelled,
        success: () => false,
-@@ -474,6 +571,7 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -474,6 +581,7 @@ test("quality preserves commands and routes each domain independently after fail
    }
    const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
    const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
@@ -694,7 +726,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
    assert.equal(accepts(jobCondition, disabled), false);
    for (const selected of domains) {
      const outputs = { ...disabled, [selected]: "true" };
-@@ -483,12 +581,24 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -483,12 +591,24 @@ test("quality preserves commands and routes each domain independently after fail
      }
    }
    for (const [, expression] of checks) {
@@ -720,7 +752,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
  });
  
  test("Windows units and integration run independently with complete routed coverage", () => {
-@@ -546,10 +656,9 @@ test("Windows units and integration run independently with complete routed cover
+@@ -546,10 +666,9 @@ test("Windows units and integration run independently with complete routed cover
    function condition(job) {
      return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
    }
@@ -733,7 +765,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e55
      });
    }
    const unitCondition = condition(windows);
-@@ -577,8 +686,10 @@ test("Windows units and integration run independently with complete routed cover
+@@ -577,8 +696,10 @@ test("Windows units and integration run independently with complete routed cover
      assert.equal(selected(unitStep, outputs), integrations);
      assert.equal(selected(pluginStep, outputs), integrations);
      assert.equal(selected(hubStep, outputs), hub);

@@ -369,6 +369,21 @@ index d6fa4b762220b200bc5357bceb75a820f0185b95..6003d391fb8e1b96360aa75be65fd24d
        await expect(menu.getByRole("menuitem", { name: /^Terminal/ })).toBeVisible();
        const entries = await menu.getByRole("menuitem").allTextContents();
        expect(entries.findIndex((entry) => entry.startsWith("Terminal"))).toBeLessThan(
+diff --git a/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts b/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts
+index f32812cf16d0c20c80606c3ad20f6d6e215109b9..b0b11389cd2a208165128f0c26fab9df36bd6ceb 100644
+--- a/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts
++++ b/packages/app/e2e/browser/worktree-archive-risk-warning.spec.ts
+@@ -184,8 +184,10 @@ async function relayDaemon(
+           isDirty: null,
+           baseRef: null,
+           aheadBehind: null,
++          hasChangesFromBase: null,
+           aheadOfOrigin: null,
+           behindOfOrigin: null,
++          hasChangesFromOrigin: null,
+           hasRemote: false,
+           remoteUrl: null,
+           error: { code: "UNKNOWN", message: "git status failed" },
 diff --git a/packages/app/e2e/support/helpers/explorer-plugin-menu.ts b/packages/app/e2e/support/helpers/explorer-plugin-menu.ts
 index ccccac8570cc8d4d58cb25bc937d848820dcccb0..41acca9ea57807507077e57b3306eb9462392f1f 100644
 --- a/packages/app/e2e/support/helpers/explorer-plugin-menu.ts

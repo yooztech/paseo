@@ -16,17 +16,24 @@ async function createHarness(t, submitFailures) {
   const binDir = join(root, "bin");
   const submitCountFile = join(root, "submit-count");
   const sleepLogFile = join(root, "sleep-log");
+  const buildLogFile = join(root, "build-log");
   await mkdir(appDir, { recursive: true });
   await mkdir(binDir, { recursive: true });
   await mkdir(join(root, "scripts/fork"), { recursive: true });
   await mkdir(join(root, ".dev"), { recursive: true });
   await writeFile(
     join(root, ".dev/fork-build-state.json"),
-    JSON.stringify({ sourceRoot: root, sourceHead: "app-v0.5.0-fork.2" }),
+    JSON.stringify({
+      sourceRoot: root,
+      sourceHead: "1111111111111111111111111111111111111111",
+    }),
   );
   await writeFile(join(root, "scripts/fork/app-build.sh"), appBuildScript);
   await writeFile(join(appDir, "package.json"), JSON.stringify({ version: "0.5.0" }));
-  await writeFile(join(binDir, "git"), '#!/usr/bin/env bash\nprintf "app-v0.5.0-fork.2\\n"\n');
+  await writeFile(
+    join(binDir, "git"),
+    '#!/usr/bin/env bash\nset -euo pipefail\nhead_sha="${GIT_HEAD_SHA:-1111111111111111111111111111111111111111}"\ntag_sha="${GIT_TAG_SHA:-$head_sha}"\ncase "$*" in\n  *"tag --points-at HEAD"*) printf \'app-v0.5.0-fork.2\\n\' ;;\n  *"rev-parse HEAD"*) printf \'%s\\n\' "$head_sha" ;;\n  *"rev-parse app-v0.5.0-fork.2^{commit}"*) printf \'%s\\n\' "$tag_sha" ;;\n  *) exit 1 ;;\nesac\n',
+  );
   await writeFile(
     join(binDir, "sleep"),
     '#!/usr/bin/env bash\nprintf "%s\\n" "$1" >> "$SLEEP_LOG_FILE"\n',
@@ -36,6 +43,10 @@ async function createHarness(t, submitFailures) {
     `#!/usr/bin/env bash
 set -euo pipefail
 if [[ "$1" == "eas" && "$2" == "build" ]]; then
+  [[ "\${EAS_NO_VCS:-}" == "1" ]] || exit 43
+  [[ "\${PASEO_RELEASE_TAG:-}" == "app-v0.5.0-fork.2" ]] || exit 44
+  printf '%s\\n' "$@" > "$BUILD_LOG_FILE"
+  case " $* " in *" --non-interactive "*) ;; *) exit 45 ;; esac
   while [[ "$#" -gt 0 ]]; do
     if [[ "$1" == "--output" ]]; then
       mkdir -p "$(dirname "$2")"
@@ -47,6 +58,7 @@ if [[ "$1" == "eas" && "$2" == "build" ]]; then
   exit 2
 fi
 if [[ "$1" == "eas" && "$2" == "submit" ]]; then
+  case " $* " in *" --non-interactive "*) ;; *) exit 46 ;; esac
   count=0
   if [[ -f "$SUBMIT_COUNT_FILE" ]]; then
     count="$(cat "$SUBMIT_COUNT_FILE")"
@@ -71,20 +83,22 @@ exit 2
     root,
     submitCountFile,
     sleepLogFile,
+    buildLogFile,
     env: {
       ...process.env,
       PATH: `${binDir}:${process.env.PATH}`,
       SUBMIT_COUNT_FILE: submitCountFile,
       SUBMIT_FAILURES: String(submitFailures),
       SLEEP_LOG_FILE: sleepLogFile,
+      BUILD_LOG_FILE: buildLogFile,
     },
   };
 }
 
-function runAppBuild(harness) {
+function runAppBuild(harness, env = {}) {
   return spawnSync("bash", ["scripts/fork/app-build.sh"], {
     cwd: harness.root,
-    env: harness.env,
+    env: { ...harness.env, ...env },
     encoding: "utf8",
   });
 }
@@ -100,6 +114,9 @@ test("retries a failed EAS submit with exponential backoff", async (t) => {
   assert.match(result.stderr, /Submit attempt 1\/3 failed; retrying in 15 seconds/);
   assert.match(result.stderr, /Submit attempt 2\/3 failed; retrying in 30 seconds/);
   assert.match(result.stdout, /Submitted app-v0\.5\.0-fork\.2/);
+  const buildArgs = (await readFile(harness.buildLogFile, "utf8")).split("\n").filter(Boolean);
+  for (const flag of ["--local", "--non-interactive", "--platform", "--output"])
+    assert.ok(buildArgs.includes(flag), `expected build args to include ${flag}`);
 });
 
 test("fails after the final EAS submit attempt without another delay", async (t) => {
@@ -111,6 +128,19 @@ test("fails after the final EAS submit attempt without another delay", async (t)
   assert.equal(await readFile(harness.submitCountFile, "utf8"), "3");
   assert.equal(await readFile(harness.sleepLogFile, "utf8"), "15\n30\n");
   assert.match(result.stderr, /Failed to submit app-v0\.5\.0-fork\.2 after 3 attempts/);
+});
+
+test("fails when the release tag does not point at HEAD", async (t) => {
+  const harness = await createHarness(t, 0);
+
+  const result = runAppBuild(harness, {
+    GIT_TAG_SHA: "2222222222222222222222222222222222222222",
+  });
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /does not point at HEAD/);
+  await assert.rejects(readFile(harness.submitCountFile), { code: "ENOENT" });
+  await assert.rejects(readFile(harness.buildLogFile), { code: "ENOENT" });
 });
 
 test("wrapper builds in a materialized worktree while retaining the real source tag", async (t) => {

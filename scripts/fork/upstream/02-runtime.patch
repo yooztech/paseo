@@ -215,7 +215,7 @@ index d6b96f2eb4bd05c8437866c54adf8261f7f5d297..00000000000000000000000000000000
 -  });
 -});
 diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
-index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d600613428e12 100644
+index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..84e620e1d34eb80b41c798f8f0635873a3139d38 100644
 --- a/packages/protocol/src/messages.ts
 +++ b/packages/protocol/src/messages.ts
 @@ -116,6 +116,37 @@ import {
@@ -256,21 +256,41 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
  import {
    PaseoConfigRawSchema,
    PaseoLifecycleCommandRawSchema,
-@@ -192,6 +223,13 @@ const MutableStructuredGenerationProviderSchema = z
- const MutableMetadataGenerationConfigSchema = z
-   .object({
-     providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
-+    commitMessage: z
-+      .object({
-+        onFailure: z.enum(["placeholder", "fail"]).optional(),
-+        instructions: z.string().optional(),
-+      })
-+      .passthrough()
-+      .optional(),
+@@ -189,9 +220,24 @@ const MutableStructuredGenerationProviderSchema = z
    })
    .passthrough();
  
-@@ -2611,7 +2649,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
++const MutableCommitMessageConfigSchema = z
++  .object({
++    onFailure: z.enum(["placeholder", "fail"]).optional(),
++    instructions: z.string().optional(),
++  })
++  .passthrough();
++
+ const MutableMetadataGenerationConfigSchema = z
+   .object({
+     providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
++    commitMessage: MutableCommitMessageConfigSchema.optional(),
++  })
++  .passthrough();
++
++const MutableMetadataGenerationConfigPatchSchema = z
++  .object({
++    providers: z.array(MutableStructuredGenerationProviderSchema).optional(),
++    commitMessage: MutableCommitMessageConfigSchema.optional(),
+   })
+   .passthrough();
+ 
+@@ -270,7 +316,7 @@ export const MutableDaemonConfigPatchSchema = z
+       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
+       .optional(),
+     removeProviders: z.array(z.string().min(1)).optional(),
+-    metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
++    metadataGeneration: MutableMetadataGenerationConfigPatchSchema.optional(),
+     autoArchiveAfterMerge: z.boolean().optional(),
+     enableTerminalAgentHooks: z.boolean().optional(),
+     idleRuntimeCleanup: z.boolean().optional(),
+@@ -2611,7 +2657,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
    cwd: z.string(),
    requestId: z.string(),
  });
@@ -278,7 +298,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
  export const CheckoutCommitFileDiffRequestSchema = z.object({
    type: z.literal("checkout.commits.file_diff.request"),
    cwd: z.string(),
-@@ -2654,6 +2691,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
+@@ -2654,6 +2699,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
    CheckoutCheckDetailsRequestPayloadSchema.extend({
      type: z.literal("checkout.github.get_check_details.request"),
    });
@@ -292,7 +312,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
  
  export const CheckoutPrStatusRequestSchema = z.object({
    type: z.literal("checkout_pr_status_request"),
-@@ -3654,9 +3698,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+@@ -3654,9 +3706,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeRequestSchema,
    CheckoutGithubSetAutoMergeRequestSchema,
    CheckoutCommitsListRequestSchema,
@@ -307,7 +327,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
    CheckoutPrStatusRequestSchema,
    PullRequestTimelineRequestSchema,
    CheckoutSwitchBranchRequestSchema,
-@@ -3965,6 +4014,8 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -3965,6 +4022,8 @@ export const ServerInfoStatusPayloadSchema = z
          // gate and githubCheckDetails fallback after 2027-01-17 once the
          // supported daemon floor is >= v0.2.0.
          forgeCheckDetails: z.boolean().optional(),
@@ -316,7 +336,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
          // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
          // and github_search fallback after 2027-01-17 once the supported daemon
          // floor is >= v0.2.0.
-@@ -4089,6 +4140,13 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -4089,6 +4148,13 @@ export const ServerInfoStatusPayloadSchema = z
          commitsList: z.boolean().optional(),
          // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
          commitBaseClassification: z.boolean().optional(),
@@ -330,7 +350,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
          // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
          providerRemoval: z.boolean().optional(),
          // COMPAT(hopliteProvider): added after v0.11.2, remove after 2027-04-15 once host floor includes the bundled adapter.
-@@ -4377,8 +4435,10 @@ const WorkspaceGitRuntimePayloadSchema = z
+@@ -4377,8 +4443,10 @@ const WorkspaceGitRuntimePayloadSchema = z
        })
        .nullable()
        .optional(),
@@ -341,7 +361,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
    })
    .optional()
    .nullable();
-@@ -5746,8 +5806,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
+@@ -5746,8 +5814,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.null(),
    baseRef: z.null(),
    aheadBehind: z.null(),
@@ -352,7 +372,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
    hasRemote: z.boolean(),
    remoteUrl: z.null(),
  });
-@@ -5761,8 +5823,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5761,8 +5831,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string().nullable(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -363,7 +383,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -5776,8 +5840,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5776,8 +5848,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -374,7 +394,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -6087,7 +6153,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
+@@ -6087,7 +6161,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -382,7 +402,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
  export const CheckoutCommitFileDiffResponseSchema = z.object({
    type: z.literal("checkout.commits.file_diff.response"),
    payload: z.object({
-@@ -6204,6 +6269,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
+@@ -6204,6 +6277,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -401,7 +421,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
  
  export const CheckoutPrStatusResponseSchema = z.object({
    type: z.literal("checkout_pr_status_response"),
-@@ -7588,9 +7665,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+@@ -7588,9 +7673,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeResponseSchema,
    CheckoutGithubSetAutoMergeResponseSchema,
    CheckoutCommitsListResponseSchema,
@@ -416,7 +436,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
    CheckoutPrStatusResponseSchema,
    PullRequestTimelineResponseSchema,
    CheckoutSwitchBranchResponseSchema,
-@@ -7972,6 +8054,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
+@@ -7972,6 +8062,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
  export type CheckoutCommit = z.infer<typeof CheckoutCommitSchema>;
  export type CheckoutCommitsListRequest = z.infer<typeof CheckoutCommitsListRequestSchema>;
  export type CheckoutCommitsListResponse = z.infer<typeof CheckoutCommitsListResponseSchema>;
@@ -447,7 +467,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
  export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
  export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
  export type ParsedDiffFile = z.infer<typeof ParsedDiffFileSchema>;
-@@ -7998,6 +8104,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
+@@ -7998,6 +8112,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
  export type CheckoutGithubGetCheckDetailsRequest = z.infer<
    typeof CheckoutGithubGetCheckDetailsRequestSchema
  >;
@@ -457,7 +477,7 @@ index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d6006
  export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
  export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
  export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
-@@ -8009,6 +8118,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
+@@ -8009,6 +8126,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
  export type CheckoutGithubGetCheckDetailsResponse = z.infer<
    typeof CheckoutGithubGetCheckDetailsResponseSchema
  >;
@@ -1681,7 +1701,7 @@ index 24bfd80c935c717c04e244a8a8f4976bc507c1c8..9db652fd39b3cdadaa1e19413a2c8e90
    };
  }
 diff --git a/packages/server/src/server/session.test.ts b/packages/server/src/server/session.test.ts
-index 83ed7674603f4048f2103c5409f3b9187fa8aaf1..d6e60147298630b6876082ca6868c33286fd480d 100644
+index 83ed7674603f4048f2103c5409f3b9187fa8aaf1..fd67ca5d0af57eae03f25d467ae1f3e21cd521f9 100644
 --- a/packages/server/src/server/session.test.ts
 +++ b/packages/server/src/server/session.test.ts
 @@ -318,6 +318,7 @@ interface SessionForTestOptions {
@@ -1700,7 +1720,13 @@ index 83ed7674603f4048f2103c5409f3b9187fa8aaf1..d6e60147298630b6876082ca6868c332
      suggestBranchesForCwd: vi.fn(),
      listStashes: vi.fn(),
  
-@@ -4184,6 +4186,8 @@ describe("session checkout status handling", () => {
+@@ -4180,10 +4182,14 @@ describe("session checkout status handling", () => {
+         currentBranch: "feature/service",
+         isDirty: true,
+         baseRef: "main",
++        baseRefExact: null,
++        comparisonBaseRef: null,
+         aheadBehind: { ahead: 2, behind: 1 },
          aheadOfOrigin: 2,
          behindOfOrigin: 1,
          upstreamRef: null,
@@ -1710,7 +1736,7 @@ index 83ed7674603f4048f2103c5409f3b9187fa8aaf1..d6e60147298630b6876082ca6868c332
          remoteUrl: "https://github.com/getpaseo/paseo.git",
          isPaseoOwnedWorktree: false,
 diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
-index fcdbbae1edb3cffaefe76495f5725f3d2f61daf4..740d620f34c7b704735866311bb250fed3fe3c0a 100644
+index fcdbbae1edb3cffaefe76495f5725f3d2f61daf4..20247efe24d52e0169032db421cce52ce547de81 100644
 --- a/packages/server/src/server/session.ts
 +++ b/packages/server/src/server/session.ts
 @@ -1061,6 +1061,8 @@ export class Session {
@@ -1718,7 +1744,7 @@ index fcdbbae1edb3cffaefe76495f5725f3d2f61daf4..740d620f34c7b704735866311bb250fe
          }),
          logger: this.sessionLogger,
 +        readCommitMessageConfig: () =>
-+          this.daemonConfigStore.get().metadataGeneration.commitMessage,
++          this.daemonConfigStore.get().metadataGeneration?.commitMessage,
        }),
        paseoHome: this.paseoHome,
        worktreesRoot: this.worktreesRoot,
@@ -4634,7 +4660,7 @@ index 13944108e2a15cafffedf1de4c7835c7305416f1..e95fd4c1ef4a6d9dc53e6b78e7af14e1
      writeFileSync(join(repoDir, "conflict.txt"), "base\n");
      execFileSync("git", ["add", "conflict.txt"], { cwd: repoDir });
 diff --git a/packages/server/src/utils/checkout-git.ts b/packages/server/src/utils/checkout-git.ts
-index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f94a43fa5 100644
+index c817ed5e9b05410115dc15deaa452bdeae9579a3..4c693122b62b9da05a24061f0d02b7033e02719f 100644
 --- a/packages/server/src/utils/checkout-git.ts
 +++ b/packages/server/src/utils/checkout-git.ts
 @@ -76,6 +76,8 @@ export type GitMutationRefreshReason =
@@ -4684,7 +4710,46 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
    hasRemote: boolean;
    remoteUrl: string | null;
    isPaseoOwnedWorktree: true;
-@@ -1847,7 +1857,7 @@ async function getAheadBehind(
+@@ -1802,17 +1812,21 @@ async function resolveQualifiedComparisonBaseRef(
+   return resolveCommitComparisonRef(cwd, ref, context);
+ }
+ 
+-async function resolveMostAheadBaseRef(cwd: string, baseRef: string): Promise<string> {
++async function resolveMostAheadBaseRef(
++  cwd: string,
++  baseRef: string,
++  context?: CheckoutContext,
++): Promise<string> {
+   if (isQualifiedBranchRef(baseRef)) {
+-    if (await doesGitRefExist(cwd, baseRef)) {
++    if (await doesGitRefExist(cwd, baseRef, context)) {
+       return baseRef;
+     }
+     throw new Error(`Base ref not found: ${baseRef}`);
+   }
+   const normalizedBaseRef = branchNameFromRef(baseRef);
+   const [hasLocal, hasOrigin] = await Promise.all([
+-    doesGitRefExist(cwd, `refs/heads/${normalizedBaseRef}`),
+-    doesGitRefExist(cwd, `refs/remotes/origin/${normalizedBaseRef}`),
++    doesGitRefExist(cwd, `refs/heads/${normalizedBaseRef}`, context),
++    doesGitRefExist(cwd, `refs/remotes/origin/${normalizedBaseRef}`, context),
+   ]);
+ 
+   if (hasLocal && !hasOrigin) {
+@@ -1822,10 +1836,10 @@ async function resolveMostAheadBaseRef(cwd: string, baseRef: string): Promise<st
+     return `origin/${normalizedBaseRef}`;
+   }
+   if (!hasLocal && !hasOrigin) {
+-    return resolveCommitComparisonRef(cwd, baseRef);
++    return resolveCommitComparisonRef(cwd, baseRef, context);
+   }
+ 
+-  const { stdout } = await runGitCommand(
++  const { stdout } = await getRunGitCommand(context)(
+     ["rev-list", "--left-right", "--count", `${normalizedBaseRef}...origin/${normalizedBaseRef}`],
+     { cwd, envOverlay: READ_ONLY_GIT_ENV },
+   );
+@@ -1847,7 +1861,7 @@ async function getAheadBehind(
    baseRef: string,
    currentBranch: string,
    context?: CheckoutContext,
@@ -4693,7 +4758,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
    const normalizedBaseRef = branchNameFromRef(baseRef);
    if (
      !normalizedBaseRef ||
-@@ -1856,38 +1866,43 @@ async function getAheadBehind(
+@@ -1856,38 +1870,43 @@ async function getAheadBehind(
    ) {
      return null;
    }
@@ -4701,7 +4766,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
 -    context?.facts?.isGit && context.facts.resolvedBaseRef === baseRef
 -      ? context.facts.comparisonBaseRef
 -      : await resolveBestComparisonBaseRef(cwd, baseRef, context);
-+  const comparisonBaseRef = await resolveMostAheadBaseRef(cwd, baseRef);
++  const comparisonBaseRef = await resolveMostAheadBaseRef(cwd, baseRef, context);
    if (!comparisonBaseRef) {
      return null;
    }
@@ -4752,7 +4817,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
  }
  
  async function getUpstreamStatus(
-@@ -1910,12 +1925,24 @@ async function getUpstreamStatus(
+@@ -1910,12 +1929,24 @@ async function getUpstreamStatus(
      }
      const ahead = Number.parseInt(track.match(/ahead (\d+)/)?.[1] ?? "0", 10);
      const behind = Number.parseInt(track.match(/behind (\d+)/)?.[1] ?? "0", 10);
@@ -4778,7 +4843,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
  interface CheckoutInspectionContext {
    worktreeRoot: string;
    currentBranch: string | null;
-@@ -2411,20 +2438,15 @@ export async function getCheckoutStatus(
+@@ -2411,20 +2442,15 @@ export async function getCheckoutStatus(
      return { isGit: false };
    }
  
@@ -4800,7 +4865,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
      baseRef && currentBranch
        ? await getAheadBehind(cwd, baseRef, currentBranch, factsContext)
        : null;
-@@ -2436,21 +2458,69 @@ export async function getCheckoutStatus(
+@@ -2436,21 +2462,69 @@ export async function getCheckoutStatus(
    const upstreamRef = upstreamStatus?.ref ?? null;
    const aheadOfOrigin = upstreamStatus?.aheadBehind.ahead ?? null;
    const behindOfOrigin = upstreamStatus?.aheadBehind.behind ?? null;
@@ -4809,7 +4874,8 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
 +    : null;
 +  const hasChangesFromBase = baseComparison?.hasChanges ?? null;
 +  const hasChangesFromOrigin = upstreamStatus?.hasChanges ?? null;
-+
+ 
+-  if (paseoWorktree.isPaseoOwnedWorktree && baseRef) {
 +  return buildCheckoutStatusFromFacts({
 +    facts,
 +    isDirty,
@@ -4850,8 +4916,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
 +  const { worktreeRoot, currentBranch, remoteUrl, paseoWorktree, resolvedBaseRef, mainRepoRoot } =
 +    facts;
 +  const hasRemote = remoteUrl !== null;
- 
--  if (paseoWorktree.isPaseoOwnedWorktree && baseRef) {
++
 +  if (paseoWorktree.isPaseoOwnedWorktree && resolvedBaseRef) {
      return {
        isGit: true,
@@ -4873,7 +4938,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
        hasRemote,
        remoteUrl,
        isPaseoOwnedWorktree: true,
-@@ -2465,12 +2535,14 @@ export async function getCheckoutStatus(
+@@ -2465,12 +2539,14 @@ export async function getCheckoutStatus(
      currentBranch,
      isDirty,
      baseRef: displayBaseRef,
@@ -4889,7 +4954,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
      hasRemote,
      remoteUrl,
      isPaseoOwnedWorktree: false,
-@@ -2820,16 +2892,8 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
+@@ -2820,16 +2896,8 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
  }
  
  /**
@@ -4908,7 +4973,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
   */
  // COMPAT(diffSubscription): added in v0.15.0, remove after 2027-05-06.
  export async function getCommitFileDiff({
-@@ -2863,7 +2927,6 @@ export async function getCommitFileDiff({
+@@ -2863,7 +2931,6 @@ export async function getCommitFileDiff({
        envOverlay: READ_ONLY_GIT_ENV,
      },
    );
@@ -4916,20 +4981,20 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
    if (stdout.trim().length === 0) {
      return null;
    }
-@@ -2877,19 +2940,18 @@ export async function getCommitFileDiff({
+@@ -2877,19 +2944,18 @@ export async function getCommitFileDiff({
    // Including the rename source lets Git pair it with the destination. Select
    // the requested entry if another change also matches the source path.
    const file = parsedFiles.find((candidate) => candidate.path === path) ?? null;
 -  if (!file) {
--    return null;
--  }
++  if (!file || (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout))) {
+     return null;
+   }
 -
 -  // Binary changes carry a "Binary files ... differ" marker and no hunks; there
 -  // is nothing textual to render, so report them as absent.
 -  if (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout)) {
-+  if (!file || (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout))) {
-     return null;
-   }
+-    return null;
+-  }
 -
    return file;
  }
@@ -4943,7 +5008,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
  export interface CheckoutShortstat {
    additions: number;
    deletions: number;
-@@ -3102,6 +3164,7 @@ export async function getCheckoutShortstat(
+@@ -3102,6 +3168,7 @@ export async function getCheckoutShortstat(
  
  export interface CheckoutRefDerivedState {
    aheadBehind: AheadBehind | null;
@@ -4951,7 +5016,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
    diffStat: CheckoutShortstat | null;
    upstreamStatus: UpstreamStatus | null;
  }
-@@ -3163,7 +3226,7 @@ function getCheckoutRefMovement(
+@@ -3163,7 +3230,7 @@ function getCheckoutRefMovement(
  export async function getCheckoutRefDerivedState(
    cwd: string,
    facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
@@ -4960,7 +5025,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
    movedRemoteRefs: ReadonlySet<string>,
    context?: CheckoutContext,
  ): Promise<CheckoutRefDerivedState> {
-@@ -3177,12 +3240,29 @@ export async function getCheckoutRefDerivedState(
+@@ -3177,12 +3244,29 @@ export async function getCheckoutRefDerivedState(
    } = getCheckoutRefMovement(facts, movedRemoteRefs);
  
    let aheadBehind = current.aheadBehind;
@@ -4994,7 +5059,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
    }
    if (baseMoved || (upstreamMoved && currentBranch === normalizedResolvedBase)) {
      diffStat = await getCheckoutShortstatUncached(
-@@ -3194,21 +3274,39 @@ export async function getCheckoutRefDerivedState(
+@@ -3194,21 +3278,39 @@ export async function getCheckoutRefDerivedState(
  
    let upstreamStatus = facts.upstreamStatus;
    if (upstreamMoved && currentBranch && upstreamRef) {
@@ -5044,7 +5109,7 @@ index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f
  }
  
  export interface CheckoutWorktreeState {
-@@ -4094,6 +4192,14 @@ export async function mergeFromBase(
+@@ -4094,6 +4196,14 @@ export async function mergeFromBase(
    if (bestBaseRef === currentBranch) {
      return;
    }
