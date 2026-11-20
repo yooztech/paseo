@@ -1,8 +1,8 @@
 diff --git a/packages/client/src/daemon-client.ts b/packages/client/src/daemon-client.ts
-index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd84b59b1d0 100644
+index 7843e59e60f9bc3d8c2a6f8aadb9788ea3a128cd..9f1fb1d511a84a246ee81ad0c3df5ed80324a107 100644
 --- a/packages/client/src/daemon-client.ts
 +++ b/packages/client/src/daemon-client.ts
-@@ -20,6 +20,10 @@ import {
+@@ -27,6 +27,10 @@ import {
    type TimelineSubscription,
  } from "./connection/index.js";
  import { CreationClient } from "./creation/index.js";
@@ -11,9 +11,9 @@ index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd8
 +  type RepositoryGraphCheckoutInput,
 +} from "./fork/repository-graph.js";
  import type { CreationSnapshot } from "@getpaseo/protocol/messages";
+ import type { JsonValue } from "@getpaseo/protocol/agent-types";
  import type { z } from "zod";
- import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
-@@ -60,6 +64,9 @@ import type {
+@@ -68,6 +72,9 @@ import type {
    GitSetupOptions,
    CheckoutStatusResponse,
    CheckoutCommit,
@@ -23,7 +23,7 @@ index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd8
    ParsedDiffFile,
    CheckoutCommitResponse,
    CheckoutMergeResponse,
-@@ -73,6 +80,7 @@ import type {
+@@ -81,6 +88,7 @@ import type {
    CheckoutForgeSetAutoMergeResponse,
    CheckoutGithubSetAutoMergeResponse,
    CheckoutForgeGetCheckDetailsResponse,
@@ -31,7 +31,7 @@ index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd8
    CheckoutGithubGetCheckDetailsResponse,
    CheckoutPrStatusResponse,
    PullRequestTimelineResponse,
-@@ -552,6 +560,7 @@ type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
+@@ -576,6 +584,7 @@ type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
  type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
  type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
  type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
@@ -39,7 +39,7 @@ index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd8
  type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
  type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
  type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
-@@ -947,6 +956,18 @@ export interface RenameBranchInput {
+@@ -980,6 +989,18 @@ export interface RenameBranchInput {
    branch: string;
    requestId?: string;
  }
@@ -58,7 +58,7 @@ index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd8
  export interface RenameTerminalInput {
    terminalId: string;
    title: string;
-@@ -4605,6 +4626,7 @@ export class DaemonClient {
+@@ -5043,6 +5064,7 @@ export class DaemonClient {
          addAll: input.addAll,
        },
        responseType: "checkout_commit_response",
@@ -66,7 +66,7 @@ index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd8
      });
    }
  
-@@ -4694,6 +4716,92 @@ export class DaemonClient {
+@@ -5132,6 +5154,92 @@ export class DaemonClient {
      }
      return { baseRef: payload.baseRef, commits: payload.commits };
    }
@@ -159,7 +159,7 @@ index 3aa91f84c75d950f968e0aa8bffbaab454331fb5..1c5e0eff064f41dab3a511263d509fd8
  
    async getCommitFileDiff(
      cwd: string,
-@@ -4812,6 +4920,25 @@ export class DaemonClient {
+@@ -5250,6 +5358,25 @@ export class DaemonClient {
        },
      );
    }
@@ -215,10 +215,10 @@ index d6b96f2eb4bd05c8437866c54adf8261f7f5d297..00000000000000000000000000000000
 -  });
 -});
 diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
-index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5795eb75b 100644
+index e62cf8357ecd04d661a0aa5f4ce7823681b6a3ff..c3ea49db9b04d49de89c2ab0178d600613428e12 100644
 --- a/packages/protocol/src/messages.ts
 +++ b/packages/protocol/src/messages.ts
-@@ -110,6 +110,37 @@ import {
+@@ -116,6 +116,37 @@ import {
    BrowserAutomationExecuteResponseSchema,
  } from "./browser-automation/rpc-schemas.js";
  import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
@@ -256,7 +256,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
  import {
    PaseoConfigRawSchema,
    PaseoLifecycleCommandRawSchema,
-@@ -186,6 +217,13 @@ const MutableStructuredGenerationProviderSchema = z
+@@ -192,6 +223,13 @@ const MutableStructuredGenerationProviderSchema = z
  const MutableMetadataGenerationConfigSchema = z
    .object({
      providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
@@ -270,7 +270,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
    })
    .passthrough();
  
-@@ -2384,7 +2422,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
+@@ -2611,7 +2649,6 @@ export const CheckoutCommitsListRequestSchema = z.object({
    cwd: z.string(),
    requestId: z.string(),
  });
@@ -278,7 +278,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
  export const CheckoutCommitFileDiffRequestSchema = z.object({
    type: z.literal("checkout.commits.file_diff.request"),
    cwd: z.string(),
-@@ -2427,6 +2464,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
+@@ -2654,6 +2691,13 @@ export const CheckoutGithubGetCheckDetailsRequestSchema =
    CheckoutCheckDetailsRequestPayloadSchema.extend({
      type: z.literal("checkout.github.get_check_details.request"),
    });
@@ -292,7 +292,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
  
  export const CheckoutPrStatusRequestSchema = z.object({
    type: z.literal("checkout_pr_status_request"),
-@@ -3401,9 +3445,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+@@ -3654,9 +3698,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeRequestSchema,
    CheckoutGithubSetAutoMergeRequestSchema,
    CheckoutCommitsListRequestSchema,
@@ -307,7 +307,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
    CheckoutPrStatusRequestSchema,
    PullRequestTimelineRequestSchema,
    CheckoutSwitchBranchRequestSchema,
-@@ -3707,6 +3756,8 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -3965,6 +4014,8 @@ export const ServerInfoStatusPayloadSchema = z
          // gate and githubCheckDetails fallback after 2027-01-17 once the
          // supported daemon floor is >= v0.2.0.
          forgeCheckDetails: z.boolean().optional(),
@@ -316,7 +316,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
          // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
          // and github_search fallback after 2027-01-17 once the supported daemon
          // floor is >= v0.2.0.
-@@ -3819,6 +3870,13 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -4089,6 +4140,13 @@ export const ServerInfoStatusPayloadSchema = z
          commitsList: z.boolean().optional(),
          // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
          commitBaseClassification: z.boolean().optional(),
@@ -330,7 +330,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
          // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
          providerRemoval: z.boolean().optional(),
          // COMPAT(hopliteProvider): added after v0.11.2, remove after 2027-04-15 once host floor includes the bundled adapter.
-@@ -4084,8 +4142,10 @@ const WorkspaceGitRuntimePayloadSchema = z
+@@ -4377,8 +4435,10 @@ const WorkspaceGitRuntimePayloadSchema = z
        })
        .nullable()
        .optional(),
@@ -341,7 +341,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
    })
    .optional()
    .nullable();
-@@ -5375,8 +5435,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
+@@ -5746,8 +5806,10 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.null(),
    baseRef: z.null(),
    aheadBehind: z.null(),
@@ -352,7 +352,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
    hasRemote: z.boolean(),
    remoteUrl: z.null(),
  });
-@@ -5390,8 +5452,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5761,8 +5823,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string().nullable(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -363,7 +363,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -5405,8 +5469,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
+@@ -5776,8 +5840,10 @@ const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
    isDirty: z.boolean(),
    baseRef: z.string(),
    aheadBehind: AheadBehindSchema.nullable(),
@@ -374,7 +374,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
    hasRemote: z.boolean(),
    remoteUrl: z.string().nullable(),
  });
-@@ -5716,7 +5782,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
+@@ -6087,7 +6153,6 @@ export const CheckoutCommitsListResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -382,7 +382,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
  export const CheckoutCommitFileDiffResponseSchema = z.object({
    type: z.literal("checkout.commits.file_diff.response"),
    payload: z.object({
-@@ -5833,6 +5898,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
+@@ -6204,6 +6269,18 @@ export const CheckoutGithubGetCheckDetailsResponseSchema = z.object({
      requestId: z.string(),
    }),
  });
@@ -401,7 +401,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
  
  export const CheckoutPrStatusResponseSchema = z.object({
    type: z.literal("checkout_pr_status_response"),
-@@ -7161,9 +7238,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+@@ -7588,9 +7665,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
    CheckoutForgeSetAutoMergeResponseSchema,
    CheckoutGithubSetAutoMergeResponseSchema,
    CheckoutCommitsListResponseSchema,
@@ -416,7 +416,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
    CheckoutPrStatusResponseSchema,
    PullRequestTimelineResponseSchema,
    CheckoutSwitchBranchResponseSchema,
-@@ -7528,6 +7610,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
+@@ -7972,6 +8054,30 @@ export type CheckoutCommitFile = z.infer<typeof CheckoutCommitFileSchema>;
  export type CheckoutCommit = z.infer<typeof CheckoutCommitSchema>;
  export type CheckoutCommitsListRequest = z.infer<typeof CheckoutCommitsListRequestSchema>;
  export type CheckoutCommitsListResponse = z.infer<typeof CheckoutCommitsListResponseSchema>;
@@ -447,7 +447,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
  export type CheckoutCommitFileDiffRequest = z.infer<typeof CheckoutCommitFileDiffRequestSchema>;
  export type CheckoutCommitFileDiffResponse = z.infer<typeof CheckoutCommitFileDiffResponseSchema>;
  export type ParsedDiffFile = z.infer<typeof ParsedDiffFileSchema>;
-@@ -7554,6 +7660,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
+@@ -7998,6 +8104,9 @@ export type CheckoutForgeGetCheckDetailsRequest = z.infer<
  export type CheckoutGithubGetCheckDetailsRequest = z.infer<
    typeof CheckoutGithubGetCheckDetailsRequestSchema
  >;
@@ -457,7 +457,7 @@ index 18654bf337baf9ae628ee465309a4824df6cb57f..ce590f177b2c8287553429d1f334d5d5
  export type CheckoutCheckDetails = z.infer<typeof CheckoutCheckDetailsSchema>;
  export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
  export type CheckoutPipeline = z.infer<typeof CheckoutPipelineSchema>;
-@@ -7565,6 +7674,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
+@@ -8009,6 +8118,9 @@ export type CheckoutForgeGetCheckDetailsResponse = z.infer<
  export type CheckoutGithubGetCheckDetailsResponse = z.infer<
    typeof CheckoutGithubGetCheckDetailsResponseSchema
  >;
@@ -615,10 +615,10 @@ index 79f625b025d78f88854697847e85112407d994fc..9254536243f37078a245d6e9dee0e122
          agentConfig: {
            ...agentConfigOverrides,
 diff --git a/packages/server/src/server/authorization/operation-permissions.ts b/packages/server/src/server/authorization/operation-permissions.ts
-index f7a5b17857583911be562aa4ba469dba29759462..5d3b05bb3d67b91b1f7876c143710af596178ef0 100644
+index 2015316b078894749f13ccc27b816a8e2e8b5ef8..5b865f6d0327503660a67fc9521da464fea2cfed 100644
 --- a/packages/server/src/server/authorization/operation-permissions.ts
 +++ b/packages/server/src/server/authorization/operation-permissions.ts
-@@ -51,6 +51,11 @@ const INBOUND_PERMISSION = {
+@@ -54,6 +54,11 @@ const INBOUND_PERMISSION = {
    "checkout.commits.file_diff.request": "workspace.read",
    "checkout.commits.list.request": "workspace.read",
    "checkout.discard_changes.request": "workspace.write",
@@ -630,7 +630,7 @@ index f7a5b17857583911be562aa4ba469dba29759462..5d3b05bb3d67b91b1f7876c143710af5
    "checkout.forge.get_check_details.request": "workspace.read",
    "checkout.forge.set_auto_merge.request": "workspace.write",
    "checkout.github.get_check_details.request": "workspace.read",
-@@ -287,6 +292,11 @@ const OUTBOUND_PERMISSION = {
+@@ -304,6 +309,11 @@ const OUTBOUND_PERMISSION = {
    "checkout.commits.file_diff.response": "workspace.read",
    "checkout.commits.list.response": "workspace.read",
    "checkout.discard_changes.response": "workspace.write",
@@ -643,10 +643,10 @@ index f7a5b17857583911be562aa4ba469dba29759462..5d3b05bb3d67b91b1f7876c143710af5
    "checkout.forge.set_auto_merge.response": "workspace.write",
    "checkout.github.get_check_details.response": "workspace.read",
 diff --git a/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts b/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts
-index f050237620ea5df6051b0e36c8c05b37c2e27ef3..101eb2426904ef7b98e41df2e75a8736a64ab9a2 100644
+index 6fd3484ca37a2cbdf848251e2471c2571a4fbee3..2f382aeaab09b78b67b14658de0e13f4fc330103 100644
 --- a/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts
 +++ b/packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts
-@@ -381,6 +381,17 @@ describe("archiveIfSafe", () => {
+@@ -402,6 +402,17 @@ describe("archiveIfSafe", () => {
      expect(harness.deps.archiveByScope).not.toHaveBeenCalled();
    });
  
@@ -694,7 +694,7 @@ index 4046bd6747d977a38e3fbd0a7010f0d733b7e3ef..b75e57c9afa285c2d895b7be49f35fc0
      const daemonHandle = await createTestPaseoDaemon({
        auth: { password: CORRECT_PASSWORD_HASH },
 diff --git a/packages/server/src/server/bootstrap.smoke.test.ts b/packages/server/src/server/bootstrap.smoke.test.ts
-index 76fa8cc7d19d4d98b4675946cc3b2140b4925f0c..32f255c7f4bd2c094bfeae0652f9c08498c432f8 100644
+index d7d41916caae2f81ae597c93340474875e121a69..06a3eff9750ea1febc41e4abe8d8bd4df77078ea 100644
 --- a/packages/server/src/server/bootstrap.smoke.test.ts
 +++ b/packages/server/src/server/bootstrap.smoke.test.ts
 @@ -1,4 +1,4 @@
@@ -775,10 +775,10 @@ index 76fa8cc7d19d4d98b4675946cc3b2140b4925f0c..32f255c7f4bd2c094bfeae0652f9c084
        );
        await writeFile(
 diff --git a/packages/server/src/server/bootstrap.ts b/packages/server/src/server/bootstrap.ts
-index cf62c525ba7495561616650275167ba982df1805..e8140ab73be702af155e173903dace3b057f28ee 100644
+index a1ee215515dd8888a1d30348d4c8eb732d393bc2..20087f6732f431b274064a397dca0234289550f3 100644
 --- a/packages/server/src/server/bootstrap.ts
 +++ b/packages/server/src/server/bootstrap.ts
-@@ -189,7 +189,7 @@ import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
+@@ -190,7 +190,7 @@ import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
  import { admitSecuredRelaySocket } from "./websocket/secure-relay-ingress.js";
  import type { PushNotificationSender } from "./push/index.js";
  import { getOrCreateServerId } from "./server-id.js";
@@ -787,7 +787,7 @@ index cf62c525ba7495561616650275167ba982df1805..e8140ab73be702af155e173903dace3b
  import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
  import type {
    AgentProfile,
-@@ -476,6 +476,10 @@ export interface PaseoDaemonConfig {
+@@ -477,6 +477,10 @@ export interface PaseoDaemonConfig {
        model?: string;
        thinkingOptionId?: string;
      }>;
@@ -798,17 +798,51 @@ index cf62c525ba7495561616650275167ba982df1805..e8140ab73be702af155e173903dace3b
    };
    providerOverrides?: Record<string, ProviderOverride>;
    log?: PersistedConfig["log"];
-@@ -596,6 +600,9 @@ function createInitialMutableDaemonConfig(config: ResolvedDaemonSettings): Mutab
+@@ -575,6 +579,16 @@ function resolveReloadEnv(config: PaseoDaemonConfig): NodeJS.ProcessEnv {
+   return config.configReload?.env ?? process.env;
+ }
+ 
++function createInitialMetadataGenerationConfig(
++  config: ResolvedDaemonSettings,
++): MutableDaemonConfig["metadataGeneration"] {
++  const commitMessage = config.metadataGeneration?.commitMessage;
++  return {
++    providers: config.metadataGeneration?.providers ?? [],
++    ...(commitMessage !== undefined ? { commitMessage } : {}),
++  };
++}
++
+ function createInitialMutableDaemonConfig(config: ResolvedDaemonSettings): MutableDaemonConfig {
+   const providers = config.providerOverrides ?? {};
+ 
+@@ -595,9 +609,7 @@ function createInitialMutableDaemonConfig(config: ResolvedDaemonSettings): Mutab
+     usage: { enabled: config.usageEnabled !== false },
+     browserTools: { enabled: config.browserToolsEnabled ?? false },
      providers,
-     metadataGeneration: {
-       providers: config.metadataGeneration?.providers ?? [],
-+      ...(config.metadataGeneration?.commitMessage !== undefined
-+        ? { commitMessage: config.metadataGeneration.commitMessage }
-+        : {}),
-     },
+-    metadataGeneration: {
+-      providers: config.metadataGeneration?.providers ?? [],
+-    },
++    metadataGeneration: createInitialMetadataGenerationConfig(config),
      autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
      enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
-@@ -635,7 +642,7 @@ export async function createPaseoDaemon(
+     idleRuntimeCleanup: config.idleRuntimeCleanup !== false,
+@@ -609,13 +621,9 @@ function createInitialMutableDaemonConfig(config: ResolvedDaemonSettings): Mutab
+     skills: { selection: config.skillSelection },
+   };
+ 
+-  if (config.terminalProfiles !== undefined) {
++  if (config.terminalProfiles !== undefined)
+     initialConfig.terminalProfiles = config.terminalProfiles;
+-  }
+-
+-  if (config.agentProfiles !== undefined) {
+-    initialConfig.agentProfiles = config.agentProfiles;
+-  }
++  if (config.agentProfiles !== undefined) initialConfig.agentProfiles = config.agentProfiles;
+ 
+   return initialConfig;
+ }
+@@ -636,7 +644,7 @@ export async function createPaseoDaemon(
    });
    const bootstrapStart = performance.now();
    const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
@@ -818,7 +852,7 @@ index cf62c525ba7495561616650275167ba982df1805..e8140ab73be702af155e173903dace3b
    const speechService = createSpeechService({
      logger,
 diff --git a/packages/server/src/server/checkout/status-projection.ts b/packages/server/src/server/checkout/status-projection.ts
-index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245206ff441 100644
+index 00f9ce05c56a50b1a8bfb9695792aedd7c2716ad..597ea84521be111a211d518dd84f98d40f175bde 100644
 --- a/packages/server/src/server/checkout/status-projection.ts
 +++ b/packages/server/src/server/checkout/status-projection.ts
 @@ -15,6 +15,10 @@ type CheckoutPrStatusWireStatus = Omit<CheckoutPrStatusPayloadStatus, "forge"> &
@@ -841,7 +875,7 @@ index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245
        hasRemote: false,
        remoteUrl: null,
        isPaseoOwnedWorktree: false,
-@@ -58,13 +64,15 @@ export function buildCheckoutStatusPayloadFromSnapshot({
+@@ -58,15 +64,17 @@ export function buildCheckoutStatusPayloadFromSnapshot({
        isGit: true,
        repoRoot: snapshot.git.repoRoot,
        mainRepoRoot: snapshot.git.mainRepoRoot,
@@ -849,10 +883,14 @@ index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245
 +      currentBranch: toWireNullable(snapshot.git.currentBranch),
        isDirty: snapshot.git.isDirty,
        baseRef: snapshot.git.baseRef,
+-      baseRefExact: snapshot.git.baseRefExact,
+-      comparisonBaseRef: snapshot.git.comparisonBaseRef,
 -      aheadBehind: snapshot.git.aheadBehind ?? null,
 -      upstreamRef: snapshot.git.upstreamRef ?? null,
 -      aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
 -      behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
++      baseRefExact: toWireNullable(snapshot.git.baseRefExact),
++      comparisonBaseRef: toWireNullable(snapshot.git.comparisonBaseRef),
 +      aheadBehind: toWireNullable(snapshot.git.aheadBehind),
 +      upstreamRef: toWireNullable(snapshot.git.upstreamRef),
 +      aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
@@ -861,8 +899,8 @@ index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245
 +      hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
        hasRemote: snapshot.git.hasRemote,
        remoteUrl: snapshot.git.remoteUrl,
-       isPaseoOwnedWorktree: true,
-@@ -78,13 +86,15 @@ export function buildCheckoutStatusPayloadFromSnapshot({
+       ...(snapshot.forgeWeb ? { forgeWeb: snapshot.forgeWeb } : {}),
+@@ -81,15 +89,17 @@ export function buildCheckoutStatusPayloadFromSnapshot({
      isGit: true,
      repoRoot: snapshot.git.repoRoot,
      mainRepoRoot: snapshot.git.mainRepoRoot,
@@ -870,11 +908,15 @@ index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245
 +    currentBranch: toWireNullable(snapshot.git.currentBranch),
      isDirty: snapshot.git.isDirty,
 -    baseRef: snapshot.git.baseRef ?? null,
+-    baseRefExact: snapshot.git.baseRefExact,
+-    comparisonBaseRef: snapshot.git.comparisonBaseRef,
 -    aheadBehind: snapshot.git.aheadBehind ?? null,
 -    upstreamRef: snapshot.git.upstreamRef ?? null,
 -    aheadOfOrigin: snapshot.git.aheadOfOrigin ?? null,
 -    behindOfOrigin: snapshot.git.behindOfOrigin ?? null,
 +    baseRef: toWireNullable(snapshot.git.baseRef),
++    baseRefExact: toWireNullable(snapshot.git.baseRefExact),
++    comparisonBaseRef: toWireNullable(snapshot.git.comparisonBaseRef),
 +    aheadBehind: toWireNullable(snapshot.git.aheadBehind),
 +    upstreamRef: toWireNullable(snapshot.git.upstreamRef),
 +    aheadOfOrigin: toWireNullable(snapshot.git.aheadOfOrigin),
@@ -883,12 +925,12 @@ index 7f7365efcaf649863100b6ade0e9d1cfabde7bea..18c6d097daa897bc8aff99baba15f245
 +    hasChangesFromOrigin: toWireNullable(snapshot.git.hasChangesFromOrigin),
      hasRemote: snapshot.git.hasRemote,
      remoteUrl: snapshot.git.remoteUrl,
-     isPaseoOwnedWorktree: false,
+     ...(snapshot.forgeWeb ? { forgeWeb: snapshot.forgeWeb } : {}),
 diff --git a/packages/server/src/server/daemon-config-store.test.ts b/packages/server/src/server/daemon-config-store.test.ts
-index d9b2e941813208fe07397a898f07282f4c362ec2..5d59b33912d690d82bdfe5759cd4bd90f4c48b17 100644
+index 0478a145c440b70b85d26ea27fbf58dec28d59a4..bee17d594ea6d29450d4e1826534cfd30e648639 100644
 --- a/packages/server/src/server/daemon-config-store.test.ts
 +++ b/packages/server/src/server/daemon-config-store.test.ts
-@@ -997,6 +997,186 @@ describe("DaemonConfigStore", () => {
+@@ -1314,6 +1314,186 @@ describe("DaemonConfigStore", () => {
    });
  });
  
@@ -1076,10 +1118,10 @@ index d9b2e941813208fe07397a898f07282f4c362ec2..5d59b33912d690d82bdfe5759cd4bd90
    const tempDirs: string[] = [];
  
 diff --git a/packages/server/src/server/daemon-config-store.ts b/packages/server/src/server/daemon-config-store.ts
-index e83874235f462b2c7ffae3c5a7b4b7f7454d8940..3984f699af9a5d88c8cd3726e78029721cf9dfed 100644
+index c76299945837fda8c1510f47915951d1a7786210..751ab1659eb9297f173743190d8c58757eba5b8c 100644
 --- a/packages/server/src/server/daemon-config-store.ts
 +++ b/packages/server/src/server/daemon-config-store.ts
-@@ -26,7 +26,7 @@ interface SupportedMutableConfigPatch {
+@@ -33,7 +33,7 @@ interface SupportedMutableConfigPatch {
    browserTools?: { enabled?: boolean };
    providers?: MutableDaemonConfig["providers"];
    removeProviders?: string[];
@@ -1088,7 +1130,7 @@ index e83874235f462b2c7ffae3c5a7b4b7f7454d8940..3984f699af9a5d88c8cd3726e7802972
    autoArchiveAfterMerge?: boolean;
    enableTerminalAgentHooks?: boolean;
    idleRuntimeCleanup?: boolean;
-@@ -293,8 +293,8 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
+@@ -348,8 +348,8 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
        : {}),
      ...(patch.providers !== undefined ? { providers: patch.providers } : {}),
      ...(patch.removeProviders !== undefined ? { removeProviders: patch.removeProviders } : {}),
@@ -1099,37 +1141,68 @@ index e83874235f462b2c7ffae3c5a7b4b7f7454d8940..3984f699af9a5d88c8cd3726e7802972
        : {}),
      ...(patch.autoArchiveAfterMerge !== undefined
        ? { autoArchiveAfterMerge: patch.autoArchiveAfterMerge }
-@@ -733,11 +733,26 @@ function mergeMutableAgentPatch(
+@@ -786,6 +786,36 @@ function mergeMutablePatchIntoPersistedConfig(params: {
+   } as PersistedConfig;
+ }
+ 
++function mergeMutableMetadataGeneration(
++  persisted: Extract<PersistedConfig["agents"], object>["metadataGeneration"],
++  patch: Omit<SupportedMutableConfigPatch, "removeProviders">["metadataGeneration"],
++  removeProviders: readonly string[],
++): Record<string, unknown> | undefined {
++  if (patch !== undefined) {
++    const nextMetadata: Record<string, unknown> = { ...persisted };
++    if (patch.providers !== undefined) {
++      nextMetadata["providers"] = patch.providers;
++    }
++    const commitMessage = patch.commitMessage;
++    if (commitMessage !== undefined) {
++      nextMetadata["commitMessage"] = {
++        ...persisted?.commitMessage,
++        ...Object.fromEntries(
++          Object.entries(commitMessage).filter(([, value]) => value !== undefined),
++        ),
++      };
++    }
++    return nextMetadata;
++  }
++  const providers = persisted?.providers;
++  if (removeProviders.length === 0 || !providers) return undefined;
++  const removed = new Set(removeProviders);
++  return {
++    ...persisted,
++    providers: providers.filter((entry) => !removed.has(entry.provider)),
++  };
++}
++
+ function mergeMutableAgentPatch(
+   persistedAgents: PersistedConfig["agents"],
+   patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
+@@ -814,16 +844,12 @@ function mergeMutableAgentPatch(
    if (providerOverrides) next["providers"] = providerOverrides;
    else delete next["providers"];
  
 -  if (patch.metadataGeneration?.providers !== undefined) {
 -    next["metadataGeneration"] = { providers: patch.metadataGeneration.providers };
-+  const metadataPatch = patch.metadataGeneration;
-+  if (metadataPatch !== undefined) {
-+    const base = persistedAgents?.metadataGeneration;
-+    const nextMetadata: Record<string, unknown> = { ...base };
-+    if (metadataPatch.providers !== undefined) {
-+      nextMetadata["providers"] = metadataPatch.providers;
-+    }
-+    if (metadataPatch.commitMessage !== undefined) {
-+      nextMetadata["commitMessage"] = {
-+        ...(base?.commitMessage ?? {}),
-+        ...Object.fromEntries(
-+          Object.entries(metadataPatch.commitMessage).filter(([, value]) => value !== undefined),
-+        ),
-+      };
-+    }
-+    next["metadataGeneration"] = nextMetadata;
-   } else if (removeProviders.length > 0 && persistedAgents?.metadataGeneration?.providers) {
-     const removed = new Set(removeProviders);
-     next["metadataGeneration"] = {
-+      ...persistedAgents.metadataGeneration,
-       providers: persistedAgents.metadataGeneration.providers.filter(
-         (entry) => !removed.has(entry.provider),
-       ),
+-  } else if (removeProviders.length > 0 && persistedAgents?.metadataGeneration?.providers) {
+-    const removed = new Set(removeProviders);
+-    next["metadataGeneration"] = {
+-      providers: persistedAgents.metadataGeneration.providers.filter(
+-        (entry) => !removed.has(entry.provider),
+-      ),
+-    };
+-  }
++  const metadata = mergeMutableMetadataGeneration(
++    persistedAgents?.metadataGeneration,
++    patch.metadataGeneration,
++    removeProviders,
++  );
++  if (metadata !== undefined) next["metadataGeneration"] = metadata;
+ 
+   if (patch.skills?.selection !== undefined) {
+     next["skills"] = { selection: patch.skills.selection };
 diff --git a/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts b/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
-index 862923dec62292556b4c0f572a23f2c3f661698c..ee9832e9358d75e4f8ad5905e7e218e7d04f152f 100644
+index 0a0da6f0e9bc6d104abe1875a16b60b053f29fd8..dbb638060378ab487f57a5f2fd9bdeb0ba000af4 100644
 --- a/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
 +++ b/packages/server/src/server/daemon-e2e/file-download.e2e.test.ts
 @@ -61,7 +61,12 @@ describe("daemon E2E", () => {
@@ -1146,9 +1219,9 @@ index 862923dec62292556b4c0f572a23f2c3f661698c..ee9832e9358d75e4f8ad5905e7e218e7
    });
  
    afterEach(async () => {
-@@ -174,6 +179,49 @@ describe("daemon E2E", () => {
-       60000,
-     );
+@@ -195,6 +200,49 @@ describe("daemon E2E", () => {
+       }
+     }, 60000);
  
 +    test("downloads a WebP file through the service proxy public base host", async () => {
 +      const cwd = tmpCwd();
@@ -1197,13 +1270,13 @@ index 862923dec62292556b4c0f572a23f2c3f661698c..ee9832e9358d75e4f8ad5905e7e218e7
        const response = await fetch(
          `http://127.0.0.1:${ctx.daemon.port}/api/files/download?token=invalid-token`,
 diff --git a/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts b/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts
-index 80c9409ceff191325aae3a64e65049d74c137cd0..7d3ff6ddefebe3a1c309f50d34a62b2bac203b06 100644
+index b0c38bc985d4fc79eb7ab13ec7d7901d8bfd52ec..3f1479ae125d1625f7ae70274b6ea800d58ad9da 100644
 --- a/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts
 +++ b/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts
 @@ -1,4 +1,4 @@
 -import { resolveDaemonVersion } from "../daemon-version.js";
 +import { resolveDaemonVersion } from "../fork/daemon-version.js";
- import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
  import { tmpdir } from "node:os";
  import path from "node:path";
 @@ -117,7 +117,7 @@ test("plugin handlers operate terminals through their host-owned Paseo API", asy
@@ -1259,10 +1332,10 @@ index 8af60cd7bca88c004e2bf530d286d264bfca404a..af12fd34709ce6830869dea8b2a201ea
      writeWorkerLifecycleLog(paseoHome, "Ignoring invalid or unsupported HTTP proxy variable", {
        variable,
 diff --git a/packages/server/src/server/file-observer/index.test.ts b/packages/server/src/server/file-observer/index.test.ts
-index 95fe416c5480531750d0b4b2d463b0727477c489..ac46456adffe53ff553381e3e186c82f51cef28f 100644
+index 92cb5bced418ee94128dbe06afe180d1304ef0ea..4a05f42a210ab61e500d8c309416caffe7727628 100644
 --- a/packages/server/src/server/file-observer/index.test.ts
 +++ b/packages/server/src/server/file-observer/index.test.ts
-@@ -157,13 +157,25 @@ test("survives atomic replacement and remains observable", async () => {
+@@ -185,13 +185,25 @@ test("survives atomic replacement and remains observable", async () => {
  test("classifies a removed file as deleted", async () => {
    const root = await createRoot();
    const target = join(root, "removed.txt");
@@ -1288,8 +1361,8 @@ index 95fe416c5480531750d0b4b2d463b0727477c489..ac46456adffe53ff553381e3e186c82f
 +  events.length = 0;
 +
    await rm(target);
-   await expect.poll(() => events.find((event) => event.path === target)?.type).toBe("delete");
-   await subscription.unsubscribe();
+   // Native recursive delivery can be coalesced before the backend's deletion audit.
+   // Assert eventual classification without imposing Vitest's one-second default.
 diff --git a/packages/server/src/server/logger.test.ts b/packages/server/src/server/logger.test.ts
 index f7f42a7ef4a7ea111b9dd9ee37258a9e267a8f74..9113f54b4822f807844e9f69e3fadf865590f7a4 100644
 --- a/packages/server/src/server/logger.test.ts
@@ -1488,7 +1561,7 @@ index 3138ec9132c2fb62d1927519ac946131eb6bde94..4e48030d4fa296d6bcca7054458ed80d
    .strict();
  
 diff --git a/packages/server/src/server/plugins/lifecycle.e2e.test.ts b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
-index bd1dfa88592095e165ff579316b3781ea096f38e..4514a92c9ece7ca93b253e9d53c710f013524722 100644
+index d08089ad3d690a62c2628004996767d55df25249..f0c016db3f30c8956e52c341245f376fefda73ba 100644
 --- a/packages/server/src/server/plugins/lifecycle.e2e.test.ts
 +++ b/packages/server/src/server/plugins/lifecycle.e2e.test.ts
 @@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
@@ -1498,9 +1571,9 @@ index bd1dfa88592095e165ff579316b3781ea096f38e..4514a92c9ece7ca93b253e9d53c710f0
 -import { resolveDaemonVersion } from "../daemon-version.js";
 +import { resolveDaemonVersion } from "../fork/daemon-version.js";
  import { BuiltinPluginLoader } from "./builtin/index.js";
+ import { createPaseoApi } from "@getpaseo/client";
  
- test("a plugin transforms workspace creation once across receipt replays and observes its committed lifecycle", async () => {
-@@ -364,7 +364,7 @@ async function createProviderPlugin(
+@@ -641,7 +641,7 @@ async function createProviderPlugin(
      path.join(directory, "paseo-plugin.json"),
      JSON.stringify({
        id: "shutdown-provider-plugin",
@@ -1551,10 +1624,10 @@ index a6ccf3f2cc28ea667cd2636a19b2da5c70172e59..23bcd1ae908e869cd3691458eb764ba6
  import { tmpdir } from "node:os";
  import path from "node:path";
 diff --git a/packages/server/src/server/service-proxy.test.ts b/packages/server/src/server/service-proxy.test.ts
-index 5764b195393b5cf98b23390c658a9920332d8938..608b25f8067caf7bc6f010286764044dfc537877 100644
+index eb679d5629825755225a8da50b41455691a3453f..c91be8217990fe7cfff6769433c7545f09c2a028 100644
 --- a/packages/server/src/server/service-proxy.test.ts
 +++ b/packages/server/src/server/service-proxy.test.ts
-@@ -101,7 +101,7 @@ describe("service proxy subsystem shape", () => {
+@@ -103,7 +103,7 @@ describe("service proxy subsystem shape", () => {
      expect(offenders).toEqual([]);
    });
  
@@ -1563,7 +1636,7 @@ index 5764b195393b5cf98b23390c658a9920332d8938..608b25f8067caf7bc6f010286764044d
      const serviceProxy = createServiceProxySubsystem({
        logger,
        publicBaseUrl: "https://services.example.com",
-@@ -123,6 +123,10 @@ describe("service proxy subsystem shape", () => {
+@@ -125,6 +125,10 @@ describe("service proxy subsystem shape", () => {
          status: 200,
          body: "daemon-api",
        });
@@ -1575,7 +1648,7 @@ index 5764b195393b5cf98b23390c658a9920332d8938..608b25f8067caf7bc6f010286764044d
        await new Promise<void>((resolve) => server.close(() => resolve()));
      }
 diff --git a/packages/server/src/server/service-proxy.ts b/packages/server/src/server/service-proxy.ts
-index ef93a27f9a0d19ce027cd7820a53ba2a92041a07..4a231743cc60aca6a2567a3b560637424436826c 100644
+index 24bfd80c935c717c04e244a8a8f4976bc507c1c8..9db652fd39b3cdadaa1e19413a2c8e9063ea2829 100644
 --- a/packages/server/src/server/service-proxy.ts
 +++ b/packages/server/src/server/service-proxy.ts
 @@ -91,6 +91,11 @@ const HOP_BY_HOP_HEADERS = new Set([
@@ -1590,7 +1663,7 @@ index ef93a27f9a0d19ce027cd7820a53ba2a92041a07..4a231743cc60aca6a2567a3b56063742
  
  function normalizeHostHeader(host: string): string {
    return host.trim().toLowerCase().replace(/:\d+$/, "");
-@@ -636,7 +641,7 @@ export class ServiceProxyRouteRegistry {
+@@ -646,7 +651,7 @@ export class ServiceProxyRouteRegistry {
        return { type: "known-service-miss" };
      }
      for (const baseHostname of this.publicBaseHostnames) {
@@ -1599,7 +1672,7 @@ index ef93a27f9a0d19ce027cd7820a53ba2a92041a07..4a231743cc60aca6a2567a3b56063742
          return { type: "known-service-miss" };
        }
      }
-@@ -793,6 +798,7 @@ export function createScriptProxyUpgradeHandler({
+@@ -803,6 +808,7 @@ export function createScriptProxyUpgradeHandler({
        }
        return;
      }
@@ -1608,7 +1681,7 @@ index ef93a27f9a0d19ce027cd7820a53ba2a92041a07..4a231743cc60aca6a2567a3b56063742
    };
  }
 diff --git a/packages/server/src/server/session.test.ts b/packages/server/src/server/session.test.ts
-index d1408f988011a684fa7bd854d6436caa62c8e3ad..945057c921a4731d3026c9a09022baa79aa01dd8 100644
+index 83ed7674603f4048f2103c5409f3b9187fa8aaf1..d6e60147298630b6876082ca6868c33286fd480d 100644
 --- a/packages/server/src/server/session.test.ts
 +++ b/packages/server/src/server/session.test.ts
 @@ -318,6 +318,7 @@ interface SessionForTestOptions {
@@ -1619,7 +1692,7 @@ index d1408f988011a684fa7bd854d6436caa62c8e3ad..945057c921a4731d3026c9a09022baa7
      suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
      listStashes?: ReturnType<typeof vi.fn>;
      validateBranchRef?: ReturnType<typeof vi.fn>;
-@@ -368,6 +369,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
+@@ -369,6 +370,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
      getCheckout: vi.fn(),
      getCheckoutDiff: vi.fn(),
      getSnapshot: vi.fn(),
@@ -1627,7 +1700,7 @@ index d1408f988011a684fa7bd854d6436caa62c8e3ad..945057c921a4731d3026c9a09022baa7
      suggestBranchesForCwd: vi.fn(),
      listStashes: vi.fn(),
  
-@@ -4092,6 +4094,8 @@ describe("session checkout status handling", () => {
+@@ -4184,6 +4186,8 @@ describe("session checkout status handling", () => {
          aheadOfOrigin: 2,
          behindOfOrigin: 1,
          upstreamRef: null,
@@ -1637,10 +1710,10 @@ index d1408f988011a684fa7bd854d6436caa62c8e3ad..945057c921a4731d3026c9a09022baa7
          remoteUrl: "https://github.com/getpaseo/paseo.git",
          isPaseoOwnedWorktree: false,
 diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
-index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..ee408e2a6fefce7a9cbe62e718aab26454db5d9e 100644
+index fcdbbae1edb3cffaefe76495f5725f3d2f61daf4..740d620f34c7b704735866311bb250fed3fe3c0a 100644
 --- a/packages/server/src/server/session.ts
 +++ b/packages/server/src/server/session.ts
-@@ -990,6 +990,8 @@ export class Session {
+@@ -1061,6 +1061,8 @@ export class Session {
            logger: this.sessionLogger,
          }),
          logger: this.sessionLogger,
@@ -1649,7 +1722,7 @@ index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..ee408e2a6fefce7a9cbe62e718aab264
        }),
        paseoHome: this.paseoHome,
        worktreesRoot: this.worktreesRoot,
-@@ -2994,6 +2996,15 @@ export class Session {
+@@ -3291,6 +3293,15 @@ export class Session {
          return this.checkoutSession.handleStatusRequest(msg);
        case "checkout.commits.list.request":
          return this.checkoutSession.handleCommitsListRequest(msg);
@@ -1665,7 +1738,7 @@ index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..ee408e2a6fefce7a9cbe62e718aab264
        case "checkout.commits.file_diff.request":
          return this.checkoutSession.handleCommitFileDiffRequest(msg, this.delivery.requestSignal);
        case "validate_branch_request":
-@@ -3036,6 +3047,8 @@ export class Session {
+@@ -3333,6 +3344,8 @@ export class Session {
        case "checkout.forge.get_check_details.request":
        case "checkout.github.get_check_details.request":
          return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);
@@ -1674,7 +1747,7 @@ index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..ee408e2a6fefce7a9cbe62e718aab264
        case "checkout_pr_status_request":
          return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
        case "pull_request_timeline_request":
-@@ -5735,8 +5748,10 @@ export class Session {
+@@ -6180,8 +6193,10 @@ export class Session {
        isPaseoOwnedWorktree: snapshot.git.isPaseoOwnedWorktree,
        isDirty: snapshot.git.isDirty,
        aheadBehind: snapshot.git.aheadBehind,
@@ -1686,7 +1759,7 @@ index 00c85294821f13b7d3353f0d6603c1de1e3c1a63..ee408e2a6fefce7a9cbe62e718aab264
    }
  
 diff --git a/packages/server/src/server/session/checkout/checkout-session.test.ts b/packages/server/src/server/session/checkout/checkout-session.test.ts
-index aaa79e3da14e6ba0edfd8d26b0e7d512a56f445f..7423795b72d80b42bb935b3a41cdba8407db7750 100644
+index 61c9328e4886dc7e402c626971d0e2d714655ec4..9199297130c3e5dd8510101d64c866e4dc5a5bc9 100644
 --- a/packages/server/src/server/session/checkout/checkout-session.test.ts
 +++ b/packages/server/src/server/session/checkout/checkout-session.test.ts
 @@ -35,6 +35,10 @@ function isCheckDetailsResponse(msg: SessionOutboundMessage): boolean {
@@ -1700,7 +1773,7 @@ index aaa79e3da14e6ba0edfd8d26b0e7d512a56f445f..7423795b72d80b42bb935b3a41cdba84
  function isTimelineResponse(msg: SessionOutboundMessage): boolean {
    return msg.type === "pull_request_timeline_response";
  }
-@@ -399,8 +403,9 @@ describe("CheckoutSession", () => {
+@@ -400,8 +404,9 @@ describe("CheckoutSession", () => {
    });
  
    describe("refresh", () => {
@@ -1711,7 +1784,7 @@ index aaa79e3da14e6ba0edfd8d26b0e7d512a56f445f..7423795b72d80b42bb935b3a41cdba84
        const { subscriber, refreshedCwds } = createFakeDiffSubscriber({
          cwd: "",
          files: [],
-@@ -408,6 +413,9 @@ describe("CheckoutSession", () => {
+@@ -409,6 +414,9 @@ describe("CheckoutSession", () => {
        });
        const { checkout, emitted } = makeCheckoutSession({
          git: {
@@ -1721,7 +1794,7 @@ index aaa79e3da14e6ba0edfd8d26b0e7d512a56f445f..7423795b72d80b42bb935b3a41cdba84
            getSnapshot: async (cwd, snapshotOptions) => {
              snapshotCalls.push({ cwd, options: snapshotOptions });
              return createNoGitWorkspaceRuntimeSnapshot(cwd);
-@@ -422,6 +430,7 @@ describe("CheckoutSession", () => {
+@@ -423,6 +431,7 @@ describe("CheckoutSession", () => {
          requestId: "r7",
        });
  
@@ -1729,7 +1802,7 @@ index aaa79e3da14e6ba0edfd8d26b0e7d512a56f445f..7423795b72d80b42bb935b3a41cdba84
        expect(snapshotCalls).toEqual([
          { cwd: "/repo", options: { force: true, includeForge: true, reason: "manual-refresh" } },
        ]);
-@@ -1111,6 +1120,170 @@ describe("CheckoutSession", () => {
+@@ -1112,6 +1121,170 @@ describe("CheckoutSession", () => {
      });
    });
  
@@ -1901,7 +1974,7 @@ index aaa79e3da14e6ba0edfd8d26b0e7d512a56f445f..7423795b72d80b42bb935b3a41cdba84
      it("routes the timeline request through the resolved GitLab adapter", async () => {
        const gitlabCalls: Array<{ cwd: string; prNumber: number }> = [];
 diff --git a/packages/server/src/server/session/checkout/checkout-session.ts b/packages/server/src/server/session/checkout/checkout-session.ts
-index ceb69e9623c184be95c57140f2e9e3fd7563e454..06895845c817b8f70f2f50af90b4777c95ac714f 100644
+index 1611356bc826ea608505fac6f6a811ba75707878..15aef299e0d9745327c668194671cddaf5a8b87f 100644
 --- a/packages/server/src/server/session/checkout/checkout-session.ts
 +++ b/packages/server/src/server/session/checkout/checkout-session.ts
 @@ -1,6 +1,5 @@
@@ -1923,7 +1996,7 @@ index ceb69e9623c184be95c57140f2e9e3fd7563e454..06895845c817b8f70f2f50af90b4777c
    CheckoutRefreshRequest,
    CheckoutRenameBranchRequest,
    CheckoutStatusRequest,
-@@ -56,6 +59,9 @@ import {
+@@ -55,6 +58,9 @@ import {
  import { runGitCommand } from "../../../utils/run-git-command.js";
  import { expandTilde } from "../../../utils/path.js";
  import type { GitMetadataGenerator } from "./git-metadata-generator.js";
@@ -1989,7 +2062,7 @@ index ceb69e9623c184be95c57140f2e9e3fd7563e454..06895845c817b8f70f2f50af90b4777c
    async handleCommitFileDiffRequest(
      msg: CheckoutCommitFileDiffRequest,
      signal: AbortSignal,
-@@ -487,6 +528,7 @@ export class CheckoutSession {
+@@ -493,6 +534,7 @@ export class CheckoutSession {
      const resolvedCwd = expandTilde(cwd);
  
      try {
@@ -1997,7 +2070,7 @@ index ceb69e9623c184be95c57140f2e9e3fd7563e454..06895845c817b8f70f2f50af90b4777c
        (await this.resolveForgeService(resolvedCwd))?.service.invalidate({ cwd: resolvedCwd });
        await this.workspaceGitService.getSnapshot(resolvedCwd, {
          force: true,
-@@ -1349,6 +1391,67 @@ export class CheckoutSession {
+@@ -1355,6 +1397,67 @@ export class CheckoutSession {
      }
    }
  
@@ -2339,7 +2412,7 @@ index a09f08f2fdf1906b28f6a2c5068894c89f906c52..53712b41f63de8136ee69834dec1f5c2
 +  });
  });
 diff --git a/packages/server/src/server/session/checkout/git-metadata-generator.ts b/packages/server/src/server/session/checkout/git-metadata-generator.ts
-index 722309213a4d8beb232ad4a9f94957973bb81a4d..8a2df02e441a7a799919217241c781f563ba2224 100644
+index 722309213a4d8beb232ad4a9f94957973bb81a4d..6ba2056e49b32d065f15bd357d664f300acf9074 100644
 --- a/packages/server/src/server/session/checkout/git-metadata-generator.ts
 +++ b/packages/server/src/server/session/checkout/git-metadata-generator.ts
 @@ -81,6 +81,7 @@ const PULL_REQUEST_FALLBACK: PullRequestText = {
@@ -2378,19 +2451,20 @@ index 722309213a4d8beb232ad4a9f94957973bb81a4d..8a2df02e441a7a799919217241c781f5
    ): Promise<T> {
      try {
        return await generation.generate(request);
-@@ -118,6 +127,11 @@ export function createGitMetadataGenerator(deps: {
+@@ -118,6 +127,12 @@ export function createGitMetadataGenerator(deps: {
          },
          "Structured git metadata generation failed",
        );
 +      if (onFailure === "fail") {
 +        throw new Error(
 +          'Commit message generation failed and the placeholder fallback is disabled by agents.metadataGeneration.commitMessage.onFailure = "fail". Enter a commit message manually or set that option to "placeholder".',
++          { cause: error },
 +        );
 +      }
        return fallback;
      }
    }
-@@ -138,11 +152,14 @@ export function createGitMetadataGenerator(deps: {
+@@ -138,11 +153,14 @@ export function createGitMetadataGenerator(deps: {
          "",
          patch.length > 0 ? patch : "(No diff available)",
        ].join("\n"),
@@ -2405,7 +2479,7 @@ index 722309213a4d8beb232ad4a9f94957973bb81a4d..8a2df02e441a7a799919217241c781f5
        const prompt = await buildPromptForDiff({
          cwd,
          diffOptions: { mode: "uncommitted", includeStructured: true },
-@@ -151,6 +168,7 @@ export function createGitMetadataGenerator(deps: {
+@@ -151,6 +169,7 @@ export function createGitMetadataGenerator(deps: {
          styleConfigKey: "commitMessage",
          styleDefault: "Concise, imperative mood, no trailing period.",
          jsonFieldsHint: "Return JSON only with a single field 'message'.",
@@ -2413,7 +2487,7 @@ index 722309213a4d8beb232ad4a9f94957973bb81a4d..8a2df02e441a7a799919217241c781f5
        });
        const result = await generateOrFallback(
          {
-@@ -161,6 +179,7 @@ export function createGitMetadataGenerator(deps: {
+@@ -161,6 +180,7 @@ export function createGitMetadataGenerator(deps: {
            agentTitle: "Commit generator",
          },
          { message: COMMIT_MESSAGE_FALLBACK },
@@ -2421,7 +2495,7 @@ index 722309213a4d8beb232ad4a9f94957973bb81a4d..8a2df02e441a7a799919217241c781f5
        );
        return result.message;
      },
-@@ -218,6 +237,7 @@ export function createAgentStructuredTextGeneration(deps: {
+@@ -218,6 +238,7 @@ export function createAgentStructuredTextGeneration(deps: {
          schema,
          schemaName,
          maxRetries: 2,
@@ -2430,7 +2504,7 @@ index 722309213a4d8beb232ad4a9f94957973bb81a4d..8a2df02e441a7a799919217241c781f5
          persistSession: false,
          logger: deps.logger,
 diff --git a/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts b/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
-index 5526166d05d2749beda6e1b84dd7d2eea9bc7857..b5cbb4a153a33c9c1cc6b69dcb0333d16bd41303 100644
+index 16a59dcd625a52470644b9d932fa20ee8d4cd599..7cfe9a86d1af7be40b358652958f3108dceb59e9 100644
 --- a/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
 +++ b/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.test.ts
 @@ -160,6 +160,12 @@ describe("workspace recovery", () => {
@@ -2503,7 +2577,7 @@ index c16a079628c406b8340093eed3e91062901f112b..31b17b0b384366d3468cf60ae9d0442c
      "srv-test",
      createStub<AgentManager>(agentManager),
 diff --git a/packages/server/src/server/websocket-server.relay-reconnect.test.ts b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
-index c99d5ac9cc95624c58e1a299ff18a412f5e750a5..4fe9006df8c4b1d755490dd811446795207ef09a 100644
+index 7dcb02669ca7eeeed92623ca161469d31d2af891..5da0f7cca9e30976a487effba225ed3a0de84b98 100644
 --- a/packages/server/src/server/websocket-server.relay-reconnect.test.ts
 +++ b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
 @@ -37,6 +37,11 @@ const wsModuleMock = vi.hoisted(() => {
@@ -2553,10 +2627,10 @@ index e22e5bf9a72baee67eca03a3f3752d64f0498630..8b7d335e19e04a7ad38c5bb595c555c7
      "srv-test",
      createStub<AgentManager>(agentManager),
 diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
-index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158ccff8b7ae1 100644
+index ee8293b9fb21e5cb8072d569877c1f25b82a3469..b35967fea1c5916fb57f41b061bb9a4fc7f4446a 100644
 --- a/packages/server/src/server/websocket-server.ts
 +++ b/packages/server/src/server/websocket-server.ts
-@@ -21,6 +21,7 @@ import { CreationService } from "./creation/index.js";
+@@ -25,6 +25,7 @@ import { CreationService } from "./creation/index.js";
  import { MessageReceipts } from "./message-receipts/index.js";
  import { WebSocket, WebSocketServer } from "ws";
  import type { IncomingMessage, Server as HTTPServer } from "http";
@@ -2564,7 +2638,7 @@ index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158cc
  import { join } from "path";
  import { getHostName } from "./host-name.js";
  import { randomUUID } from "node:crypto";
-@@ -81,7 +82,7 @@ import {
+@@ -90,7 +91,7 @@ import {
    type PushNotificationSender,
  } from "./push/index.js";
  import type { ScriptHealthState } from "./script-health-monitor.js";
@@ -2573,7 +2647,7 @@ index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158cc
  import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
  import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
  import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
-@@ -276,6 +277,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
+@@ -285,6 +286,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
      resolveDefaultBranch: async () => "main",
      resolveRepoRemoteUrl: async () => null,
      refresh: async () => {},
@@ -2581,7 +2655,7 @@ index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158cc
      requestWorkingTreeWatch: async () => ({
        repoRoot: null,
        unsubscribe: () => {},
-@@ -879,7 +881,7 @@ export class VoiceAssistantWebSocketServer {
+@@ -900,7 +902,7 @@ export class VoiceAssistantWebSocketServer {
    ): WebSocketServer {
      const password = auth?.password;
      const wss = new WebSocketServer({
@@ -2590,7 +2664,7 @@ index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158cc
        path: "/ws",
        maxPayload: MAX_WEBSOCKET_MESSAGE_BYTES,
        handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
-@@ -892,6 +894,16 @@ export class VoiceAssistantWebSocketServer {
+@@ -913,6 +915,16 @@ export class VoiceAssistantWebSocketServer {
          );
        },
      });
@@ -2607,7 +2681,7 @@ index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158cc
      wss.on("connection", (ws, request) => {
        void this.attachAuthenticatedSocket(ws, request, password);
      });
-@@ -2041,6 +2053,8 @@ export class VoiceAssistantWebSocketServer {
+@@ -2070,6 +2082,8 @@ export class VoiceAssistantWebSocketServer {
          // gate and legacy fallback after 2027-01-17 once the supported daemon
          // floor is >= v0.2.0.
          forgeCheckDetails: true,
@@ -2616,7 +2690,7 @@ index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158cc
          // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
          // and legacy fallback after 2027-01-17 once the supported daemon floor
          // is >= v0.2.0.
-@@ -2143,6 +2157,12 @@ export class VoiceAssistantWebSocketServer {
+@@ -2184,6 +2198,12 @@ export class VoiceAssistantWebSocketServer {
          commitsList: true,
          // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
          commitBaseClassification: true,
@@ -2630,10 +2704,10 @@ index 7089812d21c3519e7f18c5fffd91f7697a11f5bb..fba9b0fa0cfc183879a45d185b2158cc
          providerRemoval: true,
          hopliteProvider: this.providerSnapshotManager.supportsConfigRequiredProvider("hoplite"),
 diff --git a/packages/server/src/server/workspace-git-service.observation.test.ts b/packages/server/src/server/workspace-git-service.observation.test.ts
-index ab93558793b4922bca364045c77b4c1a0f4c44b4..5a29358a196e53f41beb4e53ed948e8f21a734b4 100644
+index c73e2de27134b8ebd08bd003710c06d6dac149f6..b014221146e671337bb68c72caf64d2bdc73294d 100644
 --- a/packages/server/src/server/workspace-git-service.observation.test.ts
 +++ b/packages/server/src/server/workspace-git-service.observation.test.ts
-@@ -216,6 +216,7 @@ function createService(
+@@ -217,6 +217,7 @@ function createService(
        getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
        getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
          ...current,
@@ -2641,7 +2715,7 @@ index ab93558793b4922bca364045c77b4c1a0f4c44b4..5a29358a196e53f41beb4e53ed948e8f
          upstreamStatus: facts.upstreamStatus,
        })),
        getCheckoutStatus,
-@@ -588,9 +589,14 @@ describe("WorkspaceGitService checkout observation", () => {
+@@ -574,9 +575,14 @@ describe("WorkspaceGitService checkout observation", () => {
        resolvedBaseRef: "main",
        comparisonBaseRef: "origin/main",
      }));
@@ -2658,7 +2732,7 @@ index ab93558793b4922bca364045c77b4c1a0f4c44b4..5a29358a196e53f41beb4e53ed948e8f
      }));
      const runGitFetch = vi.fn(async (_cwd, observer) => {
        observer?.onRefSnapshot("before");
-@@ -607,6 +613,8 @@ describe("WorkspaceGitService checkout observation", () => {
+@@ -593,6 +599,8 @@ describe("WorkspaceGitService checkout observation", () => {
        getCheckoutStatus: vi.fn(async (cwd: string) =>
          createCheckoutStatus(cwd, {
            currentBranch: "feature",
@@ -2667,9 +2741,9 @@ index ab93558793b4922bca364045c77b4c1a0f4c44b4..5a29358a196e53f41beb4e53ed948e8f
            baseRef: "main",
            hasRemote: true,
            remoteUrl: REMOTE_URL,
-@@ -641,6 +649,14 @@ describe("WorkspaceGitService checkout observation", () => {
+@@ -627,6 +635,14 @@ describe("WorkspaceGitService checkout observation", () => {
  
-     expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
+     expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(2);
      expect(listener).toHaveBeenCalledTimes(1);
 +    expect((await service.getSnapshot(REPO_CWD, { includeForge: false })).git).toMatchObject({
 +      hasChangesFromBase: false,
@@ -2683,10 +2757,10 @@ index ab93558793b4922bca364045c77b4c1a0f4c44b4..5a29358a196e53f41beb4e53ed948e8f
      subscription.unsubscribe();
      service.dispose();
 diff --git a/packages/server/src/server/workspace-git-service.primitive.test.ts b/packages/server/src/server/workspace-git-service.primitive.test.ts
-index 1b43026c7d7e002f35eafd1bc045c45de4c6b8df..28073d4a74f5859790a58db52e0363304b631529 100644
+index b969c7315c73e7d5742b122d881a9a75e24a003a..c2458534cc3af21bffa4faa25a9faac85590fb79 100644
 --- a/packages/server/src/server/workspace-git-service.primitive.test.ts
 +++ b/packages/server/src/server/workspace-git-service.primitive.test.ts
-@@ -345,6 +345,7 @@ function buildDefaultServiceDeps() {
+@@ -347,6 +347,7 @@ function buildDefaultServiceDeps() {
      getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
      getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
        ...current,
@@ -2694,7 +2768,7 @@ index 1b43026c7d7e002f35eafd1bc045c45de4c6b8df..28073d4a74f5859790a58db52e036330
        upstreamStatus: facts.upstreamStatus,
      })),
      getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
-@@ -581,6 +582,10 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
+@@ -583,6 +584,10 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
      await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(createSnapshot(REPO_CWD));
      expect(listener.mock.lastCall?.[0] ?? null).toEqual(createSnapshot(REPO_CWD));
  
@@ -2706,10 +2780,10 @@ index 1b43026c7d7e002f35eafd1bc045c45de4c6b8df..28073d4a74f5859790a58db52e036330
      service.dispose();
    });
 diff --git a/packages/server/src/server/workspace-git-service.test.ts b/packages/server/src/server/workspace-git-service.test.ts
-index 4e6acff9cd57145b16dfa42134735c8f5c3a9e80..bd8f8995862b4b8f0381493ff2ef4a24f489977f 100644
+index 8349977f9234b00b879f756d92060edc14e2c5e2..6d1b76c4a908448ec6da9a82b33da6fa3bc9f114 100644
 --- a/packages/server/src/server/workspace-git-service.test.ts
 +++ b/packages/server/src/server/workspace-git-service.test.ts
-@@ -273,6 +273,7 @@ function buildDefaultTestServiceDeps() {
+@@ -284,6 +284,7 @@ function buildDefaultTestServiceDeps() {
      getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutSnapshotFacts(cwd)),
      getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
        ...current,
@@ -2717,7 +2791,7 @@ index 4e6acff9cd57145b16dfa42134735c8f5c3a9e80..bd8f8995862b4b8f0381493ff2ef4a24
        upstreamStatus: facts.upstreamStatus,
      })),
      getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
-@@ -972,6 +973,7 @@ describe("WorkspaceGitServiceImpl", () => {
+@@ -1216,6 +1217,7 @@ describe("WorkspaceGitServiceImpl", () => {
      }));
      const getCheckoutRefDerivedState = vi.fn(async (_cwd, facts, current) => ({
        ...current,
@@ -2725,7 +2799,7 @@ index 4e6acff9cd57145b16dfa42134735c8f5c3a9e80..bd8f8995862b4b8f0381493ff2ef4a24
        upstreamStatus: facts.upstreamStatus,
      }));
      const resolveAbsoluteGitDir = vi.fn(async () => join(REPO_CWD, ".git"));
-@@ -1017,6 +1019,75 @@ describe("WorkspaceGitServiceImpl", () => {
+@@ -1261,6 +1263,75 @@ describe("WorkspaceGitServiceImpl", () => {
      service.dispose();
    });
  
@@ -2801,8 +2875,8 @@ index 4e6acff9cd57145b16dfa42134735c8f5c3a9e80..bd8f8995862b4b8f0381493ff2ef4a24
    test("remote ref name drift outside the fetch interval takes the structural fallback", async () => {
      const runGitFetch = vi
        .fn()
-@@ -1186,7 +1257,6 @@ describe("WorkspaceGitServiceImpl", () => {
-       expect(getCheckoutShortstat).toHaveBeenCalledTimes(2);
+@@ -1432,7 +1503,6 @@ describe("WorkspaceGitServiceImpl", () => {
+       expect(getCheckoutShortstat).toHaveBeenCalledTimes(3);
      });
      expect(listener.mock.lastCall?.[0].git.diffStat).toEqual({ additions: 2, deletions: 0 });
 -
@@ -2810,12 +2884,12 @@ index 4e6acff9cd57145b16dfa42134735c8f5c3a9e80..bd8f8995862b4b8f0381493ff2ef4a24
      service.dispose();
    });
 diff --git a/packages/server/src/server/workspace-git-service.ts b/packages/server/src/server/workspace-git-service.ts
-index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba371fe26b 100644
+index 93b5982b36bd7dab3ab52a3c4e8d9bfe6deb3a64..6a3a886f8fb43c0ae1f8211c238c97cf5241e8ae 100644
 --- a/packages/server/src/server/workspace-git-service.ts
 +++ b/packages/server/src/server/workspace-git-service.ts
-@@ -160,9 +160,11 @@ export interface WorkspaceGitRuntimeSnapshot {
-     isDirty: boolean | null;
-     baseRef: string | null;
+@@ -175,9 +175,11 @@ export interface WorkspaceGitRuntimeSnapshot {
+     baseRefExact?: string | null;
+     comparisonBaseRef?: string | null;
      aheadBehind: { ahead: number; behind: number } | null;
 +    hasChangesFromBase?: boolean | null;
      upstreamRef: string | null;
@@ -2825,7 +2899,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
      hasRemote: boolean;
      diffStat: { additions: number; deletions: number } | null;
    };
-@@ -242,6 +244,7 @@ export interface WorkspaceGitService {
+@@ -263,6 +265,7 @@ export interface WorkspaceGitService {
    resolveDefaultBranch(cwdOrRepoRoot: string, options?: WorkspaceGitReadOptions): Promise<string>;
    resolveRepoRemoteUrl(cwd: string, options?: WorkspaceGitReadOptions): Promise<string | null>;
    refresh(cwd: string, options?: { priority?: "normal" | "high" }): Promise<void>;
@@ -2833,7 +2907,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
    requestWorkingTreeWatch(
      cwd: string,
      onChange: () => void,
-@@ -450,6 +453,8 @@ interface RepoGitTarget {
+@@ -505,6 +508,8 @@ interface RepoGitTarget {
    recovery: WatchRecoveryState;
    intervalId: NodeJS.Timeout | null;
    fetchInFlight: boolean;
@@ -2842,7 +2916,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
    bufferedFetchMetadataEvents: FileChange[];
    recentFetchRemoteRefChanges: Map<
      string,
-@@ -603,6 +608,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+@@ -675,6 +680,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
    private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
    private readonly workspaceTargets = new Map<string, WorkspaceGitTarget>();
    private readonly repoTargets = new Map<string, RepoGitTarget>();
@@ -2850,7 +2924,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
    private readonly workingTreeWatchTargets = new Map<string, WorkingTreeWatchTarget>();
    private readonly workingTreeWatchSetups = new Map<string, Promise<WorkingTreeWatchTarget>>();
    private readonly workingTreeWatchResolutions = new Map<string, Promise<WorkingTreeWatchTarget>>();
-@@ -984,6 +990,48 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+@@ -1079,6 +1085,48 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
      this.scheduleWorkspaceObservationSetup(target);
    }
  
@@ -2899,7 +2973,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
    async requestWorkingTreeWatch(
      cwd: string,
      onChange: () => void,
-@@ -2145,6 +2193,54 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+@@ -2434,6 +2482,54 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
      return gitDir;
    }
  
@@ -2917,7 +2991,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
 +      fallbackPolling: false,
 +      fallbackPollTimer: null,
 +      fallbackPollQuietTickCount: 0,
-+      recovery: { attemptCount: 0, timer: null, establishedAt: null },
++      recovery: { attemptCount: 0, timer: null, establishedAt: null, setupTimeoutCount: 0 },
 +      intervalId: null,
 +      fetchInFlight: false,
 +      fetchPromise: null,
@@ -2954,7 +3028,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
    private async ensureRepoTarget(workspaceTarget: WorkspaceGitTarget): Promise<void> {
      const repoGitRoot = workspaceTarget.repoGitRoot;
      if (!repoGitRoot || !this.isActiveObservedWorkspaceTarget(workspaceTarget)) {
-@@ -2164,23 +2260,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+@@ -2453,23 +2549,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
        establishedTarget.workspaceKeys.add(workspaceTarget.cwd);
        return;
      }
@@ -2967,7 +3041,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
 -      fallbackPolling: false,
 -      fallbackPollTimer: null,
 -      fallbackPollQuietTickCount: 0,
--      recovery: { attemptCount: 0, timer: null, establishedAt: null },
+-      recovery: { attemptCount: 0, timer: null, establishedAt: null, setupTimeoutCount: 0 },
 -      intervalId: null,
 -      fetchInFlight: false,
 -      bufferedFetchMetadataEvents: [],
@@ -2980,7 +3054,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
      this.repoTargets.set(repoGitRoot, repoTarget);
      await this.startRepoMetadataObservation(repoTarget);
      if (repoTarget.closed || this.repoTargets.get(repoGitRoot) !== repoTarget) {
-@@ -3294,7 +3375,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+@@ -3652,7 +3733,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
      const derived = await this.deps.getCheckoutRefDerivedState(
        target.cwd,
        facts,
@@ -2993,7 +3067,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
        movedRemoteRefs,
        {
          paseoHome: this.paseoHome,
-@@ -3308,9 +3393,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+@@ -3666,9 +3751,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
      target.latestGit = {
        ...latestGit,
        aheadBehind: derived.aheadBehind,
@@ -3005,9 +3079,9 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
        behindOfOrigin: derived.upstreamStatus?.aheadBehind.behind ?? null,
      };
      const loadedAtMs = this.deps.now().getTime();
-@@ -3394,9 +3481,15 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
-         : (target.latestGit?.isDirty ?? checkoutStatus.isDirty),
-       baseRef: checkoutStatus.baseRef,
+@@ -3761,9 +3848,15 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+       baseRefExact: checkoutStatus.baseRefExact,
+       comparisonBaseRef: checkoutStatus.comparisonBaseRef,
        aheadBehind: checkoutStatus.aheadBehind,
 +      ...(checkoutStatus.hasChangesFromBase !== undefined
 +        ? { hasChangesFromBase: checkoutStatus.hasChangesFromBase }
@@ -3021,7 +3095,7 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
        hasRemote: checkoutStatus.hasRemote,
        diffStat,
      };
-@@ -3532,99 +3625,111 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+@@ -3986,43 +4079,64 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
      }
    }
  
@@ -3072,20 +3146,15 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
 +              },
              },
 -          },
--          createRunGitCommand("background-fetch"),
+-          createRunGitCommand("background-fetch", { priority: "background" }),
 -        );
 -      } catch (error) {
 -        this.logger.warn(
 -          { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
 -          "Background git fetch failed",
 -        );
--      }
--      this.applyRepoFetchResult(target, result, eventsBeforeFetchSnapshot);
--    } finally {
--      target.fetchInFlight = false;
--    }
--  }
-+            createRunGitCommand("background-fetch"),
++            // A manual fetch keeps the caller's lane; background polls yield to foreground git.
++            createRunGitCommand("background-fetch", explicit ? {} : { priority: "background" }),
 +          );
 +        } catch (error) {
 +          this.logger.warn(
@@ -3097,60 +3166,16 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
 +        if (result?.error) {
 +          fetchError = result.error;
 +        }
-+        this.flushFetchMetadataEvents(target, eventsBeforeFetchSnapshot);
-+        if (!result || result.changes === null) {
-+          target.recentFetchRemoteRefChanges.clear();
-+          target.knownRemoteRefs = null;
-+          this.flushBufferedFetchMetadataEvents(target);
-+          if (result) {
-+            this.logger.warn(
-+              { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-+              "Background git fetch ref classification failed; using structural refresh",
-+            );
-+          }
-+          this.scheduleRepoMetadataRefresh(target, "repo-fetch-unclassified", false);
-+          return;
-+        }
-+        if (result.error) {
-+          this.logger.warn(
-+            { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-+            "Background git fetch completed with errors after changing refs",
-+          );
-+        }
-+        const expiresAtMs = this.deps.now().getTime() + FETCH_METADATA_ECHO_TTL_MS;
-+        const remoteRefShapeChanged =
-+          target.knownRemoteRefs !== null &&
-+          result.remoteRefs !== undefined &&
-+          !setsEqual(target.knownRemoteRefs, result.remoteRefs);
-+        if (result.remoteRefs) {
-+          target.knownRemoteRefs = new Set(result.remoteRefs);
-+        }
-+        target.recentFetchRemoteRefChanges.clear();
-+        for (const change of result.changes) {
-+          target.recentFetchRemoteRefChanges.set(change.ref, { change, expiresAtMs });
-+        }
-+        this.flushBufferedFetchMetadataEvents(target);
-+        if (
-+          result.nonRemoteRefsChanged === true ||
-+          remoteRefShapeChanged ||
-+          result.changes.some((change) => change.kind !== "moved")
-+        ) {
-+          this.scheduleRepoMetadataRefresh(target, "repo-fetch-ref-shape", false);
-+          return;
-+        }
-+        if (result.changes.length === 0) {
-+          return;
-+        }
-+        const refreshes = new Map<string, RepoMetadataWorkspaceRefresh>();
-+        for (const change of result.changes) {
-+          this.routeRemoteBranchRef(target, change.ref, refreshes, { narrow: true });
-+        }
-+        this.scheduleRepoMetadataRefresh(target, "repo-fetch", false, refreshes);
++        this.applyRepoFetchResult(target, result, eventsBeforeFetchSnapshot);
 +      } finally {
 +        // Keep the flag set until classification/refresh scheduling completes: tests and
 +        // callers treat fetchInFlightCount === 0 as "fetch fully settled" (upstream #4171).
 +        target.fetchInFlight = false;
-+      }
+       }
+-      this.applyRepoFetchResult(target, result, eventsBeforeFetchSnapshot);
+-    } finally {
+-      target.fetchInFlight = false;
+-    }
 +    })()
 +      .then(() => {
 +        if (explicit && fetchError) {
@@ -3161,65 +3186,11 @@ index b5672846bd0a39cd05a65c5e682123d42d15c42c..d6527bad615cbd52c21ad2b5f6a975ba
 +      .finally(() => {
 +        target.fetchPromise = null;
 +      });
- 
--  private applyRepoFetchResult(
--    target: RepoGitTarget,
--    result: WorkspaceGitFetchResult | null,
--    eventsBeforeFetchSnapshot: FileChange[],
--  ): void {
--    this.flushFetchMetadataEvents(target, eventsBeforeFetchSnapshot);
--    if (!result || result.changes === null) {
--      target.recentFetchRemoteRefChanges.clear();
--      target.knownRemoteRefs = null;
--      this.flushBufferedFetchMetadataEvents(target);
--      if (result) {
--        this.logger.warn(
--          { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
--          "Background git fetch ref classification failed; using structural refresh",
--        );
--      }
--      this.scheduleRepoMetadataRefresh(target, "repo-fetch-unclassified", false);
--      return;
--    }
--    if (result.error) {
--      this.logger.warn(
--        { err: result.error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
--        "Background git fetch completed with errors after changing refs",
--      );
--    }
--    const expiresAtMs = this.deps.now().getTime() + FETCH_METADATA_ECHO_TTL_MS;
--    const remoteRefShapeChanged =
--      target.knownRemoteRefs !== null &&
--      result.remoteRefs !== undefined &&
--      !setsEqual(target.knownRemoteRefs, result.remoteRefs);
--    if (result.remoteRefs) {
--      target.knownRemoteRefs = new Set(result.remoteRefs);
--    }
--    target.recentFetchRemoteRefChanges.clear();
--    for (const change of result.changes) {
--      target.recentFetchRemoteRefChanges.set(change.ref, { change, expiresAtMs });
--    }
--    this.flushBufferedFetchMetadataEvents(target);
--    if (
--      result.nonRemoteRefsChanged === true ||
--      remoteRefShapeChanged ||
--      result.changes.some((change) => change.kind !== "moved")
--    ) {
--      this.scheduleRepoMetadataRefresh(target, "repo-fetch-ref-shape", false);
--      return;
--    }
--    if (result.changes.length === 0) {
--      return;
--    }
--    const refreshes = new Map<string, RepoMetadataWorkspaceRefresh>();
--    for (const change of result.changes) {
--      this.routeRemoteBranchRef(target, change.ref, refreshes, { narrow: true });
--    }
--    this.scheduleRepoMetadataRefresh(target, "repo-fetch", false, refreshes);
++
 +    return target.fetchPromise;
    }
  
-   private flushBufferedFetchMetadataEvents(target: RepoGitTarget): void {
+   private applyRepoFetchResult(
 diff --git a/packages/server/src/services/forge-registry.test.ts b/packages/server/src/services/forge-registry.test.ts
 index 8671f51f8b47c2fb2b4d59689756f97938ba0872..fa668ce487f313e409e6c401ee44e055771691dd 100644
 --- a/packages/server/src/services/forge-registry.test.ts
@@ -3308,10 +3279,10 @@ index 414a4cee92346bf7370971220f994dfb220c7ca2..9ad9a78d68c1c5895a6146fbd93a8190
      const resolver = createForgeResolver({
        resolveRemoteUrl: async () => remoteUrl,
 diff --git a/packages/server/src/services/forge-service.ts b/packages/server/src/services/forge-service.ts
-index 8499cc8756f3809c5c474b763167005e1fb8a4e9..98814641b37bedd1b041ec177a375000709a4aab 100644
+index fbf7f6522d3d4c231874953bc9a5712d78604bd3..f0a0e64d6d41ebf97c249e71b906ba20d509876a 100644
 --- a/packages/server/src/services/forge-service.ts
 +++ b/packages/server/src/services/forge-service.ts
-@@ -195,6 +195,8 @@ export interface PullRequestCreateResult {
+@@ -196,6 +196,8 @@ export interface PullRequestCreateResult {
  export type PullRequestMergeMethod = "merge" | "squash" | "rebase";
  
  export interface PullRequestCommandStatus {
@@ -3320,7 +3291,7 @@ index 8499cc8756f3809c5c474b763167005e1fb8a4e9..98814641b37bedd1b041ec177a375000
    mergeable?: PullRequestMergeable;
    forgeSpecific?: ForgeSpecificStatusFacts;
  }
-@@ -476,6 +478,12 @@ export interface ForgeService {
+@@ -484,6 +486,12 @@ export interface ForgeService {
    ): Promise<CurrentPullRequestStatus | null>;
    getPullRequestTimeline(options: GetPullRequestTimelineOptions): Promise<PullRequestTimeline>;
    getCheckDetails(options: GetCheckDetailsOptions): Promise<CheckDetails>;
@@ -3334,10 +3305,10 @@ index 8499cc8756f3809c5c474b763167005e1fb8a4e9..98814641b37bedd1b041ec177a375000
    createPullRequest(options: CreatePullRequestOptions): Promise<PullRequestCreateResult>;
    mergePullRequest(options: MergePullRequestOptions): Promise<PullRequestMergeResult>;
 diff --git a/packages/server/src/services/github-service.test.ts b/packages/server/src/services/github-service.test.ts
-index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389baf2e6bdbc 100644
+index 02aa8d4993ffe50dbb6aea89d741f96c04e84958..bb77d6afc32336cae4840ccb4f3df3ac0f139483 100644
 --- a/packages/server/src/services/github-service.test.ts
 +++ b/packages/server/src/services/github-service.test.ts
-@@ -533,9 +533,9 @@ describe("ForgeService", () => {
+@@ -592,9 +592,9 @@ describe("ForgeService", () => {
    });
  
    it.each([
@@ -3350,7 +3321,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
    ] as const)("merges pull requests with gh using %s", async (mergeMethod, expectedArgs) => {
      const runner = createRunner([""]);
      const service = createGitHubService({
-@@ -681,9 +681,9 @@ describe("ForgeService", () => {
+@@ -740,9 +740,9 @@ describe("ForgeService", () => {
    });
  
    it.each([
@@ -3363,7 +3334,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
    ] as const)("enables auto-merge with gh using %s", async (mergeMethod, expectedArgs) => {
      const runner = createRunner([""]);
      const service = createGitHubService({
-@@ -745,7 +745,7 @@ describe("ForgeService", () => {
+@@ -804,7 +804,7 @@ describe("ForgeService", () => {
  
      expect(runner.calls).toEqual([
        {
@@ -3372,7 +3343,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
          cwd: "/tmp/repo",
          envOverlay: { GH_PROMPT_DISABLED: "1" },
        },
-@@ -759,11 +759,13 @@ describe("ForgeService", () => {
+@@ -818,11 +818,13 @@ describe("ForgeService", () => {
        checks: [{ name: "ci", status: "pending", url: null }],
      });
      const stableStatus = createCurrentPullRequestStatus({ checksStatus: "success" });
@@ -3386,7 +3357,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
    });
  
    it("computes exponential error backoff up to the cap", () => {
-@@ -849,6 +851,7 @@ describe("ForgeService", () => {
+@@ -908,6 +910,7 @@ describe("ForgeService", () => {
        runner: runner.runner,
        resolveGhPath: async () => "/usr/bin/gh",
        now: () => now,
@@ -3394,7 +3365,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
      });
      const reads = recordCurrentPullRequestStatusReads(service);
  
-@@ -922,6 +925,7 @@ describe("ForgeService", () => {
+@@ -981,6 +984,7 @@ describe("ForgeService", () => {
        runner: runner.runner,
        resolveGhPath: async () => "/usr/bin/gh",
        now: () => now,
@@ -3402,7 +3373,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
      });
      const reads = recordCurrentPullRequestStatusReads(service);
  
-@@ -968,6 +972,7 @@ describe("ForgeService", () => {
+@@ -1027,6 +1031,7 @@ describe("ForgeService", () => {
        runner: runner.runner,
        resolveGhPath: async () => "/usr/bin/gh",
        now: () => now,
@@ -3410,7 +3381,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
      });
      const reads = recordCurrentPullRequestStatusReads(service);
  
-@@ -1418,26 +1423,28 @@ describe("ForgeService", () => {
+@@ -1477,26 +1482,28 @@ describe("ForgeService", () => {
      service.dispose?.();
    });
  
@@ -3444,7 +3415,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
      ]);
      const service = createGitHubService({
        ttlMs: 0,
-@@ -1459,24 +1466,17 @@ describe("ForgeService", () => {
+@@ -1518,24 +1525,17 @@ describe("ForgeService", () => {
      await flushMicrotasks();
  
      expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(0);
@@ -3472,7 +3443,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
      subscription?.unsubscribe();
      service.dispose?.();
    });
-@@ -3152,6 +3152,75 @@ describe("ForgeService", () => {
+@@ -3211,6 +3211,75 @@ describe("ForgeService", () => {
      expect(status).toMatchObject({ number: 42, state: "open" });
    });
  
@@ -3548,7 +3519,7 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
    it("loads GitHub merge, auto-merge, permission, policy, and queue facts for PR 993 shape", async () => {
      const runner = createScriptedRunner([
        currentPullRequestJson({
-@@ -4459,9 +4528,10 @@ describe("ForgeService", () => {
+@@ -4690,9 +4759,10 @@ describe("ForgeService", () => {
  
      const first = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
      const second = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
@@ -3562,10 +3533,10 @@ index 3109bcc63ce923f6523e6239f181ce7169808334..12be5f49a01adc4c4089b0546cf389ba
      for (let i = 0; i < 10 && runner.calls.length < 2; i += 1) {
        await Promise.resolve();
 diff --git a/packages/server/src/services/github-service.ts b/packages/server/src/services/github-service.ts
-index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6ba2a8e871 100644
+index 189d53de5b2629f271e30c1dfe80c3b2496b59a6..100ba2f41cef8b9bd1471644fa61287bad127fca 100644
 --- a/packages/server/src/services/github-service.ts
 +++ b/packages/server/src/services/github-service.ts
-@@ -12,6 +12,7 @@ import {
+@@ -13,6 +13,7 @@ import {
  } from "../utils/change-request-checkout.js";
  import { execCommand } from "../utils/spawn.js";
  import { resolveSshHostname } from "../utils/ssh-hostname.js";
@@ -3573,7 +3544,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
  import {
    CLI_AUTH_PROBE_TIMEOUT_MS,
    createForgeCliRunner,
-@@ -1088,8 +1089,6 @@ interface GitHubPollTarget {
+@@ -1098,8 +1099,6 @@ interface GitHubPollTarget {
  interface GitHubBatchPollEntry {
    target: GitHubPollTarget;
    host: string;
@@ -3582,7 +3553,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
    owner: string;
    name: string;
    headRepositoryOwner?: string;
-@@ -1161,10 +1160,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -1173,10 +1172,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
    // Rollup nodes for merged/closed PRs keyed by repo#number@headOid: their
    // checks can no longer change, so each is fetched at most once per daemon run.
    const frozenPullRequestChecksCache = new Map<string, unknown[]>();
@@ -3593,7 +3564,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
    const pollPausedUntilByHost = new Map<string, number>();
    const rateLimitResetLoads = new Map<string, Promise<number | null>>();
    let githubPollTimer: NodeJS.Timeout | null = null;
-@@ -1521,8 +1516,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -1533,8 +1528,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
        group.push({
          target,
          host: key,
@@ -3602,7 +3573,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
          owner,
          name,
        });
-@@ -1621,13 +1614,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -1633,13 +1626,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
      entries: GitHubBatchPollEntry[],
      startedAt: number,
    ): Promise<void> {
@@ -3618,7 +3589,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
          owner: entry.owner,
          name: entry.name,
          headRef: entry.target.headRef,
-@@ -1635,7 +1627,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -1647,7 +1639,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
      );
      const args = ["api", "graphql", "-f", `query=${query}`];
      const response = await loadGitHubPollBatchResponse({
@@ -3627,7 +3598,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
        firstEntry,
        args,
      });
-@@ -1645,12 +1637,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -1657,12 +1649,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
      const rateLimit = parseGraphqlBatchRateLimit(response.stdout);
      if (rateLimit && pauseGitHubPollsAtReserve(firstEntry.host, rateLimit)) {
        const error = new GitHubGraphqlPollPausedError(rateLimit);
@@ -3642,7 +3613,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
        aliases: response.aliases,
        args,
        startedAt,
-@@ -1716,17 +1708,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -1728,17 +1720,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
          );
          continue;
        }
@@ -3664,7 +3635,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
        if (!node) {
          // Legacy fallback covers the two ways "no match" can be wrong: a fork
          // whose PR lives in the parent repository, and a full candidate page —
-@@ -1774,22 +1761,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -1786,22 +1773,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
      return distribution;
    }
  
@@ -3687,7 +3658,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
    function selectBatchPollNode(
      entry: GitHubBatchPollEntry,
      repository: BatchPollRepository,
-@@ -2170,6 +2141,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -2182,6 +2153,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
              headSha: input.headSha,
              headRepositoryOwner: input.headRepositoryOwner,
              run,
@@ -3695,7 +3666,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
            });
            return addCurrentPullRequestGithubFacts({ cwd: input.cwd, status, run });
          },
-@@ -2514,28 +2486,59 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -2526,28 +2498,59 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
  
      async mergePullRequest(input) {
        assertDirectPullRequestMergeReady(input);
@@ -3767,7 +3738,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
        return { success: true };
      },
  
-@@ -2585,7 +2588,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -2617,7 +2620,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
          void resolveRepoHostCached(input.cwd).catch(() => {});
          void resolveRepoSlugCached(input.cwd);
        }
@@ -3775,7 +3746,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
        const isNewlyRetained = target.retainCount === 0;
        target.retainCount += 1;
        if (input.onStatus) {
-@@ -2652,7 +2654,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
+@@ -2684,7 +2686,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
          closeGitHubPollTarget(target);
        }
        pollTargets.clear();
@@ -3783,7 +3754,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
        pollPausedUntilByHost.clear();
        rateLimitResetLoads.clear();
      },
-@@ -2668,6 +2669,13 @@ function getGithubStatusFacts(
+@@ -2700,6 +2701,13 @@ function getGithubStatusFacts(
    return isGitHubPullRequestStatusFacts(forgeSpecific) ? forgeSpecific : null;
  }
  
@@ -3797,7 +3768,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
  function assertDirectPullRequestMergeReady(input: MergePullRequestOptions): void {
    const github = getGithubStatusFacts(input.status);
    if (!github) {
-@@ -2958,8 +2966,13 @@ async function resolveCurrentPullRequestView(options: {
+@@ -2990,8 +2998,13 @@ async function resolveCurrentPullRequestView(options: {
    headSha?: string;
    headRepositoryOwner?: string;
    run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
@@ -3812,81 +3783,109 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
    const viewMatch = viewCandidate
      ? pickPullRequestCandidate({
          candidates: [viewCandidate],
-@@ -2971,31 +2984,56 @@ async function resolveCurrentPullRequestView(options: {
-   if (viewMatch) {
+@@ -3003,40 +3016,75 @@ async function resolveCurrentPullRequestView(options: {
+   if (viewMatch?.status.state === "open") {
      return viewMatch.status;
    }
-+  // An explicit head owner lets the origin candidate list disambiguate reused
-+  // branch names without probing repository metadata first. In particular, an
-+  // open PR must win over an older merged PR for the same branch.
-+  if (options.headRepositoryOwner) {
-+    const originMatch = await resolveOriginPullRequestView({
-+      ...options,
-+      originRepo,
-+      headRepositoryOwner: options.headRepositoryOwner,
-+    });
-+    if (originMatch) return originMatch;
-+  }
- 
+-
 -  let headRepositoryOwner = options.headRepositoryOwner;
-+  const repo = await getGitHubRepoView({ ...options, repo: originRepo ?? undefined });
-+  const headRepositoryOwner = options.headRepositoryOwner;
- 
+-
 -  if (!headRepositoryOwner) {
 -    const repo = await getGitHubRepoView(options);
 -    const forkOwner = repo?.owner?.login;
 -    const parentOwner = repo?.parent?.owner?.login;
 -    const parentName = repo?.parent?.name;
 -    if (!forkOwner) {
--      return null;
+-      return viewMatch?.status ?? null;
 -    }
 -    if (parentOwner && parentName) {
 -      return resolveForkPullRequestView({
 -        ...options,
 -        forkOwner,
+-        viewMatch,
 -        repo: `${parentOwner}/${parentName}`,
 -      });
 -    }
 -    headRepositoryOwner = forkOwner;
++  // The origin candidate list is a single `gh pr list`; the explicit-owner and fork paths share it.
++  let originCandidates: Promise<ResolvedPullRequestCandidate[]> | null = null;
++  const listOriginCandidates = (): Promise<ResolvedPullRequestCandidate[]> => {
++    originCandidates ??= listCurrentPullRequestCandidates({
++      cwd: options.cwd,
++      headRef: options.headRef,
++      run: options.run,
++      repo: originRepo ?? undefined,
++    });
++    return originCandidates;
++  };
++  // An explicit head owner lets the origin candidate list disambiguate reused
++  // branch names without probing repository metadata first. In particular, an
++  // open PR must win over an older merged PR for the same branch.
++  if (options.headRepositoryOwner) {
++    const originMatch = pickOriginPullRequestCandidate(await listOriginCandidates(), viewMatch, {
++      headRef: options.headRef,
++      headSha: options.headSha,
++      headRepositoryOwner: options.headRepositoryOwner,
++    });
++    if (originMatch) return originMatch.status;
+   }
+ 
+-  const candidates = await listCurrentPullRequestCandidates({
+-    cwd: options.cwd,
++  const repo = await getGitHubRepoView({ ...options, repo: originRepo ?? undefined });
 +  const forkOwner = repo?.owner?.login;
-+  const parentOwner = repo?.parent?.owner?.login;
-+  const parentName = repo?.parent?.name;
++  if (!forkOwner) {
++    // Repository metadata is unavailable; the single view lookup is all there is.
++    return viewMatch?.status ?? null;
++  }
++  const parentRepo = parentRepositoryName(repo);
 +  if (
-+    forkOwner &&
-+    parentOwner &&
-+    parentName &&
-+    (!headRepositoryOwner || headRepositoryOwner.toLowerCase() === forkOwner.toLowerCase())
++    parentRepo &&
++    (!options.headRepositoryOwner ||
++      options.headRepositoryOwner.toLowerCase() === forkOwner.toLowerCase())
 +  ) {
 +    return resolveForkPullRequestView({
 +      ...options,
 +      forkOwner,
-+      repo: `${parentOwner}/${parentName}`,
++      viewMatch,
++      repo: parentRepo,
 +    });
-   }
-+  return resolveOriginPullRequestView({ ...options, originRepo, forkOwner, headRepositoryOwner });
++  }
++  const originMatch = pickOriginPullRequestCandidate(await listOriginCandidates(), viewMatch, {
+     headRef: options.headRef,
+-    run: options.run,
++    headSha: options.headSha,
++    headRepositoryOwner: options.headRepositoryOwner ?? forkOwner,
+   });
+-  const match = pickPullRequestCandidate({
++  return originMatch?.status ?? null;
 +}
 +
-+async function resolveOriginPullRequestView(options: {
-+  cwd: string;
-+  headRef: string;
-+  headSha?: string;
-+  headRepositoryOwner?: string;
-+  forkOwner?: string;
-+  originRepo: string | null;
-+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-+}): Promise<CurrentPullRequestStatus | null> {
-+  const headRepositoryOwner = options.headRepositoryOwner ?? options.forkOwner;
-+  if (!headRepositoryOwner) return null;
- 
-   const candidates = await listCurrentPullRequestCandidates({
-     cwd: options.cwd,
++/** Owner/name of the parent repository when this checkout is a fork. */
++function parentRepositoryName(repo: z.infer<typeof GitHubRepoViewSchema> | null): string | null {
++  const owner = repo?.parent?.owner?.login;
++  const name = repo?.parent?.name;
++  return owner && name ? `${owner}/${name}` : null;
++}
++
++function pickOriginPullRequestCandidate(
++  candidates: ResolvedPullRequestCandidate[],
++  viewMatch: ResolvedPullRequestCandidate | null,
++  options: { headRef: string; headSha?: string; headRepositoryOwner?: string },
++): ResolvedPullRequestCandidate | null {
++  if (!options.headRepositoryOwner) return null;
++  return pickPullRequestCandidate({
+     candidates: viewMatch ? [...candidates, viewMatch] : candidates,
      headRef: options.headRef,
-     run: options.run,
-+    repo: options.originRepo ?? undefined,
+     headSha: options.headSha,
+-    headRepositoryOwner,
++    headRepositoryOwner: options.headRepositoryOwner,
    });
-   const match = pickPullRequestCandidate({
-     candidates,
-@@ -3138,8 +3176,13 @@ async function tryCurrentPullRequestView(options: {
+-  return match?.status ?? null;
+ }
+ 
+ // A fork checkout's pull request lives in the parent repository, where only
+@@ -3175,8 +3223,13 @@ async function tryCurrentPullRequestView(options: {
    headRef: string;
    args?: string[];
    run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
@@ -3901,7 +3900,7 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
    try {
      const stdout = await runCurrentPullRequestStatusCommand({
        cwd: options.cwd,
-@@ -3162,8 +3205,12 @@ async function listCurrentPullRequestCandidates(options: {
+@@ -3199,8 +3252,12 @@ async function listCurrentPullRequestCandidates(options: {
    cwd: string;
    headRef: string;
    run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
@@ -3914,23 +3913,8 @@ index 2dd3fdc26930f46fcca9d68ff64a1e1cccb2ea6a..24659208165c75964265fca1bbbabc6b
    try {
      const stdout = await runCurrentPullRequestStatusCommand({
        cwd: options.cwd,
-@@ -3218,8 +3265,13 @@ async function resolveGitHubSlugFromOrigin(cwd: string): Promise<string | null>
- async function getGitHubRepoView(options: {
-   cwd: string;
-   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-+  repo?: string;
- }): Promise<z.infer<typeof GitHubRepoViewSchema> | null> {
--  const args = ["repo", "view", "--json", "owner,name,parent"];
-+  const args = ["repo", "view"];
-+  if (options.repo) {
-+    args.push(options.repo);
-+  }
-+  args.push("--json", "owner,name,parent");
-   try {
-     const stdout = await options.run(args, {
-       cwd: options.cwd,
 diff --git a/packages/server/src/services/gitlab-service.test.ts b/packages/server/src/services/gitlab-service.test.ts
-index b9b6d447d4d4e86599158da36f7379bde4aabd26..f13ea7c6a167f1cad797920e82d9f5b50dc54fb3 100644
+index 2e6df284c99da48b06fa0678d35c570073164256..d9356db79de98c12d60f91b28606280a737f8f0a 100644
 --- a/packages/server/src/services/gitlab-service.test.ts
 +++ b/packages/server/src/services/gitlab-service.test.ts
 @@ -29,6 +29,8 @@ function makeService(responder: Responder, overrides: Partial<CreateGitLabServic
@@ -3942,7 +3926,7 @@ index b9b6d447d4d4e86599158da36f7379bde4aabd26..f13ea7c6a167f1cad797920e82d9f5b5
      ...overrides,
    });
    return { service, calls };
-@@ -321,6 +323,69 @@ describe("createGitLabService", () => {
+@@ -353,6 +355,69 @@ describe("createGitLabService", () => {
      expect(status).toBeNull();
    });
  
@@ -4012,7 +3996,7 @@ index b9b6d447d4d4e86599158da36f7379bde4aabd26..f13ea7c6a167f1cad797920e82d9f5b5
    it("selects a terminal merge request only when its head SHA matches the checkout", async () => {
      const branch = "dev";
      const checkoutSha = "2222222222222222222222222222222222222222";
-@@ -912,6 +977,96 @@ describe("createGitLabService", () => {
+@@ -946,6 +1011,96 @@ describe("createGitLabService", () => {
      },
    );
  
@@ -4109,7 +4093,7 @@ index b9b6d447d4d4e86599158da36f7379bde4aabd26..f13ea7c6a167f1cad797920e82d9f5b5
    it("populates approval counts from the approvals endpoint", async () => {
      const { service, calls } = makeService((args) => {
        if (args[0] === "mr" && args[1] === "list") return ok(JSON.stringify([OPEN_MR]));
-@@ -1278,12 +1433,18 @@ describe("createGitLabService", () => {
+@@ -1312,12 +1467,18 @@ describe("createGitLabService", () => {
    });
  
    it("reports authentication via a host-scoped glab auth status", async () => {
@@ -4134,7 +4118,7 @@ index b9b6d447d4d4e86599158da36f7379bde4aabd26..f13ea7c6a167f1cad797920e82d9f5b5
  
    it("reports unauthenticated when glab auth status fails", async () => {
 diff --git a/packages/server/src/services/gitlab-service.ts b/packages/server/src/services/gitlab-service.ts
-index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e72851ce73 100644
+index 3e0111a43907d50e80a127f9f97531273a2a5fd7..fa12f2c71a2df5cd589055ba59a536af85c2dc52 100644
 --- a/packages/server/src/services/gitlab-service.ts
 +++ b/packages/server/src/services/gitlab-service.ts
 @@ -1,6 +1,7 @@
@@ -4212,16 +4196,16 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
  }
  
  const GitLabPipelineSchema = z
-@@ -173,6 +234,8 @@ const GitLabMergeRequestSchema = z
+@@ -249,6 +310,8 @@ const GitLabApprovalsSchema = z
    })
    .passthrough();
  
-+const GitLabProjectSchema = z.object({ id: z.number() }).passthrough();
++const GitLabProjectIdSchema = z.object({ id: z.number() }).passthrough();
 +
- const GitLabIssueSchema = z
+ const GitLabProjectSchema = z
    .object({
-     iid: z.number(),
-@@ -289,6 +352,10 @@ export function parseGitLabHostFromRemoteUrl(url: string): string | null {
+     path_with_namespace: z.string(),
+@@ -299,6 +362,10 @@ export function parseGitLabHostFromRemoteUrl(url: string): string | null {
    return parseGitRemoteLocation(url)?.host ?? null;
  }
  
@@ -4232,7 +4216,7 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
  function mapMergeRequestState(state: string): string {
    if (state === "opened") {
      return "open";
-@@ -530,6 +597,19 @@ function classifyGlabTimelineErrorKind(stderr: string): PullRequestTimelineError
+@@ -540,6 +607,19 @@ function classifyGlabTimelineErrorKind(stderr: string): PullRequestTimelineError
    return "unknown";
  }
  
@@ -4252,7 +4236,7 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
  function mapGlabTimelineError(error: unknown): PullRequestTimelineError {
    if (error instanceof GlabAuthenticationError) {
      return { kind: "forbidden", message: error.stderr || error.message };
-@@ -911,6 +991,8 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+@@ -922,6 +1002,8 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
    const runner = options.runner ?? runGlabCommand;
    const resolveGlab = createCachedCliPathResolver(options.resolveGlabPath ?? resolveGlabPath);
    const resolveRemoteUrl = options.resolveRemoteUrl ?? defaultResolveRemoteUrl;
@@ -4261,7 +4245,7 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
  
    async function run(args: string[], runOptions: GlabCommandRunnerOptions): Promise<string> {
      const glabPath = await resolveGlab();
-@@ -944,6 +1026,35 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+@@ -955,6 +1037,35 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
      });
    }
  
@@ -4284,7 +4268,7 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
 +        : runJson(
 +            ["api", `projects/${encodeURIComponent(projectPath)}`],
 +            { cwd },
-+            GitLabProjectSchema,
++            GitLabProjectIdSchema,
 +          ).then((project) => project.id)
 +    ).catch((error: unknown) => {
 +      projectIdPromises.delete(cacheKey);
@@ -4297,7 +4281,7 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
    async function viewMergeRequest(cwd: string, ref: string): Promise<GitLabMergeRequest> {
      assertSafeGlabPositional(ref);
      return runJson(["mr", "view", ref, "-F", "json"], { cwd }, GitLabMergeRequestSchema);
-@@ -979,8 +1090,16 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+@@ -990,8 +1101,16 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
      headRef: string,
      headSha?: string,
    ): Promise<GitLabMergeRequest | null> {
@@ -4316,7 +4300,7 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
      const match =
        candidates.find((mr) => mapMergeRequestState(mr.state) === "open") ??
        candidates.find(
-@@ -1332,6 +1451,82 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
+@@ -1358,6 +1477,82 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
        return toCheckDetails(pipeline);
      },
  
@@ -4400,10 +4384,10 @@ index c5f54be2cb8ddfd44959606fb8d474274eeef600..887b39b31916b181ca5d589555b085e7
        if (input.force && !input.reason) {
          throw new Error("ForgeService forced read requires a reason");
 diff --git a/packages/server/src/utils/build-metadata-prompt.ts b/packages/server/src/utils/build-metadata-prompt.ts
-index b68f660515f23e3e2c7638548008ec6b61921f89..fcd30d4295ee88f4c533024c9bb7f5af19dc9753 100644
+index b68f660515f23e3e2c7638548008ec6b61921f89..a7f6f06bf30e6284ec9bec6c95d586c8c418ab08 100644
 --- a/packages/server/src/utils/build-metadata-prompt.ts
 +++ b/packages/server/src/utils/build-metadata-prompt.ts
-@@ -25,19 +25,33 @@ export interface BuildMetadataPromptOptions {
+@@ -25,19 +25,31 @@ export interface BuildMetadataPromptOptions {
    after: string;
    trailing?: string;
    workspaceGitService?: RepoRootResolver;
@@ -4432,11 +4416,9 @@ index b68f660515f23e3e2c7638548008ec6b61921f89..fcd30d4295ee88f4c533024c9bb7f5af
 +  projectOverride: string | undefined,
 +  globalOverride: string | undefined,
 +): string {
-+  const body = isNonEmptyString(projectOverride)
-+    ? projectOverride.trim()
-+    : isNonEmptyString(globalOverride)
-+      ? globalOverride.trim()
-+      : section.default;
++  let body = section.default;
++  if (isNonEmptyString(projectOverride)) body = projectOverride.trim();
++  else if (isNonEmptyString(globalOverride)) body = globalOverride.trim();
    return section.label ? `${section.label}:\n${body}` : body;
  }
  
@@ -4551,10 +4533,10 @@ index ddafaab6b5bf888e7f295944e0a6b577dc80cf30..4935c9735e083d864065469ffdf6a389
 +  ).toEqual({ ...current, upstreamStatus: facts.upstreamStatus });
  });
 diff --git a/packages/server/src/utils/checkout-git.test.ts b/packages/server/src/utils/checkout-git.test.ts
-index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737eeba4db5 100644
+index 13944108e2a15cafffedf1de4c7835c7305416f1..e95fd4c1ef4a6d9dc53e6b78e7af14e17d30ae6e 100644
 --- a/packages/server/src/utils/checkout-git.test.ts
 +++ b/packages/server/src/utils/checkout-git.test.ts
-@@ -875,6 +875,7 @@ const x = 1;
+@@ -936,6 +936,7 @@ const x = 1;
      }
      expect(behindStatus.aheadOfOrigin).toBe(0);
      expect(behindStatus.behindOfOrigin).toBe(1);
@@ -4562,7 +4544,7 @@ index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737
  
      commitFile(repoDir, "local-1.txt", "local 1\n", "local update 1");
      commitFile(repoDir, "local-2.txt", "local 2\n", "local update 2");
-@@ -899,6 +900,7 @@ const x = 1;
+@@ -960,6 +961,7 @@ const x = 1;
      expect(divergedStatus.upstreamRef).toBe("refs/remotes/origin/main");
      expect(divergedStatus.aheadOfOrigin).toBe(3);
      expect(divergedStatus.behindOfOrigin).toBe(2);
@@ -4570,7 +4552,7 @@ index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737
      expect(upstreamCountCommands).toHaveLength(1);
      expect(upstreamCountCommands[0]?.args).toEqual([
        "for-each-ref",
-@@ -907,6 +909,26 @@ const x = 1;
+@@ -968,6 +970,26 @@ const x = 1;
      ]);
    });
  
@@ -4597,7 +4579,7 @@ index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737
    it("reports the fork remote, not origin, when the branch tracks a second remote", async () => {
      setupRemoteTrackingMain(repoDir, tempDir);
      const forkDir = join(tempDir, "fork.git");
-@@ -920,6 +942,29 @@ const x = 1;
+@@ -981,6 +1003,29 @@ const x = 1;
        return;
      }
      expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
@@ -4627,7 +4609,7 @@ index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737
    });
  
    it("reports the upstream branch name when it differs from the local branch name", async () => {
-@@ -2063,6 +2108,23 @@ const x = 1;
+@@ -2131,6 +2176,23 @@ const x = 1;
      });
    });
  
@@ -4652,10 +4634,10 @@ index bd52b0e49fd0862b62ccdb4106d99f5432b42712..980d69861dde69c3af1af40aaab80737
      writeFileSync(join(repoDir, "conflict.txt"), "base\n");
      execFileSync("git", ["add", "conflict.txt"], { cwd: repoDir });
 diff --git a/packages/server/src/utils/checkout-git.ts b/packages/server/src/utils/checkout-git.ts
-index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f59271713a49842a 100644
+index c817ed5e9b05410115dc15deaa452bdeae9579a3..79c59493ac8d3ca28cddcee7a0569c2f94a43fa5 100644
 --- a/packages/server/src/utils/checkout-git.ts
 +++ b/packages/server/src/utils/checkout-git.ts
-@@ -74,6 +74,8 @@ export type GitMutationRefreshReason =
+@@ -76,6 +76,8 @@ export type GitMutationRefreshReason =
    | "create-pr"
    | "switch-branch"
    | "rename-branch"
@@ -4664,7 +4646,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    | "create-branch"
    | "stash-push"
    | "stash-pop"
-@@ -873,6 +875,10 @@ export interface AheadBehind {
+@@ -884,6 +886,10 @@ export interface AheadBehind {
    behind: number;
  }
  
@@ -4675,9 +4657,9 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
  export interface CheckoutStatus {
    isGit: false;
  }
-@@ -885,12 +891,14 @@ export interface CheckoutStatusGitNonPaseo {
-   isDirty: boolean;
-   baseRef: string | null;
+@@ -898,12 +904,14 @@ export interface CheckoutStatusGitNonPaseo {
+   baseRefExact?: string | null;
+   comparisonBaseRef?: string | null;
    aheadBehind: AheadBehind | null;
 +  hasChangesFromBase: boolean | null;
    // Remote-tracking ref for currentBranch, e.g. "refs/remotes/origin/main". Null when the
@@ -4690,9 +4672,9 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    hasRemote: boolean;
    remoteUrl: string | null;
    isPaseoOwnedWorktree: false;
-@@ -904,9 +912,11 @@ export interface CheckoutStatusGitPaseo {
-   isDirty: boolean;
-   baseRef: string;
+@@ -919,9 +927,11 @@ export interface CheckoutStatusGitPaseo {
+   baseRefExact?: string | null;
+   comparisonBaseRef?: string | null;
    aheadBehind: AheadBehind | null;
 +  hasChangesFromBase: boolean | null;
    upstreamRef: string | null;
@@ -4702,14 +4684,17 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    hasRemote: boolean;
    remoteUrl: string | null;
    isPaseoOwnedWorktree: true;
-@@ -1779,43 +1789,48 @@ async function getAheadBehind(
+@@ -1847,7 +1857,7 @@ async function getAheadBehind(
    baseRef: string,
    currentBranch: string,
    context?: CheckoutContext,
 -): Promise<AheadBehind | null> {
 +): Promise<RefComparison | null> {
    const normalizedBaseRef = branchNameFromRef(baseRef);
-   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
+   if (
+     !normalizedBaseRef ||
+@@ -1856,38 +1866,43 @@ async function getAheadBehind(
+   ) {
      return null;
    }
 -  const comparisonBaseRef =
@@ -4767,7 +4752,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
  }
  
  async function getUpstreamStatus(
-@@ -1838,12 +1853,24 @@ async function getUpstreamStatus(
+@@ -1910,12 +1925,24 @@ async function getUpstreamStatus(
      }
      const ahead = Number.parseInt(track.match(/ahead (\d+)/)?.[1] ?? "0", 10);
      const behind = Number.parseInt(track.match(/behind (\d+)/)?.[1] ?? "0", 10);
@@ -4793,7 +4778,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
  interface CheckoutInspectionContext {
    worktreeRoot: string;
    currentBranch: string | null;
-@@ -2338,16 +2365,11 @@ export async function getCheckoutStatus(
+@@ -2411,20 +2438,15 @@ export async function getCheckoutStatus(
      return { isGit: false };
    }
  
@@ -4806,12 +4791,16 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    const baseRef = facts.resolvedBaseRef;
 -  const mainRepoRoot = facts.mainRepoRoot;
    const factsContext = { ...context, facts };
+   // Ref-derived counts skip the current base branch; the diff consumer still needs its ref.
+   const comparisonBaseRef = baseRef
+     ? await resolveQualifiedComparisonBaseRef(cwd, baseRef, factsContext).catch(() => null)
+     : null;
 -  const aheadBehind =
 +  const baseComparison =
      baseRef && currentBranch
        ? await getAheadBehind(cwd, baseRef, currentBranch, factsContext)
        : null;
-@@ -2359,19 +2381,64 @@ export async function getCheckoutStatus(
+@@ -2436,21 +2458,69 @@ export async function getCheckoutStatus(
    const upstreamRef = upstreamStatus?.ref ?? null;
    const aheadOfOrigin = upstreamStatus?.aheadBehind.ahead ?? null;
    const behindOfOrigin = upstreamStatus?.aheadBehind.behind ?? null;
@@ -4825,6 +4814,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
 +    facts,
 +    isDirty,
 +    displayBaseRef,
++    comparisonBaseRef,
 +    aheadBehind,
 +    hasChangesFromBase,
 +    upstreamRef,
@@ -4838,6 +4828,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
 +  facts,
 +  isDirty,
 +  displayBaseRef,
++  comparisonBaseRef,
 +  aheadBehind,
 +  hasChangesFromBase,
 +  upstreamRef,
@@ -4848,6 +4839,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
 +  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>;
 +  isDirty: boolean;
 +  displayBaseRef: string | null;
++  comparisonBaseRef: string | null;
 +  aheadBehind: AheadBehind | null;
 +  hasChangesFromBase: boolean | null;
 +  upstreamRef: string | null;
@@ -4868,7 +4860,10 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
        currentBranch,
        isDirty,
 -      baseRef: displayBaseRef ?? baseRef,
+-      baseRefExact: baseRef,
 +      baseRef: displayBaseRef ?? resolvedBaseRef,
++      baseRefExact: resolvedBaseRef,
+       comparisonBaseRef,
        aheadBehind,
 +      hasChangesFromBase,
        upstreamRef,
@@ -4878,9 +4873,13 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
        hasRemote,
        remoteUrl,
        isPaseoOwnedWorktree: true,
-@@ -2387,9 +2454,11 @@ export async function getCheckoutStatus(
+@@ -2465,12 +2535,14 @@ export async function getCheckoutStatus(
+     currentBranch,
      isDirty,
      baseRef: displayBaseRef,
+-    baseRefExact: baseRef,
++    baseRefExact: resolvedBaseRef,
+     comparisonBaseRef,
      aheadBehind,
 +    hasChangesFromBase,
      upstreamRef,
@@ -4890,7 +4889,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
      hasRemote,
      remoteUrl,
      isPaseoOwnedWorktree: false,
-@@ -2736,16 +2805,8 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
+@@ -2820,16 +2892,8 @@ async function readCommitRenames(cwd: string, sha: string): Promise<ReadonlyMap<
  }
  
  /**
@@ -4907,9 +4906,9 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
 + * Returns the unified diff for one file in one commit, parsed into the same
 + * shape emitted by the checkout diff subscription.
   */
+ // COMPAT(diffSubscription): added in v0.15.0, remove after 2027-05-06.
  export async function getCommitFileDiff({
-   cwd,
-@@ -2778,7 +2839,6 @@ export async function getCommitFileDiff({
+@@ -2863,7 +2927,6 @@ export async function getCommitFileDiff({
        envOverlay: READ_ONLY_GIT_ENV,
      },
    );
@@ -4917,20 +4916,20 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    if (stdout.trim().length === 0) {
      return null;
    }
-@@ -2792,19 +2852,18 @@ export async function getCommitFileDiff({
+@@ -2877,19 +2940,18 @@ export async function getCommitFileDiff({
    // Including the rename source lets Git pair it with the destination. Select
    // the requested entry if another change also matches the source path.
    const file = parsedFiles.find((candidate) => candidate.path === path) ?? null;
 -  if (!file) {
-+  if (!file || (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout))) {
-     return null;
-   }
+-    return null;
+-  }
 -
 -  // Binary changes carry a "Binary files ... differ" marker and no hunks; there
 -  // is nothing textual to render, so report them as absent.
 -  if (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout)) {
--    return null;
--  }
++  if (!file || (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout))) {
+     return null;
+   }
 -
    return file;
  }
@@ -4944,7 +4943,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
  export interface CheckoutShortstat {
    additions: number;
    deletions: number;
-@@ -3017,6 +3076,7 @@ export async function getCheckoutShortstat(
+@@ -3102,6 +3164,7 @@ export async function getCheckoutShortstat(
  
  export interface CheckoutRefDerivedState {
    aheadBehind: AheadBehind | null;
@@ -4952,7 +4951,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    diffStat: CheckoutShortstat | null;
    upstreamStatus: UpstreamStatus | null;
  }
-@@ -3078,7 +3138,7 @@ function getCheckoutRefMovement(
+@@ -3163,7 +3226,7 @@ function getCheckoutRefMovement(
  export async function getCheckoutRefDerivedState(
    cwd: string,
    facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
@@ -4961,7 +4960,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    movedRemoteRefs: ReadonlySet<string>,
    context?: CheckoutContext,
  ): Promise<CheckoutRefDerivedState> {
-@@ -3092,12 +3152,29 @@ export async function getCheckoutRefDerivedState(
+@@ -3177,12 +3240,29 @@ export async function getCheckoutRefDerivedState(
    } = getCheckoutRefMovement(facts, movedRemoteRefs);
  
    let aheadBehind = current.aheadBehind;
@@ -4995,7 +4994,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
    }
    if (baseMoved || (upstreamMoved && currentBranch === normalizedResolvedBase)) {
      diffStat = await getCheckoutShortstatUncached(
-@@ -3109,21 +3186,39 @@ export async function getCheckoutRefDerivedState(
+@@ -3194,21 +3274,39 @@ export async function getCheckoutRefDerivedState(
  
    let upstreamStatus = facts.upstreamStatus;
    if (upstreamMoved && currentBranch && upstreamRef) {
@@ -5045,7 +5044,7 @@ index 358bd6eb69fd2a58418e584531722b5811b5473e..9bd15fd8f039b9b2041f2824f5927171
  }
  
  export interface CheckoutWorktreeState {
-@@ -3971,6 +4066,14 @@ export async function mergeFromBase(
+@@ -4094,6 +4192,14 @@ export async function mergeFromBase(
    if (bestBaseRef === currentBranch) {
      return;
    }

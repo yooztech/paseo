@@ -11,7 +11,7 @@ index a85ff1fd8c1f4c20760319a05953b4141cecb4f7..7da7e434a4642212f384b280e5c2c2e9
  # Environment variables
  .env
 diff --git a/package.json b/package.json
-index 8beb054294101787b86dcd5f5349bc70b724065b..fbcda6f45b76a296131c5c20077c7e637bd2aa04 100644
+index 6b50d21dc93a8008a39a7d602b808f760b15e9d2..7efd991c1b94191a53c2aa6c76abb102f30942eb 100644
 --- a/package.json
 +++ b/package.json
 @@ -115,6 +115,9 @@
@@ -25,10 +25,10 @@ index 8beb054294101787b86dcd5f5349bc70b724065b..fbcda6f45b76a296131c5c20077c7e63
      "release:beta:minor": "npm run release:check && npm run version:all:beta:minor && npm run release:publish:beta && npm run release:push",
      "release:beta:major": "npm run release:check && npm run version:all:beta:major && npm run release:publish:beta && npm run release:push",
 diff --git a/packages/desktop/e2e/browser-tabs.e2e.mjs b/packages/desktop/e2e/browser-tabs.e2e.mjs
-index 28afbab94ff97f957f89371a9fa874d0e64fe64e..8bbc7a9d03e20128bdca0dd40580da38aaf8fd31 100644
+index 668d884b80f906abbceef4994a996f1e29fb888f..d3ce252c4c4c44d04224e378df0e387f353af5f3 100644
 --- a/packages/desktop/e2e/browser-tabs.e2e.mjs
 +++ b/packages/desktop/e2e/browser-tabs.e2e.mjs
-@@ -778,7 +778,9 @@ async function runRegression({
+@@ -910,7 +910,9 @@ async function runRegression({
    await selectDeviceSize(page, "Responsive");
    const responsiveViewport = await readViewport(client, browserId);
  
@@ -39,7 +39,7 @@ index 28afbab94ff97f957f89371a9fa874d0e64fe64e..8bbc7a9d03e20128bdca0dd40580da38
    await page.waitForFunction(
      ({ id, webContentsId }) => {
        const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
-@@ -792,6 +794,17 @@ async function runRegression({
+@@ -924,6 +926,17 @@ async function runRegression({
      { id: browserId, webContentsId: firstGuest.webContentsId },
      { timeout: timeoutMs },
    );
@@ -57,7 +57,7 @@ index 28afbab94ff97f957f89371a9fa874d0e64fe64e..8bbc7a9d03e20128bdca0dd40580da38
    try {
      await callBrowserTool(client, "browser_screenshot", { browserId });
    } catch (error) {
-@@ -1081,6 +1094,7 @@ async function runRegression({
+@@ -1218,6 +1231,7 @@ async function runRegression({
      viewport: "passed",
      guestFocus: "passed",
      overlayPlane: "passed",
@@ -65,7 +65,7 @@ index 28afbab94ff97f957f89371a9fa874d0e64fe64e..8bbc7a9d03e20128bdca0dd40580da38
      inactiveCapture: "passed",
      hiddenWindowCapture: "passed",
      list: "passed",
-@@ -1274,7 +1288,7 @@ async function main() {
+@@ -1413,7 +1427,7 @@ async function main() {
        adaptiveTheme,
      });
      console.log(
@@ -378,7 +378,7 @@ index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3
  
    downloadUpdate(targetVersion: string): Promise<unknown> {
 diff --git a/packages/website/e2e/plugins.spec.ts b/packages/website/e2e/plugins.spec.ts
-index 22baf9e7f1086007bbb5d42401643cbea88728f9..6477d1cb359fc8912e8049e3739e2f85fa18f981 100644
+index 7d02e9d7d5b26a4938ee06665d3e8ef74bf11392..4de6d7519581183857aaab0210ea18ce90539c9e 100644
 --- a/packages/website/e2e/plugins.spec.ts
 +++ b/packages/website/e2e/plugins.spec.ts
 @@ -61,6 +61,30 @@ async function scrollPluginCarousel(page: Page, section: string) {
@@ -413,10 +413,10 @@ index 22baf9e7f1086007bbb5d42401643cbea88728f9..6477d1cb359fc8912e8049e3739e2f85
    page,
    context,
 diff --git a/packages/website/public/schemas/paseo.config.v1.json b/packages/website/public/schemas/paseo.config.v1.json
-index bae380d4c8a5510adb59cb6ba3be922a92e0435b..914c4bfe99abaa3f1d8eb75b2864d7d5d3523fba 100644
+index 8ead79103323a807cc3a427987ddaa18eed233c9..e8278f2c3eab4325893da3d112a06554f17b2ffd 100644
 --- a/packages/website/public/schemas/paseo.config.v1.json
 +++ b/packages/website/public/schemas/paseo.config.v1.json
-@@ -556,6 +556,19 @@
+@@ -563,6 +563,19 @@
                  "required": ["provider"],
                  "additionalProperties": false
                }
@@ -459,7 +459,7 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
-index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580e1cc568b 100644
+index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..9c677501b5811ec3cf53eaf08a515e5537836a76 100644
 --- a/scripts/ci-workflow.test.mjs
 +++ b/scripts/ci-workflow.test.mjs
 @@ -11,6 +11,12 @@ const repoRoot = new URL("../", import.meta.url);
@@ -554,7 +554,7 @@ index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580
      );
    }
  });
-@@ -320,20 +382,33 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
+@@ -357,20 +419,33 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
    ]);
  });
  
@@ -592,7 +592,7 @@ index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580
    assert.match(trigger, /pull_request:\s*\n\s+paths:/);
    assert.match(trigger, /- "packages\/desktop\/\*\*"/);
    assert.doesNotMatch(source, /dorny\/paths-filter/);
-@@ -342,32 +417,53 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
+@@ -379,32 +454,53 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
    }
  });
  
@@ -667,7 +667,7 @@ index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580
  });
  
  test("eight Playwright shards share two-worker coverage", () => {
-@@ -424,12 +520,13 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -461,12 +557,13 @@ test("quality preserves commands and routes each domain independently after fail
      Object.values(commands).flat(),
    );
    const domains = Object.keys(commands);
@@ -686,7 +686,7 @@ index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580
        steps: { install: { outcome: installed ? "success" : "failure" } },
        cancelled: () => cancelled,
        success: () => false,
-@@ -437,6 +534,7 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -474,6 +571,7 @@ test("quality preserves commands and routes each domain independently after fail
    }
    const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
    const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
@@ -694,7 +694,7 @@ index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580
    assert.equal(accepts(jobCondition, disabled), false);
    for (const selected of domains) {
      const outputs = { ...disabled, [selected]: "true" };
-@@ -446,12 +544,24 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -483,12 +581,24 @@ test("quality preserves commands and routes each domain independently after fail
      }
    }
    for (const [, expression] of checks) {
@@ -720,7 +720,7 @@ index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580
  });
  
  test("Windows units and integration run independently with complete routed coverage", () => {
-@@ -509,10 +619,9 @@ test("Windows units and integration run independently with complete routed cover
+@@ -546,10 +656,9 @@ test("Windows units and integration run independently with complete routed cover
    function condition(job) {
      return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
    }
@@ -733,7 +733,7 @@ index 381f82654081217535440ea28f563c3e0fb9bd65..c52b41b7baf6d1ab41617bdc8a565580
      });
    }
    const unitCondition = condition(windows);
-@@ -540,8 +649,10 @@ test("Windows units and integration run independently with complete routed cover
+@@ -577,8 +686,10 @@ test("Windows units and integration run independently with complete routed cover
      assert.equal(selected(unitStep, outputs), integrations);
      assert.equal(selected(pluginStep, outputs), integrations);
      assert.equal(selected(hubStep, outputs), hub);
@@ -996,10 +996,10 @@ index cbd159c8cd25765b08fb29e940ac9bd8e42f48d3..ade50ecafa1d73e8be591ca27f7dcfca
    if (!source || !existsSync(source) || existsSync(target)) {
      return;
 diff --git a/scripts/seed-worktree-dev-state.mjs b/scripts/seed-worktree-dev-state.mjs
-index d645789596f967754f02b89f72898e902bf60cf6..ccda6a43de68d3882f5179d5eb6eacf5727484c2 100644
+index 87ebd28e2a1edab02c79870267b6da78afc35d0b..4ca7d2f63b6030ab26cfbe56800a4b267cadf3e7 100644
 --- a/scripts/seed-worktree-dev-state.mjs
 +++ b/scripts/seed-worktree-dev-state.mjs
-@@ -9,8 +9,9 @@ import { dirname, join } from "node:path";
+@@ -11,8 +11,9 @@ import { seedPaseoHome } from "./seed-dev-home.mjs";
  
  const sourceRoot = process.env.PASEO_SOURCE_CHECKOUT_PATH;
  const targetRoot = process.env.PASEO_WORKTREE_PATH || process.cwd();
@@ -1010,8 +1010,8 @@ index d645789596f967754f02b89f72898e902bf60cf6..ccda6a43de68d3882f5179d5eb6eacf5
    process.exit(0);
  }
  
-@@ -64,14 +65,20 @@ function copyJsonTree(source, target) {
- }
+@@ -23,14 +24,20 @@ seedPaseoHome(
+ copyServerEnv();
  
  function copyServerEnv() {
 -  const source = join(sourceRoot, "packages/server/.env");
@@ -1034,12 +1034,12 @@ index d645789596f967754f02b89f72898e902bf60cf6..ccda6a43de68d3882f5179d5eb6eacf5
    mkdirSync(dirname(target), { recursive: true });
    cpSync(source, target);
 diff --git a/scripts/sync-release-notes-from-changelog.mjs b/scripts/sync-release-notes-from-changelog.mjs
-index 95c9baec4c28bc2a111e38fa705fd897bf824060..4e98392088a2d2b3488aa96c4984f4f508a768c3 100644
+index 1931461a0ca5b03cbb71e44040618c37e2cfd1a7..9e8f92a7da2a2d4ce1ca14dea8b1a9f7395033c2 100644
 --- a/scripts/sync-release-notes-from-changelog.mjs
 +++ b/scripts/sync-release-notes-from-changelog.mjs
 @@ -4,12 +4,8 @@ import { tmpdir } from "node:os";
  import path from "node:path";
- import { parseChangelogEntries } from "./changelog-utils.mjs";
+ import { parseChangelogEntries, splitChangelogHighlights } from "./changelog-utils.mjs";
  import { getGitHubRelease } from "./github-release.mjs";
 -import {
 -  getReleaseInfoFromSourceTag,
@@ -1051,7 +1051,7 @@ index 95c9baec4c28bc2a111e38fa705fd897bf824060..4e98392088a2d2b3488aa96c4984f4f5
  
  function usageAndExit(code = 1) {
    const usage = `
-@@ -118,13 +114,19 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
+@@ -139,13 +135,19 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
    const changelogText = readFileSync(changelogPath, "utf8");
    const entries = parseChangelog(changelogText);
  
@@ -1075,12 +1075,12 @@ index 95c9baec4c28bc2a111e38fa705fd897bf824060..4e98392088a2d2b3488aa96c4984f4f5
      return;
    }
 diff --git a/scripts/sync-release-notes-from-changelog.test.mjs b/scripts/sync-release-notes-from-changelog.test.mjs
-index 5cb172df2e29886ed9381ade6786bfa1d1f5f6b2..c8f079d3cc1a03388da95dce49b0b9bfbe0a29a6 100644
+index c95289a56d05591894003cb8c348d1cf2aea8859..6d15d0618ecc7267fff54cd92683ff6d0b9abe86 100644
 --- a/scripts/sync-release-notes-from-changelog.test.mjs
 +++ b/scripts/sync-release-notes-from-changelog.test.mjs
-@@ -227,3 +227,40 @@ test("converts contributor profile links to mentions in synced release notes", (
-     assert.doesNotMatch(syncedNotes, /\[@therainisme\]\(https:\/\/github\.com\/therainisme\)/);
-   }, changelogText);
+@@ -288,3 +288,40 @@ test("keeps the sections in view when an entry has no highlights", () => {
+ 
+   assert.equal(syncedNotes, "## 0.1.60-beta.1 - 2026-04-20\n\n### Fixed\n\n- Fixed a crash\n");
  });
 +
 +test("uses the base changelog section for fork desktop publication", () => {

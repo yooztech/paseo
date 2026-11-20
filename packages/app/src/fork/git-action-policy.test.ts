@@ -41,6 +41,7 @@ function createInput(overrides: Partial<ForkBuildGitActionsInput> = {}): ForkBui
     hasRemote: false,
     isPaseoOwnedWorktree: true,
     isOnBaseBranch: true,
+    canMergeLocally: true,
     hasUncommittedChanges: false,
     baseRefAvailable: true,
     baseRefLabel: "main",

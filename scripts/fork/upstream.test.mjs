@@ -411,7 +411,7 @@ test("fork setup seeds native caches and server config into runtime while keepin
   const { tree } = JSON.parse(
     execFileSync(process.execPath, [cli, "tree"], { cwd: repo, encoding: "utf8" }),
   );
-  const scripts = ["seed-ios-native-cache.mjs", "seed-worktree-dev-state.mjs"];
+  const scripts = ["seed-dev-home.mjs", "seed-ios-native-cache.mjs", "seed-worktree-dev-state.mjs"];
   for (const script of scripts) {
     const content = execFileSync("git", ["show", `${tree}:scripts/${script}`], { cwd: repo });
     writeFileSync(path.join(root, script), content);
@@ -441,10 +441,11 @@ test("fork setup seeds native caches and server config into runtime while keepin
     };
     for (const script of scripts)
       execFileSync(process.execPath, [path.join(root, script)], { env });
-    assert.equal(
+    const seededConfig = JSON.parse(
       readFileSync(path.join(target, ".dev/paseo-home/config.json"), "utf8"),
-      '{"source":true}',
     );
+    // Upstream's seedPaseoHome disables agent resume in the copied snapshot.
+    assert.deepEqual(seededConfig, { source: true, agents: { resumeOnStartup: false } });
     assert.equal(
       readFileSync(path.join(runtime, "packages/server/.env"), "utf8"),
       "RUNTIME_TEST=1\n",
