@@ -114,9 +114,11 @@ test("retries a failed EAS submit with exponential backoff", async (t) => {
   assert.match(result.stderr, /Submit attempt 1\/3 failed; retrying in 15 seconds/);
   assert.match(result.stderr, /Submit attempt 2\/3 failed; retrying in 30 seconds/);
   assert.match(result.stdout, /Submitted app-v0\.5\.0-fork\.2/);
-  const buildArgs = (await readFile(harness.buildLogFile, "utf8")).split("\n").filter(Boolean);
+  const buildArgs = new Set(
+    (await readFile(harness.buildLogFile, "utf8")).split("\n").filter(Boolean),
+  );
   for (const flag of ["--local", "--non-interactive", "--platform", "--output"])
-    assert.ok(buildArgs.includes(flag), `expected build args to include ${flag}`);
+    assert.ok(buildArgs.has(flag), `expected build args to include ${flag}`);
 });
 
 test("fails after the final EAS submit attempt without another delay", async (t) => {
