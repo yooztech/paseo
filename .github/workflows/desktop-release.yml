@@ -51,6 +51,7 @@ jobs:
   create-release:
     if: ${{ (github.event_name == 'push' && !startsWith(github.ref_name, 'desktop-macos-v') && !startsWith(github.ref_name, 'desktop-linux-v') && !startsWith(github.ref_name, 'desktop-windows-v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'all' && github.event.inputs.publish != 'false') }}
     permissions:
+      actions: read
       contents: write
     runs-on: ubuntu-latest
     steps:
@@ -58,6 +59,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') || contains(github.event.inputs.tag, '-fork.') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
 
       - name: Apply fork patches
         shell: bash
@@ -107,6 +115,7 @@ jobs:
             electron_arch: x64
             node_heap_mb: 8192
     permissions:
+      actions: read
       contents: write
       packages: read
     runs-on: ${{ matrix.runner }}
@@ -116,6 +125,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') || contains(github.event.inputs.tag, '-fork.') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
 
       - name: Apply fork patches
         shell: bash
@@ -247,6 +263,7 @@ jobs:
     needs: [create-release]
     if: ${{ false }}
     permissions:
+      actions: read
       contents: write
       packages: read
     runs-on: ubuntu-22.04
@@ -256,6 +273,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') || contains(github.event.inputs.tag, '-fork.') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
 
       - name: Apply fork patches
         shell: bash
@@ -353,6 +377,7 @@ jobs:
     needs: [create-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v')))) }}
     permissions:
+      actions: read
       contents: write
       packages: read
     runs-on: windows-latest
@@ -362,6 +387,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') || contains(github.event.inputs.tag, '-fork.') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
 
       - name: Apply fork patches
         shell: bash
@@ -456,6 +488,7 @@ jobs:
     needs: [publish-macos, publish-linux, publish-windows]
     if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
+      actions: read
       contents: write
     runs-on: ubuntu-latest
     steps:
@@ -463,6 +496,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') || contains(github.event.inputs.tag, '-fork.') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
 
       - name: Apply fork patches
         shell: bash

@@ -560,8 +560,10 @@ test("the configured desktop release uses the real fork runtime and canonical Gi
   for (const name of [
     "scripts/fork/upstream.mjs",
     "scripts/fork/source.mjs",
+    "scripts/fork/github.mjs",
     "scripts/release-fork-desktop.mjs",
     "scripts/fork/release/launch.mjs",
+    "scripts/fork/release/ci-gate.mjs",
     "scripts/fork/release/release.mjs",
   ]) {
     f.put(name, readFileSync(new URL(`../../${name}`, import.meta.url)));
@@ -569,6 +571,7 @@ test("the configured desktop release uses the real fork runtime and canonical Gi
   f.git("branch", "-m", "downstream/patch-build");
   f.git("add", "-A");
   f.git("commit", "-qm", "configure desktop release");
+  const head = f.git("rev-parse", "HEAD");
   const remote = path.join(f.root, "origin.git");
   execFileSync("git", ["clone", "--bare", f.repo, remote], { stdio: "pipe" });
   f.git("remote", "add", "origin", remote);
@@ -577,10 +580,33 @@ test("the configured desktop release uses the real fork runtime and canonical Gi
   const npm = path.join(bin, "npm");
   writeFileSync(npm, "#!/bin/sh\nexit 0\n");
   chmodSync(npm, 0o755);
+  const gh = path.join(bin, "gh");
+  writeFileSync(
+    gh,
+    `#!/bin/sh\ncat <<'JSON'\n${JSON.stringify({
+      workflow_runs: [
+        {
+          id: 1,
+          run_number: 1,
+          head_sha: head,
+          head_branch: "downstream/patch-build",
+          path: ".github/workflows/ci.yml",
+          status: "completed",
+          conclusion: "success",
+          html_url: "https://example.invalid/run/1",
+        },
+      ],
+    })}\nJSON\n`,
+  );
+  chmodSync(gh, 0o755);
   const result = spawnSync("sh", ["-c", config.scripts["release-fork-desktop"].command], {
     cwd: f.repo,
     encoding: "utf8",
-    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: "paseo-test/fork",
+      PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    },
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /Desktop Release is now queued/);

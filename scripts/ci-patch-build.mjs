@@ -4,6 +4,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { closeSync, openSync, writeSync } from "node:fs";
 import tty from "node:tty";
+import { parseGitHubRepo } from "./fork/github.mjs";
 
 const BRANCH = "downstream/patch-build";
 const WORKFLOW = "ci.yml";
@@ -39,12 +40,7 @@ function git(...args) {
 }
 
 function remoteRepo() {
-  const url = git("remote", "get-url", "origin");
-  const match = url.match(
-    /^(?:https:\/\/|ssh:\/\/)?(?:[^@/]+@)?github\.com[:/](?<repo>[^/]+\/[^/]+?)(?:\.git)?$/,
-  );
-  if (!match) fail(`origin is not a github.com repository: ${url}`);
-  return match.groups.repo;
+  return parseGitHubRepo(git("remote", "get-url", "origin"));
 }
 
 function api(path) {

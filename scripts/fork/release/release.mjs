@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parseGitHubRepo } from "../github.mjs";
 import { PATCH_BRANCH, readPinnedPackage } from "../source.mjs";
+import { requirePassingCi } from "./ci-gate.mjs";
 
 function sourceState() {
   try {
@@ -24,6 +26,13 @@ function run(command, args, options = {}) {
 
 function capture(command, args) {
   return run(command, args, { capture: true });
+}
+
+function releaseRepo() {
+  return (
+    process.env.GITHUB_REPOSITORY ||
+    parseGitHubRepo(capture("git", ["remote", "get-url", "origin"]))
+  );
 }
 
 function escapeRegExp(value) {
@@ -103,6 +112,8 @@ function preflight(channel) {
   ) {
     throw new Error(`HEAD must match origin/${PATCH_BRANCH} before creating a ${label} release.`);
   }
+
+  requirePassingCi({ sha: capture("git", ["rev-parse", "HEAD"]), repo: releaseRepo() });
 
   const sourceRoot = state?.sourceRoot ?? fileURLToPath(new URL("../../../", import.meta.url));
   const { version } = readPinnedPackage(sourceRoot);

@@ -5,6 +5,7 @@ on:
     tags: ["app-v*-fork.*"]
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -27,6 +28,11 @@ jobs:
         run: git fetch --tags --force origin
       - name: Apply fork patches
         run: node scripts/fork/upstream.mjs ci-apply
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
       - name: Set up Node
         uses: actions/setup-node@v4
         with:

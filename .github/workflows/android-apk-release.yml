@@ -19,6 +19,7 @@ env:
 jobs:
   ensure-release:
     permissions:
+      actions: read
       contents: write
     runs-on: ubuntu-latest
     steps:
@@ -26,6 +27,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') || contains(github.event.inputs.tag, '-fork.') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
 
       - name: Apply fork patches
         shell: bash
@@ -75,6 +83,7 @@ jobs:
   publish-android-apk:
     needs: [ensure-release]
     permissions:
+      actions: read
       contents: write
       packages: read
     runs-on: ubuntu-latest
@@ -84,6 +93,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Verify release CI
+        if: ${{ contains(github.ref_name, '-fork.') || contains(github.event.inputs.tag, '-fork.') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fork/release-ci-gate.mjs --sha "$(git rev-parse HEAD)"
 
       - name: Apply fork patches
         shell: bash
