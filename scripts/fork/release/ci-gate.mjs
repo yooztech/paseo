@@ -2,6 +2,7 @@
 // commit has a completed, successful ci.yml run on downstream/patch-build.
 import { execFileSync } from "node:child_process";
 import { PATCH_BRANCH } from "../source.mjs";
+import { failRelease } from "./failure.mjs";
 
 export const RELEASE_CI_WORKFLOW = "ci.yml";
 
@@ -40,7 +41,7 @@ export function ghApi(path) {
   } catch (error) {
     if (error.code === "ENOENT") return curlApi(path);
     const detail = `${error.stderr ?? error.message}`.trim();
-    throw new Error(`gh api ${path} failed; cannot verify release CI: ${detail}`, { cause: error });
+    failRelease(`gh api ${path} failed; cannot verify release CI: ${detail}`, { cause: error });
   }
   const output = stdout.trim();
   return output ? JSON.parse(output) : null;
@@ -49,7 +50,7 @@ export function ghApi(path) {
 // The self-hosted macOS runner may not have the GitHub CLI; curl is always present.
 function curlApi(path) {
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
-  if (!token) throw new Error(`gh is not installed and no GH_TOKEN is set for ${path}`);
+  if (!token) failRelease(`gh is not installed and no GH_TOKEN is set for ${path}`);
   let stdout;
   try {
     stdout = execFileSync(
@@ -68,7 +69,7 @@ function curlApi(path) {
     );
   } catch (error) {
     const detail = `${error.stderr ?? error.message}`.trim();
-    throw new Error(`GitHub API ${path} failed; cannot verify release CI: ${detail}`, {
+    failRelease(`GitHub API ${path} failed; cannot verify release CI: ${detail}`, {
       cause: error,
     });
   }
@@ -85,7 +86,7 @@ export function requirePassingCi({ sha, repo, branch = PATCH_BRANCH, api = ghApi
     console.log(`Verified ${RELEASE_CI_WORKFLOW} success for ${sha}: ${run.html_url}`);
     return run;
   }
-  throw new Error(
+  failRelease(
     `Release aborted: no successful "${RELEASE_CI_WORKFLOW}" run for ${sha} on ${branch}.\n` +
       `Runs for this commit: ${describeCiRuns(runs)}.\n` +
       "Run `npm run ci-patch-build`, wait for it to pass, then retry the release.",

@@ -20,6 +20,7 @@ import {
   getForkReleaseNumber,
   publish,
 } from "./release.mjs";
+import { failRelease, runRelease } from "./failure.mjs";
 
 test("allocates after all current channel tags and the historical app format", () => {
   const tags = [
@@ -273,6 +274,7 @@ function copyReleaseRuntime(runtime) {
     ["../source.mjs", "scripts/fork/source.mjs"],
     ["../github.mjs", "scripts/fork/github.mjs"],
     ["./ci-gate.mjs", "scripts/fork/release/ci-gate.mjs"],
+    ["./failure.mjs", "scripts/fork/release/failure.mjs"],
     ["./release.mjs", "scripts/fork/release/release.mjs"],
     ["./launch.mjs", "scripts/fork/release/launch.mjs"],
     ["../../release-fork-desktop.mjs", "scripts/release-fork-desktop.mjs"],
@@ -503,8 +505,59 @@ test("release preflight aborts before tagging when ci.yml did not pass", () => {
       new RegExp(`Release aborted: no successful "ci\\.yml" run for ${head} on ${PATCH_BRANCH}`),
     );
     assert.match(`${result.stdout}\n${result.stderr}`, /npm run ci-patch-build/);
+    assert.doesNotMatch(result.stderr, /\bat .*\.mjs:\d+/);
+    assert.doesNotMatch(result.stderr, /Node\.js v/);
     assert.equal(git("tag", "--list"), "");
   });
+});
+
+test("release preflight reports a dirty worktree without a stack trace", () => {
+  withGitRepo(({ git, repo, root }) => {
+    git("branch", "-M", PATCH_BRANCH);
+    git("push", "-u", "origin", PATCH_BRANCH);
+    const head = git("rev-parse", "HEAD");
+    const runtime = path.join(root, "runtime");
+    git("worktree", "add", "--detach", runtime, head);
+    mkdirSync(path.join(runtime, ".dev"), { recursive: true });
+    writeFileSync(
+      path.join(runtime, ".dev/fork-build-state.json"),
+      JSON.stringify({ sourceRoot: repo, sourceHead: head }),
+    );
+    copyReleaseRuntime(runtime);
+    for (let index = 0; index < 12; index += 1) {
+      writeFileSync(path.join(repo, `uncommitted-${index}.txt`), "dirty\n");
+    }
+    const result = runForkDesktop(runtime, root, [ciRun(head)]);
+    assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr, /Fork desktop releases require a clean worktree/);
+    assert.equal(result.stderr.match(/^\?\? uncommitted-/gm)?.length, 10);
+    assert.match(result.stderr, /… 2 more/);
+    assert.match(result.stderr, /Commit or stash these changes, then retry\./);
+    assert.doesNotMatch(result.stderr, /\bat .*release\.mjs:\d+/);
+    assert.doesNotMatch(result.stderr, /Node\.js v/);
+    assert.equal(git("tag", "--list"), "");
+  });
+});
+
+test("release failures print the message; unexpected errors keep the stack", async (t) => {
+  const lines = [];
+  t.mock.method(console, "error", (value) => lines.push(value));
+
+  await runRelease(() => {
+    failRelease("Fork desktop releases require a clean worktree.");
+  });
+  assert.equal(process.exitCode, 1);
+  assert.deepEqual(lines, ["\nFork desktop releases require a clean worktree."]);
+
+  lines.length = 0;
+  process.exitCode = 0;
+  const bug = new TypeError("unexpected");
+  await runRelease(() => {
+    throw bug;
+  });
+  assert.equal(process.exitCode, 1);
+  assert.deepEqual(lines, [bug]);
+  process.exitCode = 0;
 });
 
 const gateScript = fileURLToPath(new URL("../../fork/release-ci-gate.mjs", import.meta.url));

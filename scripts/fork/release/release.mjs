@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import { parseGitHubRepo } from "../github.mjs";
 import { PATCH_BRANCH, readPinnedPackage } from "../source.mjs";
 import { requirePassingCi } from "./ci-gate.mjs";
+import { failRelease, failReleaseFrom } from "./failure.mjs";
+
+const CLEAN_WORKTREE_PREVIEW = 10;
 
 function sourceState() {
   try {
@@ -17,11 +20,21 @@ function sourceState() {
 }
 
 function run(command, args, options = {}) {
-  return execFileSync(command, args, {
-    cwd: options.cwd ?? (command === "git" ? sourceState()?.sourceRoot : undefined),
-    encoding: "utf8",
-    stdio: options.capture ? ["ignore", "pipe", "inherit"] : "inherit",
-  })?.trim();
+  try {
+    return execFileSync(command, args, {
+      cwd: options.cwd ?? (command === "git" ? sourceState()?.sourceRoot : undefined),
+      encoding: "utf8",
+      stdio: options.capture ? ["ignore", "pipe", "inherit"] : "inherit",
+    })?.trim();
+  } catch (error) {
+    // A failing step is a release precondition, not a crash: report the command, keep stderr.
+    if (typeof error.status !== "number" || error.signal) throw error;
+    const detail = `${error.stderr ?? ""}`.trim();
+    failRelease(
+      `\`${command} ${args.join(" ")}\` exited with code ${error.status}.${detail ? `\n${detail}` : ""}`,
+      { cause: error },
+    );
+  }
 }
 
 function capture(command, args) {
@@ -29,14 +42,25 @@ function capture(command, args) {
 }
 
 function releaseRepo() {
-  return (
-    process.env.GITHUB_REPOSITORY ||
-    parseGitHubRepo(capture("git", ["remote", "get-url", "origin"]))
-  );
+  const configured = process.env.GITHUB_REPOSITORY;
+  if (configured) return configured;
+  try {
+    return parseGitHubRepo(capture("git", ["remote", "get-url", "origin"]));
+  } catch (error) {
+    failReleaseFrom(error);
+  }
 }
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readPinnedReleasePackage(directory) {
+  try {
+    return readPinnedPackage(directory);
+  } catch (error) {
+    failReleaseFrom(error);
+  }
 }
 
 export function getForkNumber(tag, version) {
@@ -57,7 +81,7 @@ export function getForkReleaseNumber(tags, currentTags, version) {
     ),
   ];
   if (currentNumbers.length > 1) {
-    throw new Error(
+    failRelease(
       `Current commit has conflicting fork release numbers: ${currentNumbers.join(", ")}.`,
     );
   }
@@ -91,17 +115,25 @@ function preflight(channel) {
   const label = channel === "daemon" ? "fork" : `fork ${channel}`;
   const state = sourceState();
   if (state && capture("git", ["rev-parse", "HEAD"]) !== state.sourceHead) {
-    throw new Error("Canonical source HEAD changed since the fork build was materialized.");
+    failRelease("Canonical source HEAD changed since the fork build was materialized.");
   }
   const branch = capture("git", ["branch", "--show-current"]);
   if (branch !== PATCH_BRANCH) {
-    throw new Error(
+    failRelease(
       `${label[0].toUpperCase()}${label.slice(1)} releases must run from ${PATCH_BRANCH}, got ${branch || "detached HEAD"}.`,
     );
   }
-  if (capture("git", ["status", "--porcelain"])) {
-    throw new Error(
-      `${label[0].toUpperCase()}${label.slice(1)} releases require a clean worktree.`,
+  const dirty = capture("git", ["status", "--porcelain"]).split("\n").filter(Boolean);
+  if (dirty.length) {
+    const shown = dirty.slice(0, CLEAN_WORKTREE_PREVIEW);
+    const hidden = dirty.length - shown.length;
+    failRelease(
+      [
+        `${label[0].toUpperCase()}${label.slice(1)} releases require a clean worktree. Uncommitted paths:`,
+        ...shown,
+        ...(hidden ? [`… ${hidden} more`] : []),
+        "Commit or stash these changes, then retry.",
+      ].join("\n"),
     );
   }
 
@@ -110,13 +142,13 @@ function preflight(channel) {
     capture("git", ["rev-parse", "HEAD"]) !==
     capture("git", ["rev-parse", `origin/${PATCH_BRANCH}`])
   ) {
-    throw new Error(`HEAD must match origin/${PATCH_BRANCH} before creating a ${label} release.`);
+    failRelease(`HEAD must match origin/${PATCH_BRANCH} before creating a ${label} release.`);
   }
 
   requirePassingCi({ sha: capture("git", ["rev-parse", "HEAD"]), repo: releaseRepo() });
 
   const sourceRoot = state?.sourceRoot ?? fileURLToPath(new URL("../../../", import.meta.url));
-  const { version } = readPinnedPackage(sourceRoot);
+  const { version } = readPinnedReleasePackage(sourceRoot);
   const tags = capture("git", ["tag", "--list"]).split("\n").filter(Boolean);
   const currentTags = capture("git", ["tag", "--points-at", "HEAD"]).split("\n").filter(Boolean);
   return createForkReleaseMetadata(
@@ -149,7 +181,7 @@ export function publish(metadata, { captureGit = capture, runGit = run } = {}) {
     if (local) {
       const commit = captureGit("git", ["rev-parse", `${tag}^{commit}`]);
       if (commit !== head) {
-        throw new Error(`Release tag ${tag} already points to ${commit}, not HEAD (${head}).`);
+        failRelease(`Release tag ${tag} already points to ${commit}, not HEAD (${head}).`);
       }
     } else {
       missingLocal.push(tag);
@@ -159,9 +191,7 @@ export function publish(metadata, { captureGit = capture, runGit = run } = {}) {
     if (remoteTags.has(remoteRef)) {
       const commit = remoteTags.get(`${remoteRef}^{}`) ?? remoteTags.get(remoteRef);
       if (commit !== head) {
-        throw new Error(
-          `Remote release tag ${tag} already points to ${commit}, not HEAD (${head}).`,
-        );
+        failRelease(`Remote release tag ${tag} already points to ${commit}, not HEAD (${head}).`);
       }
     } else {
       missingRemote.push(tag);

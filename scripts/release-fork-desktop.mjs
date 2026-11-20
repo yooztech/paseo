@@ -1,6 +1,9 @@
+import { runRelease } from "./fork/release/failure.mjs";
 import { launchInForkRuntime } from "./fork/release/launch.mjs";
 import { releaseForkDesktop } from "./fork/release/release.mjs";
 
-if (process.argv[2] !== "--fork-runtime")
-  await launchInForkRuntime("scripts/release-fork-desktop.mjs");
-else releaseForkDesktop();
+await runRelease(() =>
+  process.argv[2] !== "--fork-runtime"
+    ? launchInForkRuntime("scripts/release-fork-desktop.mjs")
+    : releaseForkDesktop(),
+);

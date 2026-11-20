@@ -564,6 +564,7 @@ test("the configured desktop release uses the real fork runtime and canonical Gi
     "scripts/release-fork-desktop.mjs",
     "scripts/fork/release/launch.mjs",
     "scripts/fork/release/ci-gate.mjs",
+    "scripts/fork/release/failure.mjs",
     "scripts/fork/release/release.mjs",
   ]) {
     f.put(name, readFileSync(new URL(`../../${name}`, import.meta.url)));
