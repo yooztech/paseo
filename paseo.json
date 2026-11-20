@@ -30,23 +30,23 @@
       "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"$PWD\" PASEO_HOME=\"$PWD/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT} node ./scripts/fork/upstream.mjs run -- ./scripts/paseo-ios-simulator-service.sh"
     },
     "typecheck": {
-      "command": "node ./scripts/fork/upstream.mjs run -- npm run typecheck; status=$?; exit $status"
+      "command": "node ./scripts/fork/upstream.mjs run -- npm run typecheck"
     },
     "ci-patch-build": {
       "type": "script",
-      "command": "node ./scripts/ci-patch-build.mjs; status=$?; exit $status"
+      "command": "node ./scripts/ci-patch-build.mjs"
     },
     "release-fork-daemon": {
       "type": "script",
-      "command": "node ./scripts/release-fork-daemon.mjs; status=$?; exit $status"
+      "command": "node ./scripts/release-fork-daemon.mjs"
     },
     "release-fork-desktop": {
       "type": "script",
-      "command": "node ./scripts/release-fork-desktop.mjs; status=$?; exit $status"
+      "command": "node ./scripts/release-fork-desktop.mjs"
     },
     "release-fork-app": {
       "type": "script",
-      "command": "node ./scripts/release-fork-app.mjs; status=$?; exit $status"
+      "command": "node ./scripts/release-fork-app.mjs"
     }
   }
 }
