@@ -1284,6 +1284,28 @@ index 0a0da6f0e9bc6d104abe1875a16b60b053f29fd8..dbb638060378ab487f57a5f2fd9bdeb0
      test("rejects invalid token", async () => {
        const response = await fetch(
          `http://127.0.0.1:${ctx.daemon.port}/api/files/download?token=invalid-token`,
+diff --git a/packages/server/src/server/daemon-e2e/terminal-worker-lifecycle.e2e.test.ts b/packages/server/src/server/daemon-e2e/terminal-worker-lifecycle.e2e.test.ts
+index a9789c906ec5515cd00de64d866f441e572d394c..feca67483b402bc93197c387e6e191d879c70373 100644
+--- a/packages/server/src/server/daemon-e2e/terminal-worker-lifecycle.e2e.test.ts
++++ b/packages/server/src/server/daemon-e2e/terminal-worker-lifecycle.e2e.test.ts
+@@ -15,7 +15,7 @@
+ import path from "node:path";
+ import { setTimeout as delay } from "node:timers/promises";
+ import { DaemonClient } from "../test-utils/daemon-client.js";
+-import { resolveDaemonVersion } from "../daemon-version.js";
++import { resolveDaemonVersion } from "../fork/daemon-version.js";
+ import { readDaemonInstance, stopDaemonInstance } from "../daemon-instance.js";
+ import { currentBootId } from "../pid-lock.js";
+ import { resolveTerminalWorkerSocketPath } from "../../terminal/terminal-worker-socket-path.js";
+@@ -407,7 +407,7 @@
+       path: path.join(fakeBin, "global"),
+       dependencies: {
+         "@getpaseo/cli": {
+-          version: resolveDaemonVersion(import.meta.url),
++          version: await resolveDaemonVersion(import.meta.url),
+           path: SERVER_ROOT,
+         },
+       },
 diff --git a/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts b/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts
 index b0c38bc985d4fc79eb7ab13ec7d7901d8bfd52ec..3f1479ae125d1625f7ae70274b6ea800d58ad9da 100644
 --- a/packages/server/src/server/daemon-e2e/terminal-workspace-sdk.e2e.test.ts

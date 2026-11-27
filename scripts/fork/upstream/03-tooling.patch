@@ -495,7 +495,7 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
-index 0084c280c6be52f3f5099242f77034b145388e46..f2ec60af1d8fc50ade9e55830184eaccf1bd93f6 100644
+index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c0978f6d143 100644
 --- a/scripts/ci-workflow.test.mjs
 +++ b/scripts/ci-workflow.test.mjs
 @@ -13,6 +13,12 @@ const repoRoot = new URL("../", import.meta.url);
@@ -711,7 +711,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..f2ec60af1d8fc50ade9e55830184eacc
 +  const job = jobBlocks(source).get("release_ios").join("\n");
 +  assert.match(job, /runs-on: \[self-hosted, macOS\]/);
 +  assert.match(job, /uses: actions\/setup-node@v4\s*$/m);
-+  assert.doesNotMatch(job, /\bcache\s*:|uses: actions\/cache[\/@]/);
++  assert.doesNotMatch(job, /\bcache\s*:|uses: actions\/cache[/@]/);
 +  assert.match(job, /secrets\.EXPO_TOKEN/);
 +  assert.ok(
 +    job.indexOf("node scripts/fork/upstream.mjs ci-apply") <
