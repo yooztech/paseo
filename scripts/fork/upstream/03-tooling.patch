@@ -495,7 +495,7 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
-index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155fdfd6025 100644
+index 0084c280c6be52f3f5099242f77034b145388e46..f2ec60af1d8fc50ade9e55830184eaccf1bd93f6 100644
 --- a/scripts/ci-workflow.test.mjs
 +++ b/scripts/ci-workflow.test.mjs
 @@ -13,6 +13,12 @@ const repoRoot = new URL("../", import.meta.url);
@@ -633,7 +633,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155
    assert.match(trigger, /^\s+workflow_dispatch:/m);
    assert.match(trigger, /pull_request:\s*\n\s+paths:/);
    assert.match(trigger, /- "packages\/desktop\/\*\*"/);
-@@ -405,32 +477,63 @@ test("CI and desktop packaging verify release branches isolated from main traffi
+@@ -405,32 +477,65 @@ test("CI and desktop packaging verify release branches isolated from main traffi
    }
  });
  
@@ -710,6 +710,8 @@ index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155
 +  assert.match(trigger, /push:\s*\n\s+tags: \["app-v\*-fork\.\*"\]/);
 +  const job = jobBlocks(source).get("release_ios").join("\n");
 +  assert.match(job, /runs-on: \[self-hosted, macOS\]/);
++  assert.match(job, /uses: actions\/setup-node@v4\s*$/m);
++  assert.doesNotMatch(job, /\bcache\s*:|uses: actions\/cache[\/@]/);
 +  assert.match(job, /secrets\.EXPO_TOKEN/);
 +  assert.ok(
 +    job.indexOf("node scripts/fork/upstream.mjs ci-apply") <
@@ -719,7 +721,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155
  });
  
  test("eight Playwright shards share two-worker coverage", () => {
-@@ -487,12 +590,13 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -487,12 +592,13 @@ test("quality preserves commands and routes each domain independently after fail
      Object.values(commands).flat(),
    );
    const domains = Object.keys(commands);
@@ -738,7 +740,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155
        steps: { install: { outcome: installed ? "success" : "failure" } },
        cancelled: () => cancelled,
        success: () => false,
-@@ -500,6 +604,7 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -500,6 +606,7 @@ test("quality preserves commands and routes each domain independently after fail
    }
    const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
    const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
@@ -746,7 +748,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155
    assert.equal(accepts(jobCondition, disabled), false);
    for (const selected of domains) {
      const outputs = { ...disabled, [selected]: "true" };
-@@ -509,12 +614,24 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -509,12 +616,24 @@ test("quality preserves commands and routes each domain independently after fail
      }
    }
    for (const [, expression] of checks) {
@@ -772,7 +774,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155
  });
  
  test("Windows units and integration run independently with complete routed coverage", () => {
-@@ -576,10 +693,9 @@ test("Windows units and integration run independently with complete routed cover
+@@ -576,10 +695,9 @@ test("Windows units and integration run independently with complete routed cover
    function condition(job) {
      return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
    }
@@ -785,7 +787,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155
      });
    }
    const unitCondition = condition(windows);
-@@ -607,8 +723,10 @@ test("Windows units and integration run independently with complete routed cover
+@@ -607,8 +725,10 @@ test("Windows units and integration run independently with complete routed cover
      assert.equal(selected(unitStep, outputs), integrations);
      assert.equal(selected(pluginStep, outputs), integrations);
      assert.equal(selected(hubStep, outputs), hub);
