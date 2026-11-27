@@ -76,6 +76,19 @@ index 7234555dcbfac5d2e4c5688a9aa353bf4c311e69..c71137dee2d28f6caf7c4d43a117c8e0
      );
    } catch (error) {
      console.error(`Browser desktop browser E2E failed. Artifacts: ${artifactDir}`);
+diff --git a/packages/desktop/e2e/explorer-toggle.spec.ts b/packages/desktop/e2e/explorer-toggle.spec.ts
+index 0448a088f4becfa697e1c8048051200101039ea3..3993b7c94b3ca0ea5f020282793f4f9d31c90910 100644
+--- a/packages/desktop/e2e/explorer-toggle.spec.ts
++++ b/packages/desktop/e2e/explorer-toggle.spec.ts
+@@ -99,7 +99,7 @@ async function expectExplorerToggleInHeaderTabOrder(page: Page, expanded: boolean) {
+   const toggle = explorerToggle(page, expanded);
+   await toggle.focus();
+   await page.keyboard.press("Tab");
+-  await expect(page.getByRole("button", { name: "Workspace actions", exact: true })).toBeFocused();
++  await expect(page.getByTestId("workspace-header-menu-trigger")).toBeFocused();
+   await page.keyboard.press("Shift+Tab");
+   await expect(toggle).toBeFocused();
+ }
 diff --git a/packages/desktop/electron-builder.yml b/packages/desktop/electron-builder.yml
 index 8634d1f0589996e12fa5944af7305489d5d8e588..350aa04c3b5271ed29012de7ec5986d6a33e9e94 100644
 --- a/packages/desktop/electron-builder.yml

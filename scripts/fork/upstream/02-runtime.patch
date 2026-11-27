@@ -698,7 +698,7 @@ index 4046bd6747d977a38e3fbd0a7010f0d733b7e3ef..b75e57c9afa285c2d895b7be49f35fc0
      const daemonHandle = await createTestPaseoDaemon({
        auth: { password: CORRECT_PASSWORD_HASH },
 diff --git a/packages/server/src/server/bootstrap.smoke.test.ts b/packages/server/src/server/bootstrap.smoke.test.ts
-index a935036459553b304c44850292103917a44dc2e8..4c7b26b5ba1a17ea696d37b527869cdfa01e9642 100644
+index a935036459553b304c44850292103917a44dc2e8..c88506bd9e6b6b6ab2c45a5005969d939c3c3855 100644
 --- a/packages/server/src/server/bootstrap.smoke.test.ts
 +++ b/packages/server/src/server/bootstrap.smoke.test.ts
 @@ -1,4 +1,4 @@
@@ -778,6 +778,15 @@ index a935036459553b304c44850292103917a44dc2e8..4c7b26b5ba1a17ea696d37b527869cdf
          }),
        );
        await writeFile(
+@@ -1375,7 +1421,7 @@
+     path.join(pluginDirectory, "paseo-plugin.json"),
+     JSON.stringify({
+       id: pluginId,
+-      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
++      requirements: { paseo: `>=${await resolveDaemonVersion(import.meta.url)}` },
+     }),
+   );
+   await writeFile(
 diff --git a/packages/server/src/server/bootstrap.ts b/packages/server/src/server/bootstrap.ts
 index 20850285d59cbd68d2a74bfe38e736e90e83d8d4..796257154e09abe82dda12009999573da8fca179 100644
 --- a/packages/server/src/server/bootstrap.ts
@@ -2781,7 +2790,7 @@ index 252ea81f543373fbe244b400ff86adb5dde5e47c..89f7afe91ff910f323aee06de2e83d18
          providerRemoval: true,
          hopliteProvider: this.providerSnapshotManager.supportsConfigRequiredProvider("hoplite"),
 diff --git a/packages/server/src/server/workspace-git-service.observation.test.ts b/packages/server/src/server/workspace-git-service.observation.test.ts
-index 2ab85f4bc692e3cf0ec1ac04d200c3d5f26ddedf..6f31b42e588dab6379e98e5d3264f04f61780a4d 100644
+index 2ab85f4bc692e3cf0ec1ac04d200c3d5f26ddedf..7eb9d0d4d55fc89b0f1988b672545c20224dd23a 100644
 --- a/packages/server/src/server/workspace-git-service.observation.test.ts
 +++ b/packages/server/src/server/workspace-git-service.observation.test.ts
 @@ -219,6 +219,7 @@ function createService(
@@ -2792,7 +2801,7 @@ index 2ab85f4bc692e3cf0ec1ac04d200c3d5f26ddedf..6f31b42e588dab6379e98e5d3264f04f
          upstreamStatus: facts.upstreamStatus,
        })),
        getCheckoutStatus,
-@@ -576,9 +577,14 @@ describe("WorkspaceGitService checkout observation", () => {
+@@ -576,9 +577,15 @@ describe("WorkspaceGitService checkout observation", () => {
        resolvedBaseRef: "main",
        comparisonBaseRef: "origin/main",
      }));
@@ -2802,6 +2811,7 @@ index 2ab85f4bc692e3cf0ec1ac04d200c3d5f26ddedf..6f31b42e588dab6379e98e5d3264f04f
 -      upstreamStatus: facts.upstreamStatus,
 +      hasChangesFromBase: false,
 +      upstreamStatus: {
++        state: "tracked" as const,
 +        ref: "origin/feature",
 +        aheadBehind: { ahead: 1, behind: 0 },
 +        hasChanges: true,
@@ -2809,7 +2819,7 @@ index 2ab85f4bc692e3cf0ec1ac04d200c3d5f26ddedf..6f31b42e588dab6379e98e5d3264f04f
      }));
      const runGitFetch = vi.fn(async (_cwd, observer) => {
        observer?.onRefSnapshot("before");
-@@ -595,6 +601,8 @@ describe("WorkspaceGitService checkout observation", () => {
+@@ -595,6 +602,8 @@ describe("WorkspaceGitService checkout observation", () => {
        getCheckoutStatus: vi.fn(async (cwd: string) =>
          createCheckoutStatus(cwd, {
            currentBranch: "feature",
@@ -2818,7 +2828,7 @@ index 2ab85f4bc692e3cf0ec1ac04d200c3d5f26ddedf..6f31b42e588dab6379e98e5d3264f04f
            baseRef: "main",
            hasRemote: true,
            remoteUrl: REMOTE_URL,
-@@ -629,6 +637,14 @@ describe("WorkspaceGitService checkout observation", () => {
+@@ -629,6 +638,14 @@ describe("WorkspaceGitService checkout observation", () => {
  
      expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(2);
      expect(listener).toHaveBeenCalledTimes(1);
