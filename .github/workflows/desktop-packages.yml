@@ -15,10 +15,11 @@ on:
       - "packages/app/app.config.ts"
       - "packages/app/package.json"
       - ".github/workflows/desktop-packages.yml"
+  workflow_dispatch:
 
 concurrency:
   group: desktop-packages-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

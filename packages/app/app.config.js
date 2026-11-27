@@ -7,6 +7,7 @@ const withAndroidProfileable = "./plugins/with-android-profileable";
 const withFdroidAutolinking = "./plugins/with-fdroid-autolinking";
 const withPasteInput = "./plugins/with-paste-input";
 const withAndroidScroll = "./modules/paseo-scroll/app.plugin";
+const withAndroidDisplayMetrics = "./modules/paseo-display-metrics/app.plugin";
 const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
@@ -155,6 +156,7 @@ module.exports = {
       "expo-router",
       withPasteInput,
       withAndroidScroll,
+      withAndroidDisplayMetrics,
       [withAndroidAsyncStorageSize, 64],
       ...buildProfile.cameraPlugins,
       withAndroidOptionalCamera,

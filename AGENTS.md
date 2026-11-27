@@ -2,11 +2,13 @@
 
 Read `CLAUDE.md` before working in this repository. Its upstream engineering guidance applies except where this file overrides it. Upstream Markdown describes upstream Paseo, not fork-specific behavior; check the fork's code, tests, and history for fork facts.
 
-## Markdown synchronization policy
+## Patch-only branch policy
 
-Tracked Markdown files other than this `AGENTS.md` may be added, replaced, or removed **only to match the corresponding files in an explicitly selected upstream Paseo tag or commit exactly**. Synchronize upstream documentation as part of an upstream upgrade. Never edit Markdown to describe or accommodate fork-specific changes, and never inject fork-specific prose into upstream documentation.
+On `downstream/patch-build`, make upgrade and repair changes only in `.patch` files under `scripts/fork/upstream/`. Do not add, update, or remove upstream Markdown snapshots, source files, tests, configuration, or other non-patch files in this branch. This applies to files written by scripts as well as manual edits.
 
-`AGENTS.md` is the sole fork-specific Markdown policy exception. Change this file only when the user explicitly requests a change to this policy.
+Before running an updater, check which paths it writes. If it would write any non-patch file, including upstream documentation or version metadata, stop before running it and report the paths. Do not create a separate branch or Git worktree for patch preparation.
+
+Change this `AGENTS.md` only when the user explicitly requests a change to the branch policy.
 
 ## Upstream upgrade and repair gate
 

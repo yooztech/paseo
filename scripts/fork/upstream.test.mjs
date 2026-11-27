@@ -241,6 +241,8 @@ test("update preserves fork history and advances the lean branch without a merge
     f.put("package.json", JSON.stringify(pkg) + "\n");
     f.put("packages/app/package.json", JSON.stringify({ name: "app", version: "2.0.0" }) + "\n");
     f.put("README.md", "next official readme\n");
+    f.put("NEW.md", "new upstream documentation\n");
+    rmSync(path.join(f.repo, ".github/workflows/README.md"));
   });
   const before = snapshot(f);
   f.ok("update", "--upstream", "upstream-next");
@@ -252,7 +254,13 @@ test("update preserves fork history and advances the lean branch without a merge
   assert.equal(JSON.parse(f.get(`${store}/series.json`)).commit, target);
   assert.equal(JSON.parse(f.get("package.json")).version, "2.0.0");
   assert.equal(JSON.parse(f.get("packages/app/package.json")).version, "2.0.0");
-  assert.equal(f.get("README.md"), "next official readme\n");
+  assert.equal(f.get("README.md"), "official readme\n");
+  assert.equal(f.get(".github/workflows/README.md"), "official CI documentation\n");
+  assert.equal(existsSync(path.join(f.repo, "NEW.md")), false);
+  const { tree } = JSON.parse(f.ok("tree").stdout);
+  assert.equal(f.git("show", `${tree}:README.md`), "next official readme");
+  assert.equal(f.git("show", `${tree}:NEW.md`), "new upstream documentation");
+  assert.equal(f.git("ls-tree", tree, ".github/workflows/README.md"), "");
   assert.equal(existsSync(path.join(f.repo, "packages/app/view.txt")), false);
   f.git("add", "-A");
   f.git("commit", "-qm", "advance pin");
@@ -811,7 +819,7 @@ test("update accepts a working patch resolved against the target rather than the
   assert.equal(f.get("packages/app/view.txt", build), "resolved fork app\n");
 });
 
-test("check rejects stray upstream source and requires exact official Markdown", (t) => {
+test("check rejects stray upstream source and uncommitted canonical Markdown edits", (t) => {
   const f = fixture(t);
   f.ok("check");
   f.put("AGENTS.md", "local instructions\n");

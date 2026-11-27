@@ -11,24 +11,26 @@ index a85ff1fd8c1f4c20760319a05953b4141cecb4f7..7da7e434a4642212f384b280e5c2c2e9
  # Environment variables
  .env
 diff --git a/package.json b/package.json
-index 6b50d21dc93a8008a39a7d602b808f760b15e9d2..7efd991c1b94191a53c2aa6c76abb102f30942eb 100644
+index 52be558ceb7a1fb666dc7e1492054cce18cdad1b..714c2b7789bab4d0590cb1fd9b7b2d16fd3410c3 100644
 --- a/package.json
 +++ b/package.json
-@@ -115,6 +115,9 @@
-     "release:publish": "npm publish --workspace=@getpaseo/highlight --access public && npm publish --workspace=@getpaseo/relay --access public && npm publish --workspace=@getpaseo/protocol --access public && npm publish --workspace=@getpaseo/client --access public && npm publish --workspace=@getpaseo/plugin --access public && npm publish --workspace=@getpaseo/server --access public && npm publish --workspace=@getpaseo/cli --access public",
-     "release:publish:beta": "npm publish --workspace=@getpaseo/highlight --access public --tag beta && npm publish --workspace=@getpaseo/relay --access public --tag beta && npm publish --workspace=@getpaseo/protocol --access public --tag beta && npm publish --workspace=@getpaseo/client --access public --tag beta && npm publish --workspace=@getpaseo/plugin --access public --tag beta && npm publish --workspace=@getpaseo/server --access public --tag beta && npm publish --workspace=@getpaseo/cli --access public --tag beta",
+@@ -126,7 +126,10 @@
      "release:push": "node scripts/push-current-release-tag.mjs",
+     "release:ship": "node scripts/push-current-release-tag.mjs --check && npm run release:publish && npm run release:push",
+     "release:ship:beta": "node scripts/push-current-release-tag.mjs --check && npm run release:publish:beta && npm run release:push",
+-    "release:reconcile": "node scripts/reconcile-release.mjs"
++    "release:reconcile": "node scripts/reconcile-release.mjs",
 +    "release:fork:daemon": "node scripts/release-fork-daemon.mjs",
 +    "release:fork:desktop": "node scripts/release-fork-desktop.mjs",
-+    "release:fork:app": "node scripts/release-fork-app.mjs",
-     "release:beta:patch": "npm run release:check && npm run version:all:beta:patch && npm run release:publish:beta && npm run release:push",
-     "release:beta:minor": "npm run release:check && npm run version:all:beta:minor && npm run release:publish:beta && npm run release:push",
-     "release:beta:major": "npm run release:check && npm run version:all:beta:major && npm run release:publish:beta && npm run release:push",
++    "release:fork:app": "node scripts/release-fork-app.mjs"
+   },
+   "devDependencies": {
+     "@types/ws": "^8.5.14",
 diff --git a/packages/desktop/e2e/browser-tabs.e2e.mjs b/packages/desktop/e2e/browser-tabs.e2e.mjs
-index 668d884b80f906abbceef4994a996f1e29fb888f..d3ce252c4c4c44d04224e378df0e387f353af5f3 100644
+index 7234555dcbfac5d2e4c5688a9aa353bf4c311e69..c71137dee2d28f6caf7c4d43a117c8e07095f23d 100644
 --- a/packages/desktop/e2e/browser-tabs.e2e.mjs
 +++ b/packages/desktop/e2e/browser-tabs.e2e.mjs
-@@ -910,7 +910,9 @@ async function runRegression({
+@@ -1014,7 +1014,9 @@ async function runRegression({
    await selectDeviceSize(page, "Responsive");
    const responsiveViewport = await readViewport(client, browserId);
  
@@ -39,7 +41,7 @@ index 668d884b80f906abbceef4994a996f1e29fb888f..d3ce252c4c4c44d04224e378df0e387f
    await page.waitForFunction(
      ({ id, webContentsId }) => {
        const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
-@@ -924,6 +926,17 @@ async function runRegression({
+@@ -1028,6 +1030,17 @@ async function runRegression({
      { id: browserId, webContentsId: firstGuest.webContentsId },
      { timeout: timeoutMs },
    );
@@ -57,7 +59,7 @@ index 668d884b80f906abbceef4994a996f1e29fb888f..d3ce252c4c4c44d04224e378df0e387f
    try {
      await callBrowserTool(client, "browser_screenshot", { browserId });
    } catch (error) {
-@@ -1218,6 +1231,7 @@ async function runRegression({
+@@ -1322,6 +1335,7 @@ async function runRegression({
      viewport: "passed",
      guestFocus: "passed",
      overlayPlane: "passed",
@@ -65,8 +67,8 @@ index 668d884b80f906abbceef4994a996f1e29fb888f..d3ce252c4c4c44d04224e378df0e387f
      inactiveCapture: "passed",
      hiddenWindowCapture: "passed",
      list: "passed",
-@@ -1413,7 +1427,7 @@ async function main() {
-       adaptiveTheme,
+@@ -1524,7 +1538,7 @@ async function main() {
+       browserHostRouting: "passed",
      });
      console.log(
 -      `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,
@@ -399,7 +401,7 @@ index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3
  
    downloadUpdate(targetVersion: string): Promise<unknown> {
 diff --git a/packages/website/e2e/plugins.spec.ts b/packages/website/e2e/plugins.spec.ts
-index 7d02e9d7d5b26a4938ee06665d3e8ef74bf11392..4de6d7519581183857aaab0210ea18ce90539c9e 100644
+index 3c208dbc587dfe1a3e639787c61b7bfbf2d4abc1..40f084122beee62bcbca45f260c93e966a34f30d 100644
 --- a/packages/website/e2e/plugins.spec.ts
 +++ b/packages/website/e2e/plugins.spec.ts
 @@ -61,6 +61,30 @@ async function scrollPluginCarousel(page: Page, section: string) {
@@ -480,10 +482,10 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
-index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff4237c62fee 100644
+index 0084c280c6be52f3f5099242f77034b145388e46..6103ee10ffe7c0bccf72e4ea4318b155fdfd6025 100644
 --- a/scripts/ci-workflow.test.mjs
 +++ b/scripts/ci-workflow.test.mjs
-@@ -11,6 +11,12 @@ const repoRoot = new URL("../", import.meta.url);
+@@ -13,6 +13,12 @@ const repoRoot = new URL("../", import.meta.url);
  const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
  const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
  const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
@@ -496,7 +498,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
  const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
  const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
  const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
-@@ -104,6 +110,16 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+@@ -106,6 +112,16 @@ test("gated checks are statically named jobs with real job-level gating", () =>
      const job = jobs.get(jobId)?.join("\n");
      assert.ok(job, `missing static job ${jobId}`);
      assert.match(job, new RegExp(`^    name: ${expected.name.replace(/[()]/g, "\\$&")}$`, "m"));
@@ -513,7 +515,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
      assert.match(job, /needs\.changes\.outputs\.full != 'false'/);
      for (const contract of expected.contracts ?? [expected.contract]) {
        assert.match(job, new RegExp(`needs\\.changes\\.outputs\\.${contract} != 'false'`));
-@@ -111,6 +127,52 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+@@ -113,6 +129,52 @@ test("gated checks are statically named jobs with real job-level gating", () =>
    }
  });
  
@@ -566,7 +568,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
  test("pull-request checks run for every base branch, including stacked PRs", () => {
    for (const workflowPath of [
      ciWorkflowPath,
-@@ -135,7 +197,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
+@@ -137,7 +199,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
      assert.doesNotMatch(
        source,
        /\$\{\{\s*always\(\)/,
@@ -575,7 +577,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
      );
    }
  });
-@@ -357,20 +419,33 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
+@@ -365,11 +427,24 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
    ]);
  });
  
@@ -602,18 +604,23 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
      assert.doesNotMatch(trigger, /pull_request/);
      assert.doesNotMatch(source, /dorny\/paths-filter/);
    }
+@@ -388,13 +463,10 @@ test("packaging runs on main without allocating pull-request runners", () => {
+   assert.match(nix.split("jobs:", 1)[0], /^\s+workflow_dispatch:/m);
  });
  
--test("desktop packaging smokes main pushes and only the pull requests that touch packaging", () => {
+-test("CI and desktop packaging verify release branches isolated from main traffic", () => {
+-  const ciTrigger = readFileSync(ciWorkflowPath, "utf8").split("jobs:", 1)[0];
+-  assert.match(ciTrigger, /push:\s*\n\s+branches: \[main, "release\/\*\*"\]/);
+-
 +test("desktop packaging smokes patch-branch pushes and only the pull requests that touch packaging", () => {
    const source = readFileSync(new URL(".github/workflows/desktop-packages.yml", repoRoot), "utf8");
    const trigger = source.split("jobs:", 1)[0];
--  assert.match(trigger, /push:\s*\n\s+branches: \[main\]/);
+-  assert.match(trigger, /push:\s*\n\s+branches: \[main, "release\/\*\*"\]/);
 +  assert.match(trigger, /push:\s*\n\s+branches: \[downstream\/patch-build\]/);
+   assert.match(trigger, /^\s+workflow_dispatch:/m);
    assert.match(trigger, /pull_request:\s*\n\s+paths:/);
    assert.match(trigger, /- "packages\/desktop\/\*\*"/);
-   assert.doesNotMatch(source, /dorny\/paths-filter/);
-@@ -379,32 +454,63 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
+@@ -405,32 +477,63 @@ test("CI and desktop packaging verify release branches isolated from main traffi
    }
  });
  
@@ -699,7 +706,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
  });
  
  test("eight Playwright shards share two-worker coverage", () => {
-@@ -461,12 +567,13 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -487,12 +590,13 @@ test("quality preserves commands and routes each domain independently after fail
      Object.values(commands).flat(),
    );
    const domains = Object.keys(commands);
@@ -718,7 +725,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
        steps: { install: { outcome: installed ? "success" : "failure" } },
        cancelled: () => cancelled,
        success: () => false,
-@@ -474,6 +581,7 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -500,6 +604,7 @@ test("quality preserves commands and routes each domain independently after fail
    }
    const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
    const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
@@ -726,7 +733,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
    assert.equal(accepts(jobCondition, disabled), false);
    for (const selected of domains) {
      const outputs = { ...disabled, [selected]: "true" };
-@@ -483,12 +591,24 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -509,12 +614,24 @@ test("quality preserves commands and routes each domain independently after fail
      }
    }
    for (const [, expression] of checks) {
@@ -752,7 +759,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
  });
  
  test("Windows units and integration run independently with complete routed coverage", () => {
-@@ -546,10 +666,9 @@ test("Windows units and integration run independently with complete routed cover
+@@ -576,10 +693,9 @@ test("Windows units and integration run independently with complete routed cover
    function condition(job) {
      return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
    }
@@ -765,7 +772,7 @@ index a96cbcba8ba84d2c66f9a94b2811bd68936365e3..057969ff2093cbe836f38ce2a557ff42
      });
    }
    const unitCondition = condition(windows);
-@@ -577,8 +696,10 @@ test("Windows units and integration run independently with complete routed cover
+@@ -607,8 +723,10 @@ test("Windows units and integration run independently with complete routed cover
      assert.equal(selected(unitStep, outputs), integrations);
      assert.equal(selected(pluginStep, outputs), integrations);
      assert.equal(selected(hubStep, outputs), hub);
@@ -857,7 +864,7 @@ index 50327cade68faa09b4ef6fa4caf0fe01de53bc69..4da6e3f60e1c2fc68ff48d73d272c391
    ["RELEASE_VERSION", info.version],
    ["RELEASE_BASE_VERSION", info.baseVersion],
 diff --git a/scripts/release-version-utils.mjs b/scripts/release-version-utils.mjs
-index a38d7ae483a9a9b5de0f1221eb13bd92d4af49f9..6d34fa0995afeb002d9e03e905a81ea6b9a02502 100644
+index cd60f20c47ca9dbabd9761c6a901fb5683b8311b..650419bef22e40f8a00c37651446e15cda81b0aa 100644
 --- a/scripts/release-version-utils.mjs
 +++ b/scripts/release-version-utils.mjs
 @@ -1,7 +1,7 @@
@@ -884,7 +891,7 @@ index a38d7ae483a9a9b5de0f1221eb13bd92d4af49f9..6d34fa0995afeb002d9e03e905a81ea6
      );
    }
  
-@@ -59,11 +60,14 @@ export function formatReleaseVersion({ major, minor, patch, prerelease = null })
+@@ -84,11 +85,14 @@ export function formatReleaseVersion({ major, minor, patch, prerelease = null })
  }
  
  export function normalizeReleaseTag(rawTag) {
@@ -901,7 +908,7 @@ index a38d7ae483a9a9b5de0f1221eb13bd92d4af49f9..6d34fa0995afeb002d9e03e905a81ea6
      );
    }
    return `v${match.groups.version}`;
-@@ -72,8 +76,11 @@ export function normalizeReleaseTag(rawTag) {
+@@ -97,8 +101,11 @@ export function normalizeReleaseTag(rawTag) {
  export function getReleaseInfoFromSourceTag(sourceTag) {
    const releaseTag = normalizeReleaseTag(sourceTag);
    const parsed = parseReleaseVersion(releaseTag.slice(1));
@@ -913,7 +920,7 @@ index a38d7ae483a9a9b5de0f1221eb13bd92d4af49f9..6d34fa0995afeb002d9e03e905a81ea6
      releaseTag,
      version: parsed.version,
      baseVersion: parsed.baseVersion,
-@@ -82,7 +89,7 @@ export function getReleaseInfoFromSourceTag(sourceTag) {
+@@ -107,7 +114,7 @@ export function getReleaseInfoFromSourceTag(sourceTag) {
      isBeta: parsed.isBeta,
      betaNumber: parsed.betaNumber,
      releaseType: parsed.isPrerelease ? "prerelease" : "release",
@@ -923,10 +930,10 @@ index a38d7ae483a9a9b5de0f1221eb13bd92d4af49f9..6d34fa0995afeb002d9e03e905a81ea6
    };
  }
 diff --git a/scripts/release-version-utils.test.mjs b/scripts/release-version-utils.test.mjs
-index 6a435f6dd99adc8c63ffe9593c3a229a9220df3c..abdb6cecf17dde68b7816582ccb3a1fc967314aa 100644
+index 99c30f52249c32c857ca6706aff26fe9a6491c14..79d471a31439406d9d31f54377549f1f53bdabcb 100644
 --- a/scripts/release-version-utils.test.mjs
 +++ b/scripts/release-version-utils.test.mjs
-@@ -35,6 +35,8 @@ test("parses beta release metadata", () => {
+@@ -36,6 +36,8 @@ test("parses beta release metadata", () => {
  test("emits beta release info from tags", () => {
    assert.deepEqual(getReleaseInfoFromSourceTag("v0.1.60-beta.1"), {
      sourceTag: "v0.1.60-beta.1",
@@ -935,7 +942,7 @@ index 6a435f6dd99adc8c63ffe9593c3a229a9220df3c..abdb6cecf17dde68b7816582ccb3a1fc
      releaseTag: "v0.1.60-beta.1",
      version: "0.1.60-beta.1",
      baseVersion: "0.1.60",
-@@ -48,6 +50,42 @@ test("emits beta release info from tags", () => {
+@@ -49,8 +51,44 @@ test("emits beta release info from tags", () => {
    });
  });
  
@@ -980,6 +987,8 @@ index 6a435f6dd99adc8c63ffe9593c3a229a9220df3c..abdb6cecf17dde68b7816582ccb3a1fc
 +test("rejects unsupported prerelease versions", () => {
 +  assert.throws(() => parseReleaseVersion("0.1.60-canary.1"), /Expected prerelease versions/);
  });
+ 
+ test("compares stable and beta release versions in semver order", () => {
 diff --git a/scripts/seed-ios-native-cache.mjs b/scripts/seed-ios-native-cache.mjs
 index cbd159c8cd25765b08fb29e940ac9bd8e42f48d3..ade50ecafa1d73e8be591ca27f7dcfcaeb67a534 100644
 --- a/scripts/seed-ios-native-cache.mjs

@@ -26,9 +26,9 @@ const HELP = `Usage:
   node scripts/fork/upstream.mjs ci-apply
   node scripts/fork/upstream.mjs update [--upstream <tag>]
 
-The patch branch contains only fork assets, direct overrides, bootstrap controls,
-and exact official documentation snapshots. Runtime source is generated from the
-pinned upstream tree and patches. npm commands route through the generated tree.
+Runtime source and documentation are generated from the pinned upstream tree
+and patches. Upgrade leaves canonical Markdown unchanged. npm commands route
+through the generated tree.
 The default worktree and build outputs are in .dev/fork-build. The run command installs
 dependencies with npm ci automatically when needed; --no-install skips installation.
 Direct dev-daemon.sh launches with PASEO_SKIP_DEV_SERVER_BUILD=1 build server
@@ -370,23 +370,29 @@ function forkAdditions(snapshot, target) {
   }
   return additions;
 }
+function canonicalMarkdownChanges(snapshot, source) {
+  if (snapshot === "HEAD") return [];
+  const committed = entries("HEAD");
+  return [...new Set([...source.keys(), ...committed.keys()])].filter(
+    (name) =>
+      /\.md$/i.test(name) &&
+      name !== "AGENTS.md" &&
+      !isStore(name) &&
+      !same(source.get(name), committed.get(name)),
+  );
+}
 function pristine(base, snapshot) {
   const upstream = entries(base);
   const source = entries(snapshot);
-  const invalid = [];
+  const invalid = canonicalMarkdownChanges(snapshot, source);
   for (const [name, entry] of source) {
-    if (name === "AGENTS.md" || isDirect(name) || isStore(name)) continue;
-    if (name === "LICENSE" || /\.md$/i.test(name) || name === "packages/app/package.json") {
+    if (name === "AGENTS.md" || isDirect(name) || isStore(name) || /\.md$/i.test(name)) continue;
+    if (name === "LICENSE" || name === "packages/app/package.json") {
       if (!same(entry, upstream.get(name))) invalid.push(name);
     } else if (!CONTROL_FILES.has(name) && upstream.has(name)) invalid.push(name);
   }
   for (const name of upstream.keys()) {
-    if (
-      (name === "LICENSE" ||
-        name === "packages/app/package.json" ||
-        (/\.md$/i.test(name) && name !== "AGENTS.md")) &&
-      !source.has(name)
-    )
+    if ((name === "LICENSE" || name === "packages/app/package.json") && !source.has(name))
       invalid.push(name);
   }
   if (invalid.length)
@@ -553,13 +559,7 @@ function update(targetRef, target, base, snapshot, patches, index) {
   const direct = entries(replayCI(base.commit, snapshot, target, index));
   const source = entries(snapshot);
   const targetEntries = entries(target);
-  const synchronized = new Set(
-    [...source.keys(), ...targetEntries.keys()].filter(
-      (name) =>
-        name !== "AGENTS.md" &&
-        (name === "LICENSE" || name === "packages/app/package.json" || /\.md$/i.test(name)),
-    ),
-  );
+  const synchronized = ["LICENSE", "packages/app/package.json"];
   const overrides = new Set([...source.keys(), ...direct.keys()].filter(isOverride));
   const adopted = [...source.keys()].filter(
     (name) =>
@@ -573,7 +573,7 @@ function update(targetRef, target, base, snapshot, patches, index) {
   const [packageJson, packageLock] = bootstrapFiles(patched, target);
   initIndex(index, snapshot);
   setEntries(index, [
-    ...[...synchronized].map((name) => [name, targetEntries.get(name)]),
+    ...synchronized.map((name) => [name, targetEntries.get(name)]),
     ...[...overrides].map((name) => [name, direct.get(name)]),
     ...adopted.map((name) => [name, undefined]),
     ["package.json", blob(packageJson)],
