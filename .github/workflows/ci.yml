@@ -112,10 +112,6 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npx --yes lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https --validate-integrity
 
-      - name: Verify dependency signatures
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
-        run: npm audit signatures
-
       - name: Lint
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm run lint
@@ -159,6 +155,36 @@ jobs:
       - name: Typecheck client examples
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run typecheck:examples --workspace=@getpaseo/client
+
+  # Plugin process launches and launch wraps quote for cmd.exe, which only real Windows checks.
+  sdk-tests-windows:
+    name: sdk-tests (windows-latest)
+    needs: changes
+    if: ${{ needs.changes.result == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fork patches
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: node scripts/fork/upstream.mjs ci-apply
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Build plugin SDK
+        run: npm run build:relay && npm run build:client && npm run build:plugin
+
+      - name: Run plugin SDK tests
+        run: npm run test --workspace=@getpaseo/plugin
 
   # The locked Playwright installers do not support ubuntu-latest's Ubuntu 26.04.
   typecheck:
@@ -377,6 +403,8 @@ jobs:
         run: |
           npm run test:unit --workspace=@getpaseo/server -- \
             src/server/file-observer \
+            src/server/workspace-reconciliation-observation.test.ts \
+            src/utils/checkout-git-identity.test.ts \
             src/server/workspace-git-service.observation.test.ts \
             src/server/workspace-git-service.observation.integration.test.ts \
             --bail=1

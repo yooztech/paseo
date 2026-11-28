@@ -233,10 +233,10 @@ index d197dfa4488426ce6d097a10d429c0bec3ef8e20..3a4b0056fc3b25fe1f6124d5401d1225
  async function reloadReview(page: Page) {
    await page.reload();
 diff --git a/packages/app/e2e/browser/explorer-pane-placement.spec.ts b/packages/app/e2e/browser/explorer-pane-placement.spec.ts
-index 9a4a7127fe30deb67b18cd8db34c4e6e5398dd44..b79b283c9928437bc12981e51a31fd1d856e5cd7 100644
+index afbda75cef44ed889fd5f49eb1db98b0b8eba7b8..5d1ccc77ecc1e4a471532f6ffa91835b763c1080 100644
 --- a/packages/app/e2e/browser/explorer-pane-placement.spec.ts
 +++ b/packages/app/e2e/browser/explorer-pane-placement.spec.ts
-@@ -194,10 +194,13 @@ test.describe("explorer pane tab placement", () => {
+@@ -197,10 +197,13 @@ test.describe("explorer pane tab placement", () => {
        await chip.click({ position: { x: 12, y: 13 }, timeout: 5_000 });
        await expect(chip).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
  
@@ -253,7 +253,7 @@ index 9a4a7127fe30deb67b18cd8db34c4e6e5398dd44..b79b283c9928437bc12981e51a31fd1d
  
        // A second drag must work: center-drop the agent tab back into the New pane.
        const target = await emptyPaneBox(page);
-@@ -235,7 +238,7 @@ test.describe("explorer pane tab placement", () => {
+@@ -238,7 +241,7 @@ test.describe("explorer pane tab placement", () => {
  
  async function closeOnlyDraft(page: Page): Promise<void> {
    await draftTabChip(page).hover();
@@ -471,10 +471,10 @@ index 909d16f4079631d3db45825f2295c682ee8a2976..339a18e9f4b85d590d488af569bea3b4
 -app_identifier("sh.paseo")
 +app_identifier("com.yooztech.paseo")
 diff --git a/packages/app/fastlane/Fastfile b/packages/app/fastlane/Fastfile
-index f9f11a0e9a19972a441cea7fcca4e4db5b9e2f62..4ef15da2f9bf8a3b8bcb05243a98656ecdb16fdb 100644
+index 0da80b8c7fde42d5cb440662593a56bf0b19d615..ce6c0964ef045cd6bf06e90bc6ae6ce8f02a6037 100644
 --- a/packages/app/fastlane/Fastfile
 +++ b/packages/app/fastlane/Fastfile
-@@ -3,7 +3,7 @@ require "tmpdir"
+@@ -4,7 +4,7 @@ require_relative "ios_review"
  
  default_platform(:ios)
  
@@ -768,21 +768,31 @@ index 2bab50e852bfe18c36b8be1bd2b28265bcbe464a..ee6a3ee319b008ec38ba6d8e4787f1a9
      }
    }
 diff --git a/packages/app/src/git/policy.ts b/packages/app/src/git/policy.ts
-index 37f898c0e4681062e06fa754a0575daaea7ebcdb..8f1ac70510c94c366466a14abe3daaddc25ecfb5 100644
+index ed03f300858fae36552bbc563c92affef870e033..256ef8103a9ff0b725b8805acac4d7389211a43a 100644
 --- a/packages/app/src/git/policy.ts
 +++ b/packages/app/src/git/policy.ts
-@@ -113,8 +113,8 @@ export interface BuildGitActionsInput {
+@@ -130,7 +130,7 @@ export function readSyncRemotes(
+   };
+ }
+ 
+-export interface BuildGitActionsInput extends SyncRemotes {
++export interface BuildGitActionsInput extends Partial<SyncRemotes> {
+   isGit: boolean;
+   githubFeaturesEnabled: boolean;
+   /** Forge brand label (e.g. "GitHub", "GitLab") for forge-neutral unavailable copy. */
+@@ -145,7 +145,10 @@ export interface BuildGitActionsInput extends SyncRemotes {
+   pullRequestIsMerged: boolean;
+   pullRequestMergeable: PullRequestMergeable;
    mergeCapability: MergeCapability | null;
-   hasRemote: boolean;
-   /** The daemon confirmed where a first push publishes the branch. */
--  hasFirstPushRemote: boolean;
 -  upstream: GitUpstreamState;
-+  hasFirstPushRemote?: boolean;
 +  upstream?: GitUpstreamState;
++  /** Legacy inputs from the existing fork Git action adapter. */
++  hasRemote?: boolean;
++  hasFirstPushRemote?: boolean;
    isPaseoOwnedWorktree: boolean;
    isOnBaseBranch: boolean;
    canMergeLocally: boolean;
-@@ -122,6 +122,8 @@ export interface BuildGitActionsInput {
+@@ -153,6 +156,8 @@ export interface BuildGitActionsInput extends SyncRemotes {
    baseRefAvailable: boolean;
    baseRefLabel: string;
    aheadCount: number;
@@ -791,7 +801,41 @@ index 37f898c0e4681062e06fa754a0575daaea7ebcdb..8f1ac70510c94c366466a14abe3daadd
    behindBaseCount: number;
    aheadOfOrigin: number | null;
    behindOfOrigin: number | null;
-@@ -399,7 +401,7 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
+@@ -269,10 +274,31 @@ export function narrowPullRequestState(state: string | null | undefined): "open"
+   return null;
+ }
+ 
+-export function buildGitActions(input: BuildGitActionsInput): GitActions {
+-  if (!input.isGit) {
++function resolveGitActionRemotes(raw: BuildGitActionsInput): BuildGitActionsInput {
++  if (
++    raw.hasPullRemote !== undefined &&
++    raw.hasPushRemote !== undefined &&
++    raw.upstream !== undefined
++  ) {
++    return raw;
++  }
++  const upstream = raw.upstream ?? (raw.aheadOfOrigin === null ? "unknown" : "tracked");
++  return {
++    ...raw,
++    upstream,
++    hasPullRemote: raw.hasPullRemote ?? raw.hasRemote ?? false,
++    hasPushRemote:
++      raw.hasPushRemote ??
++      (raw.hasRemote === true &&
++        (upstream !== "none" || raw.isPaseoOwnedWorktree || raw.hasFirstPushRemote === true)),
++  };
++}
++
++export function buildGitActions(raw: BuildGitActionsInput): GitActions {
++  if (!raw.isGit) {
+     return { primary: null, secondary: [], menu: [] };
+   }
++  const input = resolveGitActionRemotes(raw);
+ 
+   const allActions = new Map<GitActionId, GitAction>();
+ 
+@@ -430,7 +456,7 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
    if (input.shipDefault === "pr" && canUsePullRequestActionAsShipDefault(input)) {
      return "pr";
    }
@@ -800,27 +844,30 @@ index 37f898c0e4681062e06fa754a0575daaea7ebcdb..8f1ac70510c94c366466a14abe3daadd
      return "merge-branch";
    }
    if (!input.isOnBaseBranch && canMergeFromBase(input)) {
-@@ -580,14 +582,16 @@ function canPush(input: BuildGitActionsInput): boolean {
+@@ -603,15 +629,19 @@ function getEnablePullRequestAutoMergeActionLabel(id: PullRequestAutoMergeEnable
+ }
+ 
+ function canPull(input: BuildGitActionsInput): boolean {
+-  return input.hasPullRemote && !input.hasUncommittedChanges && (input.behindOfOrigin ?? 0) > 0;
++  return (
++    input.hasPullRemote === true && !input.hasUncommittedChanges && (input.behindOfOrigin ?? 0) > 0
++  );
+ }
+ 
+ function canPush(input: BuildGitActionsInput): boolean {
+-  return input.hasPushRemote && hasPushableCommits(input) && (input.behindOfOrigin ?? 0) === 0;
++  return (
++    input.hasPushRemote === true && hasPushableCommits(input) && (input.behindOfOrigin ?? 0) === 0
++  );
  }
  
  function hasPushableCommits(input: BuildGitActionsInput): boolean {
 -  switch (input.upstream) {
-+  switch (input.upstream ?? (input.aheadOfOrigin === null ? "unknown" : "tracked")) {
++  switch (input.upstream ?? "unknown") {
      case "tracked":
        return (input.aheadOfOrigin ?? 0) > 0;
--    case "none":
-+    case "none": {
-       // A first push, which sets the upstream. The commits to send are the ones ahead of the base.
-       // Paseo worktrees always publish to origin. A regular checkout publishes only where the
-       // daemon confirmed Git would push the branch too, so a fork setup is not sent to origin.
--      return input.aheadCount > 0 && (input.isPaseoOwnedWorktree || input.hasFirstPushRemote);
-+      const canFirstPush = input.isPaseoOwnedWorktree || input.hasFirstPushRemote === true;
-+      return input.aheadCount > 0 && canFirstPush;
-+    }
-     case "gone":
-     case "unknown":
-       // The branch has an upstream that is deleted or unreadable, so nothing counts the commits
-@@ -598,6 +602,10 @@ function hasPushableCommits(input: BuildGitActionsInput): boolean {
+     case "none":
+@@ -627,6 +657,10 @@ function hasPushableCommits(input: BuildGitActionsInput): boolean {
    }
  }
  
@@ -831,7 +878,7 @@ index 37f898c0e4681062e06fa754a0575daaea7ebcdb..8f1ac70510c94c366466a14abe3daadd
  function canMergeFromBase(input: BuildGitActionsInput): boolean {
    return (
      !input.isOnBaseBranch &&
-@@ -614,7 +622,7 @@ function canUsePullRequestActionAsShipDefault(input: BuildGitActionsInput): bool
+@@ -643,7 +677,7 @@ function canUsePullRequestActionAsShipDefault(input: BuildGitActionsInput): bool
    if (input.hasPullRequest) {
      return input.pullRequestUrl !== null;
    }
@@ -840,7 +887,7 @@ index 37f898c0e4681062e06fa754a0575daaea7ebcdb..8f1ac70510c94c366466a14abe3daadd
  }
  
  function canMergePr(input: BuildGitActionsInput): boolean {
-@@ -626,7 +634,7 @@ function canMergePr(input: BuildGitActionsInput): boolean {
+@@ -655,7 +689,7 @@ function canMergePr(input: BuildGitActionsInput): boolean {
      !input.pullRequestIsDraft &&
      !input.pullRequestIsMerged &&
      input.pullRequestMergeable !== "CONFLICTING" &&
@@ -849,7 +896,7 @@ index 37f898c0e4681062e06fa754a0575daaea7ebcdb..8f1ac70510c94c366466a14abe3daadd
      !input.hasUncommittedChanges;
  
    if (!canMergeFromPullRequestStatus) {
-@@ -741,7 +749,7 @@ function getCreatePrUnavailableMessage(input: BuildGitActionsInput): string | un
+@@ -767,7 +801,7 @@ function getCreatePrUnavailableMessage(input: BuildGitActionsInput): string | un
        noun: input.forgeChangeRequestNoun,
      });
    }
@@ -858,7 +905,7 @@ index 37f898c0e4681062e06fa754a0575daaea7ebcdb..8f1ac70510c94c366466a14abe3daadd
      return i18n.t("workspace.git.actions.unavailable.createPrNoCommits");
    }
    return undefined;
-@@ -754,7 +762,7 @@ function getMergeBranchUnavailableMessage(input: BuildGitActionsInput): string |
+@@ -780,7 +814,7 @@ function getMergeBranchUnavailableMessage(input: BuildGitActionsInput): string |
    if (input.hasUncommittedChanges) {
      return i18n.t("workspace.git.actions.unavailable.mergeDirty");
    }
@@ -1031,7 +1078,7 @@ index 08a0a1cb4a21c48f5a1b7612dc51a357f2c4d5fc..3adc338471cf2844124497f70da08b4c
    await Promise.all(
      kinds.map((kind) =>
 diff --git a/packages/app/src/git/use-actions.tsx b/packages/app/src/git/use-actions.tsx
-index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0af3ce9e9 100644
+index 9b11e8a275d495007be8068c69a33afc9c518900..7e34eacdca5f23a5b540ed7fafb829f976c6017a 100644
 --- a/packages/app/src/git/use-actions.tsx
 +++ b/packages/app/src/git/use-actions.tsx
 @@ -11,7 +11,6 @@ import { type CheckoutGitActionStatus, useCheckoutGitActionsStore } from "@/git/
@@ -1042,23 +1089,23 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
    isCurrentBranchBase,
    canMergeIntoLocalBase,
    narrowPullRequestState,
-@@ -21,6 +20,7 @@ import {
-   type GitActions,
+@@ -23,6 +22,7 @@ import {
    type GitUpstreamState,
+   type SyncRemotes,
  } from "@/git/policy";
 +import { buildForkGitActions } from "@/fork/git-action-policy";
  import { deriveMergeCapability } from "@/git/merge-capability";
  import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
  import { openExternalUrl } from "@/utils/open-external-url";
-@@ -126,6 +126,7 @@ interface DeriveGitActionsStateArgs {
- interface DerivedGitActionsState {
+@@ -130,6 +130,7 @@ const NO_SYNC_REMOTES: SyncRemotes = { hasPullRemote: false, hasPushRemote: fals
+ interface DerivedGitActionsState extends SyncRemotes {
    actionsDisabled: boolean;
    aheadCount: number;
 +  hasChangesFromBase: boolean;
    behindBaseCount: number;
    aheadOfOrigin: number | null;
    behindOfOrigin: number | null;
-@@ -141,14 +142,18 @@ interface DerivedGitActionsState {
+@@ -143,14 +144,18 @@ interface DerivedGitActionsState extends SyncRemotes {
  
  interface GitCommitCounts {
    aheadCount: number;
@@ -1078,7 +1125,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
      behindBaseCount: gitStatus?.aheadBehind?.behind ?? 0,
      aheadOfOrigin: gitStatus?.aheadOfOrigin ?? null,
      behindOfOrigin: gitStatus?.behindOfOrigin ?? null,
-@@ -669,6 +674,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
+@@ -670,6 +675,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
    const {
      actionsDisabled,
      aheadCount,
@@ -1086,7 +1133,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
      behindBaseCount,
      aheadOfOrigin,
      behindOfOrigin,
-@@ -716,6 +722,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
+@@ -717,6 +723,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
        baseRefAvailable: Boolean(baseRef),
        baseRefLabel,
        aheadCount,
@@ -1094,7 +1141,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
        behindBaseCount,
        aheadOfOrigin,
        behindOfOrigin,
-@@ -828,6 +835,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
+@@ -829,6 +836,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
      prStatus?.forgeSpecific,
      prStatus?.github,
      aheadCount,
@@ -1102,7 +1149,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
      behindBaseCount,
      isPaseoOwnedWorktree,
      isOnBaseBranch,
-@@ -876,13 +884,14 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
+@@ -877,13 +885,14 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
  
    const gitActions: GitActions = useMemo(
      () =>
@@ -1119,7 +1166,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
    );
  
    return {
-@@ -898,6 +907,7 @@ function translateGitActions(
+@@ -899,6 +908,7 @@ function translateGitActions(
    input: {
      baseRefLabel: string;
      hasPullRequest: boolean;
@@ -1127,7 +1174,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
      forge: Forge;
      t: (key: string, options?: Record<string, unknown>) => string;
    },
-@@ -914,16 +924,24 @@ function translateGitAction(
+@@ -915,16 +925,24 @@ function translateGitAction(
    {
      baseRefLabel,
      hasPullRequest,
@@ -1153,7 +1200,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
    return {
      ...action,
      ...labels,
-@@ -939,11 +957,13 @@ function getTranslatedGitActionLabels(
+@@ -940,11 +958,13 @@ function getTranslatedGitActionLabels(
    {
      baseRefLabel,
      hasPullRequest,
@@ -1167,7 +1214,7 @@ index 2d3a82cc7c304976eaacc7ecac823adfa079b776..06bb7af1b1c5955732a6d826362c80a0
      forge: Forge;
      t: (key: string, options?: Record<string, unknown>) => string;
    },
-@@ -975,11 +995,14 @@ function getTranslatedGitActionLabels(
+@@ -976,11 +996,14 @@ function getTranslatedGitActionLabels(
        };
      case "pr":
        return hasPullRequest
@@ -1354,7 +1401,7 @@ index 1e91dc0401e97ec2623af20e6023e0f63a6e8cfb..3853535704f7a84edea2fba0b81e33c7
    panelsRegistered = true;
  }
 diff --git a/packages/app/src/runtime/replica-cache/index.ts b/packages/app/src/runtime/replica-cache/index.ts
-index dcae1455007a98134c3b728c7e459c0fa329cdb3..0adc45152f3e059774894e53d98f1326b6dbd059 100644
+index ef65721e23736b33aded3dd4980f81e520291210..2ae599d798db522f7eea0a1a3fd86ed9d2f161eb 100644
 --- a/packages/app/src/runtime/replica-cache/index.ts
 +++ b/packages/app/src/runtime/replica-cache/index.ts
 @@ -301,8 +301,10 @@ const WorkspaceGitRuntimeSchema = z
@@ -1369,10 +1416,10 @@ index dcae1455007a98134c3b728c7e459c0fa329cdb3..0adc45152f3e059774894e53d98f1326
    .nullable()
    .optional();
 diff --git a/packages/app/src/screens/settings-screen.tsx b/packages/app/src/screens/settings-screen.tsx
-index 0288d82707f402706535af17e5da1dd5e083a428..bf5247cda62842f3c49fec1e94d2f237e7bfebfb 100644
+index cb685e387b94da315b7a2c8ebacbf4577e7613a5..4b03a615b97f0da17244c554ab10149865ddf0d0 100644
 --- a/packages/app/src/screens/settings-screen.tsx
 +++ b/packages/app/src/screens/settings-screen.tsx
-@@ -86,6 +86,7 @@ import { isElectronRuntime } from "@/desktop/host";
+@@ -82,6 +82,7 @@ import { useDesktopSettings, type DesktopUpdateMode } from "@/desktop/settings/d
  import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
  import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
  import { resolveAppVersion } from "@/utils/app-version";
@@ -1380,7 +1427,7 @@ index 0288d82707f402706535af17e5da1dd5e083a428..bf5247cda62842f3c49fec1e94d2f237
  import { openChangelog } from "@/changelog";
  import { useAppDiagnosticStore } from "@/diagnostics/store";
  import { settingsStyles } from "@/styles/settings";
-@@ -1122,7 +1123,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
+@@ -1237,7 +1238,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
    const isDesktopApp = isElectronRuntime();
    const hardwareKeyboardPresent = useHardwareKeyboardPresent();
    const appVersion = resolveAppVersion();
@@ -1809,10 +1856,10 @@ index 16ca639c09e67b04eabe98483d9f1df3bbdf620c..6e031bfab603185f8fde9cc92ce0056c
            {group.accessory ? (
              <>
 diff --git a/packages/app/src/screens/workspace/workspace-screen.tsx b/packages/app/src/screens/workspace/workspace-screen.tsx
-index ee2ce2ee0bbf894ea38be9e70d90d71f8dd256c3..ed1cecd287a5e389ef06b53fedf8d47f34e04ed5 100644
+index 79ebaf2f5646ae816fcf1a4a9081fd73b64dc3e1..51b572036c0f92a259f48c4ea262cbcad6df2793 100644
 --- a/packages/app/src/screens/workspace/workspace-screen.tsx
 +++ b/packages/app/src/screens/workspace/workspace-screen.tsx
-@@ -227,6 +227,7 @@ import {
+@@ -231,6 +231,7 @@ import {
  import { RenderProfile } from "@/utils/render-profiler";
  import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
  import { useWorkspacePullRequestDiscovery } from "@/panels/pull-request";
@@ -1820,7 +1867,7 @@ index ee2ce2ee0bbf894ea38be9e70d90d71f8dd256c3..ed1cecd287a5e389ef06b53fedf8d47f
  
  const NO_SHEETS: readonly SheetTab[] = [];
  const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
-@@ -1294,6 +1295,14 @@ function WorkspaceScreenContent({
+@@ -1298,6 +1299,14 @@ function WorkspaceScreenContent({
      layoutMode,
      explorerOpen: isExplorerSidebarShowing,
    });
@@ -1835,7 +1882,7 @@ index ee2ce2ee0bbf894ea38be9e70d90d71f8dd256c3..ed1cecd287a5e389ef06b53fedf8d47f
  
    useEffect(() => {
      // Back dismisses the compact overlay only. On a wide native layout the
-@@ -3274,6 +3283,8 @@ function WorkspaceScreenContent({
+@@ -3303,6 +3312,8 @@ function WorkspaceScreenContent({
        showChanges: isGitCheckout,
        showPullRequest: hasPullRequest,
        showBrowser: showCreateBrowserTab,
@@ -1844,7 +1891,7 @@ index ee2ce2ee0bbf894ea38be9e70d90d71f8dd256c3..ed1cecd287a5e389ef06b53fedf8d47f
        terminalDisabled: createTerminalDisabled,
        launch: launchWorkspaceTab,
      }),
-@@ -3281,6 +3292,7 @@ function WorkspaceScreenContent({
+@@ -3310,6 +3321,7 @@ function WorkspaceScreenContent({
        createTerminalDisabled,
        hasPullRequest,
        isGitCheckout,
@@ -1927,10 +1974,10 @@ index 5e9cc2119d134a0467d7e11105c2427303be38e5..2428b5bcf13bc8b475870ce7671eac69
    agentListOpen: z.boolean().optional(),
    focusModeEnabled: z.boolean().optional(),
 diff --git a/packages/app/src/stores/workspace-layout-actions.ts b/packages/app/src/stores/workspace-layout-actions.ts
-index 384aa725b23a7f362d530805e1fe31bcb7d5c96c..3609ed080492a02e1049ca5c20714a4f3b4868d5 100644
+index 259d89e74a6eec8ace20f91d2f036dee71820fc8..49354b9e5e92cf26701a4bd47dae34dfb11f8ae0 100644
 --- a/packages/app/src/stores/workspace-layout-actions.ts
 +++ b/packages/app/src/stores/workspace-layout-actions.ts
-@@ -1166,7 +1166,14 @@ export function collectAllPanes(root: SplitNode): SplitPane[] {
+@@ -1188,7 +1188,14 @@ export function collectAllPanesIncludingHidden(root: SplitNode): SplitPane[] {
  }
  
  function isEphemeralTab(tab: WorkspaceTab): boolean {
@@ -1946,7 +1993,7 @@ index 384aa725b23a7f362d530805e1fe31bcb7d5c96c..3609ed080492a02e1049ca5c20714a4f
  }
  
  function stripEphemeralTabsFromNode(node: SplitNodeInternal): SplitNodeInternal {
-@@ -1219,6 +1226,10 @@ function restoreEmptyPanesInNode(
+@@ -1241,6 +1248,10 @@ function restoreEmptyPanesInNode(
              node.pane.id === explorerSidebarPaneId
                ? createDefaultExplorerSidebarTabs()
                : [createNewWorkspaceTab()],
@@ -1957,7 +2004,7 @@ index 384aa725b23a7f362d530805e1fe31bcb7d5c96c..3609ed080492a02e1049ca5c20714a4f
            hidden: node.pane.hidden,
          });
    }
-@@ -1312,7 +1323,12 @@ export function createDefaultLayout(): WorkspaceLayout {
+@@ -1334,7 +1345,12 @@ export function createDefaultLayout(): WorkspaceLayout {
  
  function createDefaultExplorerSidebarTabs(): WorkspaceTab[] {
    const createdAt = Date.now();
@@ -1971,7 +2018,7 @@ index 384aa725b23a7f362d530805e1fe31bcb7d5c96c..3609ed080492a02e1049ca5c20714a4f
    return targets.map((target) => ({
      tabId: buildDeterministicWorkspaceTabId(target),
      target,
-@@ -1331,6 +1347,7 @@ export function createWorkspaceLayoutWithExplorerSidebar(): WorkspaceLayout {
+@@ -1353,6 +1369,7 @@ export function createWorkspaceLayoutWithExplorerSidebar(): WorkspaceLayout {
          createPaneNode({
            id: EXPLORER_SIDEBAR_PANE_ID,
            tabs: createDefaultExplorerSidebarTabs(),
@@ -1980,10 +2027,10 @@ index 384aa725b23a7f362d530805e1fe31bcb7d5c96c..3609ed080492a02e1049ca5c20714a4f
          }),
        ],
 diff --git a/packages/app/src/stores/workspace-layout-storage.ts b/packages/app/src/stores/workspace-layout-storage.ts
-index 1dfa9e82dbce1bb3a4f49ce1d890725e77ffb5f9..280ac39921af3bb4bada60f9e9dfcdc7248276c3 100644
+index 98b1ac578c0c09b6145c6570214894c30958f638..8756aaeb68b901ea852b2a38df898793c6b5f589 100644
 --- a/packages/app/src/stores/workspace-layout-storage.ts
 +++ b/packages/app/src/stores/workspace-layout-storage.ts
-@@ -38,6 +38,15 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
+@@ -39,6 +39,15 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
    z.strictObject({ kind: z.literal("changes_tree") }),
    z.strictObject({ kind: z.literal("files") }),
    z.strictObject({ kind: z.literal("pull_request") }),
@@ -2000,7 +2047,7 @@ index 1dfa9e82dbce1bb3a4f49ce1d890725e77ffb5f9..280ac39921af3bb4bada60f9e9dfcdc7
      kind: z.literal("file"),
      path: z.string(),
 diff --git a/packages/app/src/stores/workspace-layout-store.test.ts b/packages/app/src/stores/workspace-layout-store.test.ts
-index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b3117034499f5e 100644
+index 994ea5156484389471b39b049e53351a5c69ec67..a0b3b7791a41fd40856c715114f0ba9cce754426 100644
 --- a/packages/app/src/stores/workspace-layout-store.test.ts
 +++ b/packages/app/src/stores/workspace-layout-store.test.ts
 @@ -22,6 +22,7 @@ import { setPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
@@ -2011,7 +2058,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
  import { defaultFileState, type FileState } from "@/panels/file/state";
  import {
    canDismissPaneInLayout,
-@@ -264,7 +265,9 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
+@@ -265,7 +266,9 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
      (tab) =>
        tab.target.kind !== "new_tab" &&
        tab.target.kind !== "files" &&
@@ -2022,7 +2069,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
    );
  }
  
-@@ -274,7 +277,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
+@@ -275,7 +278,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
  }
  
  describe("workspace-layout-store helpers", () => {
@@ -2031,7 +2078,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      const layout = createWorkspaceLayoutWithExplorerSidebar();
      const tabs = collectAllTabs(layout.root);
  
-@@ -282,6 +285,8 @@ describe("workspace-layout-store helpers", () => {
+@@ -283,6 +286,8 @@ describe("workspace-layout-store helpers", () => {
        { kind: "new_tab" },
        { kind: "files" },
        { kind: "changes_tree" },
@@ -2040,7 +2087,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      ]);
      expect(findPaneById(layout.root, "explorer")?.focusedTabId).toBe(
        tabs.find((tab) => tab.target.kind === "changes_tree")?.tabId,
-@@ -310,12 +315,59 @@ describe("workspace-layout-store helpers", () => {
+@@ -311,12 +316,59 @@ describe("workspace-layout-store helpers", () => {
        { kind: "new_tab" },
        { kind: "files" },
        { kind: "changes_tree" },
@@ -2100,7 +2147,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
    it("finds panes and tabs across nested groups", () => {
      const root: SplitNode = {
        kind: "group",
-@@ -536,6 +588,8 @@ describe("workspace-layout-store version 2 migration", () => {
+@@ -537,6 +589,8 @@ describe("workspace-layout-store version 2 migration", () => {
      expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
        { kind: "files" },
        { kind: "changes_tree" },
@@ -2109,7 +2156,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      ]);
  
      const sidePane = findPaneById(layout.root, sidePaneId);
-@@ -1436,6 +1490,8 @@ describe("workspace-layout-store actions", () => {
+@@ -1437,6 +1491,8 @@ describe("workspace-layout-store actions", () => {
      expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
        { kind: "files" },
        { kind: "changes_tree" },
@@ -2118,7 +2165,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      ]);
      expect(restored.getState().splitSizesByWorkspace).toEqual({});
      await expect(AsyncStorage.getItem("workspace-layout-state")).resolves.not.toBeNull();
-@@ -1509,6 +1565,8 @@ describe("workspace-layout-store actions", () => {
+@@ -1510,6 +1566,8 @@ describe("workspace-layout-store actions", () => {
        "agent",
        "files",
        "changes_tree",
@@ -2127,7 +2174,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
        "pull_request",
      ]);
      expect(state.explorerSidebarPaneIdByWorkspace[workspaceKey]).toBe(explorerSidebarPaneId);
-@@ -1545,7 +1603,14 @@ describe("workspace-layout-store actions", () => {
+@@ -1546,7 +1604,14 @@ describe("workspace-layout-store actions", () => {
        const persisted = await AsyncStorage.getItem("workspace-layout-state");
        expect(persisted).not.toBeNull();
        const root = JSON.parse(persisted ?? "{}").state.layoutByWorkspace[workspaceKey].root;
@@ -2143,7 +2190,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      });
  
      const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
-@@ -2495,7 +2560,7 @@ describe("workspace-layout-store actions", () => {
+@@ -2496,7 +2561,7 @@ describe("workspace-layout-store actions", () => {
      let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneById(layout.root, paneId)).toMatchObject({
        hidden: true,
@@ -2152,7 +2199,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      });
      expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
      expect(layout.focusedPaneId).toBe("main");
-@@ -2503,7 +2568,7 @@ describe("workspace-layout-store actions", () => {
+@@ -2504,7 +2569,7 @@ describe("workspace-layout-store actions", () => {
      store.showExplorerSidebar(workspaceKey);
      layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneById(layout.root, paneId)).toMatchObject({
@@ -2161,7 +2208,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      });
      expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
      expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
-@@ -2587,7 +2652,7 @@ describe("workspace-layout-store actions", () => {
+@@ -2588,7 +2653,7 @@ describe("workspace-layout-store actions", () => {
      expect(layout.focusedPaneId).toBe("main");
      expect(findPaneById(layout.root, paneId)).toMatchObject({
        focusedTabId: targetTabId,
@@ -2170,7 +2217,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      });
      expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
      expect(expectGroup(layout.root).group.sizes).toEqual(group.sizes);
-@@ -3139,6 +3204,8 @@ describe("workspace-layout-store actions", () => {
+@@ -3140,6 +3205,8 @@ describe("workspace-layout-store actions", () => {
      expect(findPaneById(layout.root, explorerSidebarPaneId)?.tabIds).toEqual([
        "files",
        "changes_tree",
@@ -2179,7 +2226,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      ]);
    });
  
-@@ -3239,7 +3306,7 @@ describe("workspace-layout-store actions", () => {
+@@ -3240,7 +3307,7 @@ describe("workspace-layout-store actions", () => {
      ]);
    });
  
@@ -2188,7 +2235,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      const workspaceKey = createWorkspaceKey();
      const store = workspaceLayoutStore.getState();
  
-@@ -3256,6 +3323,16 @@ describe("workspace-layout-store actions", () => {
+@@ -3257,6 +3324,16 @@ describe("workspace-layout-store actions", () => {
        target: { kind: "commit_diff", sha: "abc123" },
        intent: "reveal",
      });
@@ -2205,7 +2252,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
  
      const partialize = workspaceLayoutStore.persist.getOptions().partialize;
      expect(partialize).toBeTypeOf("function");
-@@ -3282,8 +3359,43 @@ describe("workspace-layout-store actions", () => {
+@@ -3283,8 +3360,43 @@ describe("workspace-layout-store actions", () => {
        },
        { kind: "files" },
        { kind: "changes_tree" },
@@ -2249,7 +2296,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
  
    it("repairs persisted duplicate ids without losing tabs, pane focus, or unambiguous parents", () => {
      const file = (tabId: string, path: string) => ({
-@@ -3792,11 +3904,9 @@ describe("workspace-layout-store actions", () => {
+@@ -3793,11 +3905,9 @@ describe("workspace-layout-store actions", () => {
  
      const initialized = workspaceLayoutStore.getState();
      const layout = initialized.layoutByWorkspace[workspaceKey];
@@ -2264,7 +2311,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      expect(layout.focusedPaneId).toBe("main");
  
      store.reconcileTabs(workspaceKey, snapshot);
-@@ -4392,7 +4502,7 @@ describe("workspace-layout-store actions", () => {
+@@ -4393,7 +4503,7 @@ describe("workspace-layout-store actions", () => {
      let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      const hiddenPane = findPaneById(layout.root, paneId);
      expect(hiddenPane?.hidden).toBeUndefined();
@@ -2273,7 +2320,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      expect(
        collectAllTabs(layout.root).find((tab) => tab.tabId === hiddenPane?.focusedTabId)?.target,
      ).toEqual({ kind: "changes_tree" });
-@@ -4430,7 +4540,12 @@ describe("workspace-layout-store actions", () => {
+@@ -4431,7 +4541,12 @@ describe("workspace-layout-store actions", () => {
  
      const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
@@ -2287,7 +2334,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
    });
  
    it("closing Files keeps Changes on screen without removing the final ordinary pane", () => {
-@@ -4456,7 +4571,7 @@ describe("workspace-layout-store actions", () => {
+@@ -4457,7 +4572,7 @@ describe("workspace-layout-store actions", () => {
      expect(collectAllPanes(layout.root).map((pane) => pane.id)).toEqual(["main", paneId]);
      expect(findPaneById(layout.root, "main")?.tabIds).toHaveLength(1);
      const finalPane = findPaneById(layout.root, paneId);
@@ -2296,7 +2343,7 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
      expect(
        collectAllTabs(layout.root).find((tab) => tab.tabId === finalPane?.focusedTabId)?.target,
      ).toEqual({ kind: "changes_tree" });
-@@ -4549,7 +4664,7 @@ describe("workspace-layout-store actions", () => {
+@@ -4550,7 +4665,7 @@ describe("workspace-layout-store actions", () => {
      const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
      expect(findPaneContainingTab(layout.root, changesTabId)?.id).toBe("main");
      const sidePane = findPaneById(layout.root, paneId);
@@ -2306,10 +2353,10 @@ index 678f9f5ab68fad6e611f4e76b6d235a32d7cc88a..2481be9a5b9e0af940ecdde196b31170
    });
    it("keeps the final ordinary pane when Explorer is visible", () => {
 diff --git a/packages/app/src/stores/workspace-layout-store.ts b/packages/app/src/stores/workspace-layout-store.ts
-index f0f6cc308b9dbfbd66ee0ccc7af46a680b6dc98e..d3e22e4056767cbf599d647041739340cc7839ac 100644
+index 5095f7ff4b2af16ecd7ba1551daf10a4fd7d02d6..9031c4b8d00c37be518a08fbdff954a71ebee14b 100644
 --- a/packages/app/src/stores/workspace-layout-store.ts
 +++ b/packages/app/src/stores/workspace-layout-store.ts
-@@ -359,7 +359,9 @@ function migrateVersionOneWorkspaceLayout(input: {
+@@ -365,7 +365,9 @@ function migrateVersionOneWorkspaceLayout(input: {
      (tab) =>
        legacyExplorerPane.tabIds.includes(tab.tabId) &&
        tab.target.kind !== "files" &&
@@ -2321,10 +2368,10 @@ index f0f6cc308b9dbfbd66ee0ccc7af46a680b6dc98e..d3e22e4056767cbf599d647041739340
    const preservedSide = preserveVersionOneSideTabs({
      layout: strippedLayout,
 diff --git a/packages/app/src/timeline/replica.test.ts b/packages/app/src/timeline/replica.test.ts
-index 2254aacf5d5a4ebe29d48e33653dc131afeab0c9..730ed5f7499b685816be0425df752ce6bd040703 100644
+index e1c40a5d2178cb2257774c3840e0b07425353bbc..5cff9d81ffc67dc46346369bc260f243f73ecf1b 100644
 --- a/packages/app/src/timeline/replica.test.ts
 +++ b/packages/app/src/timeline/replica.test.ts
-@@ -330,6 +330,7 @@ describe("viewed timeline persistence", () => {
+@@ -444,6 +444,7 @@ describe("viewed timeline persistence", () => {
      first.flushStreamAgent(AGENT_ID);
  
      expect(pending).toMatchObject({ range: null, hasOlder: false });
@@ -2332,7 +2379,7 @@ index 2254aacf5d5a4ebe29d48e33653dc131afeab0c9..730ed5f7499b685816be0425df752ce6
      expect(pending?.items.map((entry) => entry.id)).toEqual(["cached", expect.any(String)]);
      durable = pending;
      first.dispose();
-@@ -351,7 +352,6 @@ describe("viewed timeline persistence", () => {
+@@ -465,7 +466,6 @@ describe("viewed timeline persistence", () => {
        });
      reopened.dispose();
    });
@@ -2450,7 +2497,7 @@ index 425acdb2d1c06ed60223d3a639d949766f036d8d..e1bd039278195c7126aee455aef5e149
    });
  });
 diff --git a/packages/app/src/workspace-tabs/identity.ts b/packages/app/src/workspace-tabs/identity.ts
-index ba6dcb52f5a864f8b2f3e067461a4e607e5b3022..343cde7838d92eda944ad4e44100fea6ffdcc38a 100644
+index 6de5ff392e0b4d8a679a804985d2e1b4e284f2e9..e01b92232fe8a82c826677d8beebc399c5af4705 100644
 --- a/packages/app/src/workspace-tabs/identity.ts
 +++ b/packages/app/src/workspace-tabs/identity.ts
 @@ -38,6 +38,18 @@ export function normalizeWorkspaceTabTarget(
@@ -2481,7 +2528,7 @@ index ba6dcb52f5a864f8b2f3e067461a4e607e5b3022..343cde7838d92eda944ad4e44100fea6
        return { kind: value.kind };
      case "setup": {
        const workspaceId = trimNonEmpty(value.workspaceId);
-@@ -127,10 +141,35 @@ export function workspaceTabTargetsEqual(
+@@ -131,10 +145,35 @@ export function workspaceTabTargetsEqual(
    return secondaryWorkspaceTabTargetsEqual(left, right);
  }
  
@@ -2517,7 +2564,7 @@ index ba6dcb52f5a864f8b2f3e067461a4e607e5b3022..343cde7838d92eda944ad4e44100fea6
    if (left.kind === "browser" && right.kind === "browser") {
      return left.browserId === right.browserId;
    }
-@@ -219,7 +258,16 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
+@@ -224,7 +263,16 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
    if (target.kind === "working_diff") {
      return "working_diff";
    }
@@ -2657,10 +2704,10 @@ index c55208fc957619204a7679c807dae9867f7aa8cb..ca0b025bca55d65b15abed9703fea8f8
        const items = group.items.filter((item) =>
          panelCanLaunchInPane(item.panelKind, panePanelKinds),
 diff --git a/packages/app/src/workspace-tabs/model.ts b/packages/app/src/workspace-tabs/model.ts
-index f1e17fb3a648c71fed1e55a21e74565b2adb77de..60e55b310402b6acba3de6372d6542bd5f766335 100644
+index 4f64966a91d01665c2b418bd62afac09fdcf0a2e..9e3b3b5f844c44f7d8b02f2fd9743936cc214329 100644
 --- a/packages/app/src/workspace-tabs/model.ts
 +++ b/packages/app/src/workspace-tabs/model.ts
-@@ -16,6 +16,13 @@ export interface WorkspaceWorkingDiffTabTarget {
+@@ -17,6 +17,13 @@ export interface WorkspaceWorkingDiffTabTarget {
    focusPath?: string;
    focusRequestId?: number;
  }
@@ -2674,7 +2721,7 @@ index f1e17fb3a648c71fed1e55a21e74565b2adb77de..60e55b310402b6acba3de6372d6542bd
  
  export type PluginWorkspaceTabTarget =
    | {
-@@ -42,9 +49,12 @@ export type WorkspaceTabTarget =
+@@ -43,9 +50,12 @@ export type WorkspaceTabTarget =
    | { kind: "changes_tree" }
    | { kind: "files" }
    | { kind: "pull_request" }

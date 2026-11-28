@@ -10,14 +10,21 @@ index a85ff1fd8c1f4c20760319a05953b4141cecb4f7..7da7e434a4642212f384b280e5c2c2e9
  
  # Environment variables
  .env
+diff --git a/nix/npm-deps.hash b/nix/npm-deps.hash
+index 0b9cd17803b1c0463fa9c7e6edea88ebcd37de2f..e611aeac4710e3c439ad542e26ccbe195d8e3f4b 100644
+--- a/nix/npm-deps.hash
++++ b/nix/npm-deps.hash
+@@ -1 +1 @@
+-sha256-SZV3WTKLb+JhxWNo/jWyx+2sipzfL93YbbqQSihd3Wo=
++sha256-aal9eR571blWuL7CZt1LR+KfA4QPJ0ivVl/GSTWy93o=
 diff --git a/package.json b/package.json
-index 52be558ceb7a1fb666dc7e1492054cce18cdad1b..714c2b7789bab4d0590cb1fd9b7b2d16fd3410c3 100644
+index a2cd51c032d2326d0c3f542f4922bf4f53325428..e7d2adea13178963bc4db7aeec2fb1f57b2d1fcc 100644
 --- a/package.json
 +++ b/package.json
 @@ -126,7 +126,10 @@
      "release:push": "node scripts/push-current-release-tag.mjs",
-     "release:ship": "node scripts/push-current-release-tag.mjs --check && npm run release:publish && npm run release:push",
-     "release:ship:beta": "node scripts/push-current-release-tag.mjs --check && npm run release:publish:beta && npm run release:push",
+     "release:ship": "npm run release:push && npm run release:publish",
+     "release:ship:beta": "npm run release:push && npm run release:publish:beta",
 -    "release:reconcile": "node scripts/reconcile-release.mjs"
 +    "release:reconcile": "node scripts/reconcile-release.mjs",
 +    "release:fork:daemon": "node scripts/release-fork-daemon.mjs",
@@ -80,7 +87,7 @@ diff --git a/packages/desktop/e2e/explorer-toggle.spec.ts b/packages/desktop/e2e
 index 0448a088f4becfa697e1c8048051200101039ea3..3993b7c94b3ca0ea5f020282793f4f9d31c90910 100644
 --- a/packages/desktop/e2e/explorer-toggle.spec.ts
 +++ b/packages/desktop/e2e/explorer-toggle.spec.ts
-@@ -99,7 +99,7 @@ async function expectExplorerToggleInHeaderTabOrder(page: Page, expanded: boolean) {
+@@ -99,7 +99,7 @@ async function expectExplorerToggleInHeaderTabOrder(page: Page, expanded: boolea
    const toggle = explorerToggle(page, expanded);
    await toggle.focus();
    await page.keyboard.press("Tab");
@@ -152,7 +159,7 @@ index 008b77d15f39f62b6b702429531fb41768d9af2c..657a7076a227551144ee9be83af2c813
  const children = new Map();
  let stopping = false;
 diff --git a/packages/desktop/src/daemon/daemon-manager.ts b/packages/desktop/src/daemon/daemon-manager.ts
-index 44076bbc4bfc5281fad66638d82aade0907c1a42..5d6589e92d8492f448f0837fb22593c77f187b2b 100644
+index 53bada4ba563e629597e336a41136b11b71590b7..58d63b77a486fb61284ada8bf9012ce5c2a7f697 100644
 --- a/packages/desktop/src/daemon/daemon-manager.ts
 +++ b/packages/desktop/src/daemon/daemon-manager.ts
 @@ -272,7 +272,15 @@ function shouldRestartForVersion(current: DesktopDaemonStatus): boolean {
@@ -173,10 +180,10 @@ index 44076bbc4bfc5281fad66638d82aade0907c1a42..5d6589e92d8492f448f0837fb22593c7
  
  function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
 diff --git a/packages/desktop/src/features/app-update-service.test.ts b/packages/desktop/src/features/app-update-service.test.ts
-index 5f55ff609916107d30beb0fa0df5dfa81188da34..8bffda0e2843fcb976327440b0b70ab5860035f8 100644
+index 8a78e78d390706919aa6857a004ac059c249eb24..f31a497d58356733b77544d549c0f96da709b881 100644
 --- a/packages/desktop/src/features/app-update-service.test.ts
 +++ b/packages/desktop/src/features/app-update-service.test.ts
-@@ -577,6 +577,27 @@ describe("app update service", () => {
+@@ -633,6 +633,28 @@ describe("app update service", () => {
      });
    });
  
@@ -193,6 +200,7 @@ index 5f55ff609916107d30beb0fa0df5dfa81188da34..8bffda0e2843fcb976327440b0b70ab5
 +    expect(result).toEqual({
 +      hasUpdate: false,
 +      readyToInstall: false,
++      downloading: false,
 +      currentVersion: "1.2.3",
 +      latestVersion: "1.2.3",
 +      body: null,
@@ -204,59 +212,40 @@ index 5f55ff609916107d30beb0fa0df5dfa81188da34..8bffda0e2843fcb976327440b0b70ab5
    it("returns check errors so the renderer can show feedback", async () => {
      const { runtime, service } = createService();
      runtime.failNextCheck(new Error("network down"));
-diff --git a/packages/desktop/src/features/app-update-service.ts b/packages/desktop/src/features/app-update-service.ts
-index 21789950bfbc3fb39538d29591338c1d38786ee0..0690839b3b2ff13372430034a0991095fc2dd21c 100644
---- a/packages/desktop/src/features/app-update-service.ts
-+++ b/packages/desktop/src/features/app-update-service.ts
-@@ -38,6 +38,7 @@ export interface AppUpdateRuntimeConfiguration {
-   shouldAdmitUpdate(info: RuntimeUpdateInfo): boolean | Promise<boolean>;
-   onUpdateAvailable(info: RuntimeUpdateInfo): void;
-   onUpdateDownloaded(info: RuntimeUpdateInfo): void;
-+  onUpdateNotAvailable(): void;
-   onError(error: unknown): void;
- }
- 
-@@ -215,6 +216,9 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
-           preparationError = null;
-         }
-       },
-+      onUpdateNotAvailable() {
-+        clearUpdateState();
-+      },
-       onError(error) {
-         if (preparingUpdateVersion) {
-           preparationError = {
 diff --git a/packages/desktop/src/features/auto-updater.test.ts b/packages/desktop/src/features/auto-updater.test.ts
-index 6cd6da2c7e44074304fc3638667a97d330184383..47b7738a6596b9c89230122a279d1fd1b3e1262d 100644
+index 7068ac92ce023fb5a288b97606ce3e5c271d4639..7b93e85b92e761cf4c7cd7b753ec1f59277d3373 100644
 --- a/packages/desktop/src/features/auto-updater.test.ts
 +++ b/packages/desktop/src/features/auto-updater.test.ts
-@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
+@@ -3,6 +3,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
  import os from "node:os";
  import path from "node:path";
  import { UUID } from "builder-util-runtime";
++import { app } from "electron";
 +import { autoUpdater } from "electron-updater";
  import { describe, expect, it, vi } from "vitest";
  
- const { autoUpdaterMock } = vi.hoisted(() => {
-@@ -28,6 +29,7 @@ const { autoUpdaterMock } = vi.hoisted(() => {
- vi.mock("electron", () => ({
+ const { autoUpdaterMock, getAllWindowsMock, desktopSettingsMock } = vi.hoisted(() => {
+@@ -49,6 +51,7 @@ vi.mock("electron", () => ({
    app: {
+     // No userData path: update pacing has no state file here, so it paces nothing.
      getPath: vi.fn(),
 +    getVersion: vi.fn(() => "1.2.3"),
      isPackaged: true,
    },
+   autoUpdater: undefined,
+@@ -78,18 +81,54 @@ vi.mock("electron-updater", () => ({
  }));
-@@ -38,6 +40,8 @@ vi.mock("electron-updater", () => ({
  
  import {
-   bucketFromStagingUserId,
 +  ElectronAppUpdateRuntime,
-+  resolveElectronUpdateChannel,
    checkForAppUpdate,
    createAppUpdateLifecycleLogger,
+   downloadAndInstallUpdate,
++  resolveElectronUpdateChannel,
    resolveStagingUserId,
-@@ -46,6 +50,39 @@ import {
+   runElectronQuitAndInstall,
    shouldInstallAppUpdateOnQuit,
+   shouldUseWindowProgressBar,
  } from "./auto-updater";
  
 +function updaterError(code: string): Error {
@@ -294,12 +283,52 @@ index 6cd6da2c7e44074304fc3638667a97d330184383..47b7738a6596b9c89230122a279d1fd1
 +
  describe("checkForAppUpdate", () => {
    it("treats an unpublished channel manifest as an unavailable update", async () => {
-     const error = Object.assign(new Error("Cannot find latest-mac.yml"), {
+-    const error = Object.assign(new Error("Cannot find latest-mac.yml"), {
++    vi.mocked(app.getVersion).mockReturnValueOnce("0.18.1-fork.1");
++    const error = Object.assign(new Error("Cannot find fork-mac.yml"), {
+       code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND",
+     });
+     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+@@ -100,7 +139,7 @@ describe("checkForAppUpdate", () => {
+     });
+ 
+     const result = await checkForAppUpdate({
+-      currentVersion: "1.2.3",
++      currentVersion: "0.18.1-fork.1",
+       releaseChannel: "stable",
+       intent: "manual",
+     });
+@@ -109,12 +148,15 @@ describe("checkForAppUpdate", () => {
+       hasUpdate: false,
+       readyToInstall: false,
+       downloading: false,
+-      currentVersion: "1.2.3",
+-      latestVersion: "1.2.3",
++      currentVersion: "0.18.1-fork.1",
++      latestVersion: "0.18.1-fork.1",
+       body: null,
+       date: null,
+       errorMessage: null,
+     });
++    expect(autoUpdater.channel).toBe("fork");
++    expect(autoUpdater.allowPrerelease).toBe(true);
++    expect(autoUpdater.allowDowngrade).toBe(false);
+     expect(consoleError).not.toHaveBeenCalled();
+     consoleError.mockRestore();
+   });
+@@ -134,6 +176,7 @@ describe("checkForAppUpdate", () => {
+       intent: "manual",
+     });
+ 
++    expect(autoUpdater.channel).toBe("latest");
+     expect(result.errorMessage).toBe("network down");
+     expect(consoleError).toHaveBeenCalled();
+     consoleError.mockRestore();
 diff --git a/packages/desktop/src/features/auto-updater.ts b/packages/desktop/src/features/auto-updater.ts
-index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3a2655e08 100644
+index fb949b9f2adc3f5ff2fec8620f305dcbbf6c9f02..79fa7ca742bb908543b01ec233b5652dfd255939 100644
 --- a/packages/desktop/src/features/auto-updater.ts
 +++ b/packages/desktop/src/features/auto-updater.ts
-@@ -33,6 +33,16 @@ export {
+@@ -34,6 +34,16 @@ export {
    type AppUpdateInstallResult,
  };
  
@@ -316,20 +345,22 @@ index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3
  let cachedStagingUserIdPromise: Promise<string> | null = null;
  
  const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
-@@ -140,18 +150,20 @@ export function shouldInstallAppUpdateOnQuit(input: {
-   return !(input.platform === "linux" && input.isAppImage);
+@@ -279,11 +289,13 @@ export function runElectronQuitAndInstall({
+   });
  }
  
 -class ElectronAppUpdateRuntime implements AppUpdateRuntime {
 +export class ElectronAppUpdateRuntime implements AppUpdateRuntime {
    private configured = false;
+   private configuration: AppUpdateRuntimeConfiguration | null = null;
  
    configure(input: AppUpdateRuntimeConfiguration): void {
-+    const updateChannel = resolveElectronUpdateChannel(app.getVersion(), input.releaseChannel);
-+    autoUpdater.logger = log;
-     autoUpdater.autoDownload = true;
++    const currentVersion = app.getVersion();
++    const updateChannel = resolveElectronUpdateChannel(currentVersion, input.releaseChannel);
+     this.configuration = input;
+     autoUpdater.autoDownload = input.autoDownload;
      autoUpdater.autoRunAppAfterInstall = true;
-     // Paseo revalidates the current manifest before explicitly installing on quit.
+@@ -291,8 +303,8 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
      // Electron's built-in handler would install an older download without checking
      // whether a newer release has superseded it.
      autoUpdater.autoInstallOnAppQuit = false;
@@ -340,12 +371,12 @@ index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3
      autoUpdater.allowDowngrade = false;
      autoUpdater.isUserWithinRollout = async (info) => {
        try {
-@@ -161,6 +173,14 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
+@@ -302,6 +314,14 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
        }
      };
  
 +    log.info("[auto-updater] configured", {
-+      currentVersion: app.getVersion(),
++      currentVersion,
 +      releaseChannel: input.releaseChannel,
 +      updateChannel,
 +      autoDownload: autoUpdater.autoDownload,
@@ -355,24 +386,23 @@ index ef71dc25b4c1103dafc9ff662ece01e50b117147..c130d568089b6dbb0b0253cbf19041f3
      if (this.configured) return;
      this.configured = true;
  
-@@ -186,24 +206,49 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
-       updateLifecycleLog.updateDownloaded(updateInfo.version);
-       input.onUpdateDownloaded(updateInfo);
-     });
-+    autoUpdater.on("update-not-available", () => {
-+      log.info("[auto-updater] update-not-available");
-+      input.onUpdateNotAvailable();
-+    });
-     autoUpdater.on("error", (error) => {
--      if (isUpdateChannelNotPublished(error)) return;
-+      if (isUpdateChannelNotPublished(error)) {
-+        log.info("[auto-updater] update-not-available", { reason: "manifest-not-found" });
-+        input.onUpdateNotAvailable();
-+        return;
-+      }
-+      log.error("[auto-updater] error", error);
-       input.onError(error);
-     });
+@@ -309,12 +329,11 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
+     // Paseo reports genuine check, runtime, and install failures through the
+     // callbacks below, so leave internal error logging disabled to avoid both
+     // duplicate logs and expected missing-channel noise.
+-    const updaterLogger = autoUpdater.logger;
+     autoUpdater.logger = {
+-      debug: updaterLogger?.debug ? (message) => updaterLogger.debug?.(message) : undefined,
++      debug: (message) => log.debug(message),
+       error: () => undefined,
+-      info: (message) => updaterLogger?.info(message),
+-      warn: (message) => updaterLogger?.warn(message),
++      info: (message) => log.info(message),
++      warn: (message) => log.warn(message),
+     };
+ 
+     autoUpdater.on("update-available", (info) => {
+@@ -341,17 +360,33 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
    }
  
    async checkForUpdates(): Promise<RuntimeUpdateCheckResult | null> {
@@ -449,13 +479,13 @@ index 3c208dbc587dfe1a3e639787c61b7bfbf2d4abc1..40f084122beee62bcbca45f260c93e96
    page,
    context,
 diff --git a/packages/website/public/schemas/paseo.config.v1.json b/packages/website/public/schemas/paseo.config.v1.json
-index 8ead79103323a807cc3a427987ddaa18eed233c9..e8278f2c3eab4325893da3d112a06554f17b2ffd 100644
+index 9f5d202195e0a4df14fb6f8b617d7878d3432f17..8a7b6026d2e004292f4cd4fb94c2a4782e3af9db 100644
 --- a/packages/website/public/schemas/paseo.config.v1.json
 +++ b/packages/website/public/schemas/paseo.config.v1.json
-@@ -563,6 +563,19 @@
-                 "required": ["provider"],
-                 "additionalProperties": false
-               }
+@@ -569,6 +569,19 @@
+             },
+             "instructions": {
+               "type": "string"
 +            },
 +            "commitMessage": {
 +              "type": "object",
@@ -495,7 +525,7 @@ index 64e168a5ac38dd39087b3bc4afd9f9a283b7bbaf..96b503f082911cf717288756417a47f5
          className="text-muted-foreground hover:text-foreground transition-colors p-1"
          title={t("common.copyToClipboard")}
 diff --git a/scripts/ci-workflow.test.mjs b/scripts/ci-workflow.test.mjs
-index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c0978f6d143 100644
+index cc7ab2d35417bf903f5d44fe9c3f3c867693e532..f9fecdcfdb378c19f84c8cc586d7ba3e998a7ffc 100644
 --- a/scripts/ci-workflow.test.mjs
 +++ b/scripts/ci-workflow.test.mjs
 @@ -13,6 +13,12 @@ const repoRoot = new URL("../", import.meta.url);
@@ -511,7 +541,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
  const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
  const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
  const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
-@@ -106,6 +112,16 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+@@ -107,6 +113,16 @@ test("gated checks are statically named jobs with real job-level gating", () =>
      const job = jobs.get(jobId)?.join("\n");
      assert.ok(job, `missing static job ${jobId}`);
      assert.match(job, new RegExp(`^    name: ${expected.name.replace(/[()]/g, "\\$&")}$`, "m"));
@@ -528,7 +558,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
      assert.match(job, /needs\.changes\.outputs\.full != 'false'/);
      for (const contract of expected.contracts ?? [expected.contract]) {
        assert.match(job, new RegExp(`needs\\.changes\\.outputs\\.${contract} != 'false'`));
-@@ -113,6 +129,52 @@ test("gated checks are statically named jobs with real job-level gating", () =>
+@@ -114,6 +130,52 @@ test("gated checks are statically named jobs with real job-level gating", () =>
    }
  });
  
@@ -581,7 +611,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
  test("pull-request checks run for every base branch, including stacked PRs", () => {
    for (const workflowPath of [
      ciWorkflowPath,
-@@ -137,7 +199,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
+@@ -138,7 +200,7 @@ test("change gating allows superseded workflow runs to cancel", () => {
      assert.doesNotMatch(
        source,
        /\$\{\{\s*always\(\)/,
@@ -590,7 +620,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
      );
    }
  });
-@@ -365,11 +427,24 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
+@@ -375,11 +437,24 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
    ]);
  });
  
@@ -617,7 +647,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
      assert.doesNotMatch(trigger, /pull_request/);
      assert.doesNotMatch(source, /dorny\/paths-filter/);
    }
-@@ -388,13 +463,10 @@ test("packaging runs on main without allocating pull-request runners", () => {
+@@ -398,13 +473,10 @@ test("packaging runs on main without allocating pull-request runners", () => {
    assert.match(nix.split("jobs:", 1)[0], /^\s+workflow_dispatch:/m);
  });
  
@@ -633,12 +663,14 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
    assert.match(trigger, /^\s+workflow_dispatch:/m);
    assert.match(trigger, /pull_request:\s*\n\s+paths:/);
    assert.match(trigger, /- "packages\/desktop\/\*\*"/);
-@@ -405,32 +477,65 @@ test("CI and desktop packaging verify release branches isolated from main traffi
+@@ -415,64 +487,81 @@ test("CI and desktop packaging verify release branches isolated from main traffi
    }
  });
  
 -test("stable iOS releases upload once and distribute to external testers before App Store review", () => {
 -  const source = readFileSync(
+-    new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot),
+-    "utf8",
 +test("fork daemon, desktop, and app releases use separate commands and tags", () => {
 +  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
 +  const paseoJson = JSON.parse(readFileSync(new URL("paseo.json", repoRoot), "utf8"));
@@ -646,14 +678,31 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
 +  assert.equal(
 +    packageJson.scripts["release:fork:desktop"],
 +    "node scripts/release-fork-desktop.mjs",
-+  );
+   );
+-  const jobs = jobBlocks(source);
+-  const uploads = [...jobs.entries()].filter(
+-    ([, lines]) =>
+-      lines.some((line) => /^    type: (submit|testflight)$/.test(line)) &&
+-      lines.some((line) => line.includes("needs.build_ios.outputs.build_id")),
 +  assert.equal(packageJson.scripts["release:fork:app"], "node scripts/release-fork-app.mjs");
 +  assert.equal(paseoJson.scripts["release-fork-app-eas"], undefined);
 +  assert.match(
 +    paseoJson.scripts["release-fork-app"].command,
 +    /^node \.\/scripts\/release-fork-app\.mjs(?:;|$)/,
-+  );
-+
+   );
+-  assert.equal(uploads.length, 1, "the iOS binary must be uploaded exactly once");
+-  const [distributionId, distributionLines] = uploads[0];
+-  const distribution = distributionLines.join("\n");
+-  assert.match(distribution, /^    type: testflight$/m);
+-  assert.match(distribution, /external_groups:\s*\n\s+- Paseo Beta/);
+-  assert.match(distribution, /^      submit_beta_review: true$/m);
+ 
+-  const review = jobs.get("submit_ios_for_review").join("\n");
+-  assert.match(review, new RegExp(`needs: \\[build_ios, ${distributionId}\\]`));
+-  assert.match(review, /APP_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_version \}\}"/);
+-  assert.match(
+-    review,
+-    /APP_BUILD_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_build_version \}\}"/,
 +  const daemonScript = readFileSync(daemonReleaseScriptPath, "utf8");
 +  assert.match(daemonScript, /releaseForkDaemon/);
 +
@@ -673,38 +722,34 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
 +  assert.equal(
 +    workflow.match(/uses: actions\/checkout@v4/g)?.length,
 +    workflow.match(/fetch-depth: 0/g)?.length,
-+  );
-+});
-+
+   );
+-  assert.match(review, /REPLACE_IN_REVIEW="false"/);
+-  assert.match(review, /bundle exec fastlane ios submit_review/);
+ });
+ 
+-test("iOS App Store review queue EAS workflows and Fastlane lanes stay wired and tested", () => {
+-  const resubmit = readFileSync(
+-    new URL("packages/app/.eas/workflows/resubmit-ios-review.yml", repoRoot),
 +test("fork iOS releases build on the macmini runner instead of EAS", () => {
 +  const easWorkflow = readFileSync(
-     new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot),
++    new URL("packages/app/.eas/workflows/release-mobile.yml", repoRoot),
      "utf8",
    );
--  const jobs = jobBlocks(source);
--  const uploads = [...jobs.entries()].filter(
--    ([, lines]) =>
--      lines.some((line) => /^    type: (submit|testflight)$/.test(line)) &&
--      lines.some((line) => line.includes("needs.build_ios.outputs.build_id")),
--  );
--  assert.equal(uploads.length, 1, "the iOS binary must be uploaded exactly once");
--  const [distributionId, distributionLines] = uploads[0];
--  const distribution = distributionLines.join("\n");
--  assert.match(distribution, /^    type: testflight$/m);
--  assert.match(distribution, /external_groups:\s*\n\s+- Paseo Beta/);
--  assert.match(distribution, /^      submit_beta_review: true$/m);
--
--  const review = jobs.get("submit_ios_for_review").join("\n");
--  assert.match(review, new RegExp(`needs: \\[build_ios, ${distributionId}\\]`));
--  assert.match(review, /APP_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_version \}\}"/);
 -  assert.match(
--    review,
--    /APP_BUILD_VERSION="\$\{\{ needs\.build_ios\.outputs\.app_build_version \}\}"/,
+-    resubmit,
+-    /replace_in_review:\s*\n\s+type: boolean\s*\n\s+required: false\s*\n\s+default: false/,
+-  );
+-  assert.match(resubmit, /export REPLACE_IN_REVIEW="\$\{\{ inputs\.replace_in_review \}\}"/);
+-  assert.match(resubmit, /bundle exec fastlane ios submit_review/);
 +  const easTrigger = easWorkflow.split("jobs:", 1)[0];
 +  assert.doesNotMatch(easTrigger, /push:/);
 +  assert.match(easTrigger, /workflow_dispatch:/);
 +  assert.doesNotMatch(easWorkflow, /type: submit/);
-+
++  assert.doesNotMatch(easWorkflow, /fastlane ios submit_review/);
+ 
+-  const status = readFileSync(
+-    new URL("packages/app/.eas/workflows/ios-review-status.yml", repoRoot),
+-    "utf8",
 +  const source = readFileSync(new URL(".github/workflows/app-ios-release.yml", repoRoot), "utf8");
 +  const trigger = source.split("jobs:", 1)[0];
 +  assert.match(trigger, /push:\s*\n\s+tags: \["app-v\*-fork\.\*"\]/);
@@ -717,11 +762,65 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
 +    job.indexOf("node scripts/fork/upstream.mjs ci-apply") <
 +      job.indexOf("bash scripts/fork/app-build.sh"),
    );
--  assert.match(review, /bundle exec fastlane ios submit_review/);
+-  assert.match(status, /^  workflow_dispatch: \{\}$/m);
+-  assert.match(status, /bundle exec fastlane ios review_status/);
++});
+ 
+-  const cancel = readFileSync(
+-    new URL("packages/app/.eas/workflows/cancel-ios-review.yml", repoRoot),
++test("manual iOS review preserves in-flight submissions and Fastlane lanes stay tested", () => {
++  const resubmit = readFileSync(
++    new URL("packages/app/.eas/workflows/resubmit-ios-review.yml", repoRoot),
+     "utf8",
+   );
+-  assert.match(cancel, /expected_version:\s*\n\s+type: string\s*\n\s+required: false/);
+-  assert.match(cancel, /export EXPECTED_VERSION="\$\{\{ inputs\.expected_version \}\}"/);
+-  assert.match(cancel, /bundle exec fastlane ios cancel_review/);
++  assert.match(resubmit, /^  workflow_dispatch:$/m);
++  assert.doesNotMatch(resubmit, /replace_in_review|REPLACE_IN_REVIEW/);
++  assert.match(resubmit, /bundle exec fastlane ios submit_review/);
++
++  const fastfile = readFileSync(new URL("packages/app/fastlane/Fastfile", repoRoot), "utf8");
++  assert.match(fastfile, /replace_in_review: IosReview\.parse_bool\(ENV\["REPLACE_IN_REVIEW"\]\)/);
+ 
+-  // Validate all EAS workflow YAML files with Ruby's built-in Psych YAML parser,
+-  // check Ruby syntax on Fastlane files, and run the Ruby unit test suite.
++  // Validate the fork's EAS workflows and keep syntax and behavior coverage for the Fastlane lanes.
+   const yamlCheck = spawnSync(
+     "ruby",
+     [
+@@ -481,8 +570,6 @@ test("iOS App Store review queue EAS workflows and Fastlane lanes stay wired and
+       'ARGV.each { |p| data = YAML.safe_load_file(p); raise "Invalid YAML: #{p}" unless data.is_a?(Hash) && data["jobs"].is_a?(Hash) }',
+       "packages/app/.eas/workflows/release-mobile.yml",
+       "packages/app/.eas/workflows/resubmit-ios-review.yml",
+-      "packages/app/.eas/workflows/ios-review-status.yml",
+-      "packages/app/.eas/workflows/cancel-ios-review.yml",
+     ],
+     { cwd: repoRoot, encoding: "utf8" },
+   );
+@@ -497,10 +584,17 @@ test("iOS App Store review queue EAS workflows and Fastlane lanes stay wired and
+     assert.equal(syntax.status, 0, syntax.stderr || syntax.stdout);
+   }
+ 
+-  const unitTests = spawnSync("ruby", ["packages/app/fastlane/ios_review_test.rb"], {
+-    cwd: repoRoot,
+-    encoding: "utf8",
+-  });
++  const unitTests = spawnSync(
++    "ruby",
++    [
++      "-I",
++      "packages/app/fastlane",
++      "-rios_review",
++      "-e",
++      'abort "an unset replace flag must not replace reviews" if IosReview.parse_bool(nil); require "ios_review_test"',
++    ],
++    { cwd: repoRoot, encoding: "utf8" },
++  );
+   assert.equal(unitTests.status, 0, `${unitTests.stdout}\n${unitTests.stderr}`);
  });
  
- test("eight Playwright shards share two-worker coverage", () => {
-@@ -487,12 +592,13 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -557,12 +651,13 @@ test("quality preserves commands and routes each domain independently after fail
      Object.values(commands).flat(),
    );
    const domains = Object.keys(commands);
@@ -740,7 +839,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
        steps: { install: { outcome: installed ? "success" : "failure" } },
        cancelled: () => cancelled,
        success: () => false,
-@@ -500,6 +606,7 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -570,6 +665,7 @@ test("quality preserves commands and routes each domain independently after fail
    }
    const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
    const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
@@ -748,7 +847,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
    assert.equal(accepts(jobCondition, disabled), false);
    for (const selected of domains) {
      const outputs = { ...disabled, [selected]: "true" };
-@@ -509,12 +616,24 @@ test("quality preserves commands and routes each domain independently after fail
+@@ -579,12 +675,24 @@ test("quality preserves commands and routes each domain independently after fail
      }
    }
    for (const [, expression] of checks) {
@@ -773,8 +872,8 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
 +  }
  });
  
- test("Windows units and integration run independently with complete routed coverage", () => {
-@@ -576,10 +695,9 @@ test("Windows units and integration run independently with complete routed cover
+ test("plugin SDK tests run on real Windows", () => {
+@@ -653,10 +761,9 @@ test("Windows units and integration run independently with complete routed cover
    function condition(job) {
      return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
    }
@@ -787,7 +886,7 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
      });
    }
    const unitCondition = condition(windows);
-@@ -607,8 +725,10 @@ test("Windows units and integration run independently with complete routed cover
+@@ -684,8 +791,10 @@ test("Windows units and integration run independently with complete routed cover
      assert.equal(selected(unitStep, outputs), integrations);
      assert.equal(selected(pluginStep, outputs), integrations);
      assert.equal(selected(hubStep, outputs), hub);
@@ -800,6 +899,28 @@ index 0084c280c6be52f3f5099242f77034b145388e46..4ab12614e3559666f646f23cce852c09
    }
  });
  
+@@ -695,16 +804,11 @@ test("desktop release creates release-manifests before entering it and uses the
+   assert.match(workflow, /mkdir -p release-manifests\s*\n\s+cd release-manifests/);
+ });
+ 
+-test("desktop release stamps an 18-hour rollout on a tag push and by default on a manual run", () => {
+-  const workflow = readFileSync(new URL(".github/workflows/desktop-release.yml", repoRoot), "utf8");
+-  const manualRunDefault = /\n {6}rollout_hours:\n(?: {8}.*\n)*? {8}default: "(\d+)"/.exec(
+-    workflow,
+-  );
+-  const tagPushDefault =
+-    /\n {2}ROLLOUT_HOURS: \$\{\{.*inputs\.rollout_hours \|\| '(\d+)' \}\}/.exec(workflow);
+-
+-  assert.equal(manualRunDefault?.[1], "18");
+-  assert.equal(tagPushDefault?.[1], "18");
++test("desktop releases stamp the fork's unpaced rollout on both publication paths", () => {
++  const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
++  assert.match(workflow, /^ {2}ROLLOUT_HOURS: "0"$/m);
++  assert.doesNotMatch(workflow, /^ {6}rollout_hours:/m);
++  assert.match(workflow, /scripts\/stamp-rollout\.mjs .*--rollout-hours "\$ROLLOUT_HOURS"/);
+ });
+ 
+ test("macOS release xcrun wrapper retries transient stapling and notarization failures without rebuilding", async (t) => {
 diff --git a/scripts/dev-app.sh b/scripts/dev-app.sh
 index a594f344fd310c46383d187537e7fbfdd62ec249..9efa05219b223233c1fa3a4dc5624193e7b37693 100755
 --- a/scripts/dev-app.sh

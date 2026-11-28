@@ -1,6 +1,6 @@
 {
   "name": "paseo-downstream",
-  "version": "0.17.4",
+  "version": "0.18.1",
   "private": true,
   "scripts": {
     "dev": "node scripts/fork/upstream.mjs run -- npm run dev --",

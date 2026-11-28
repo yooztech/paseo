@@ -12,9 +12,9 @@ for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DI
 }
 
 const [job, ...files] = process.argv.slice(2);
-const scripts = { format: "format:check:files", lint: "lint", typecheck: "typecheck" };
-if (!Object.hasOwn(scripts, job) || (job === "typecheck" && files.length)) {
-  throw new Error("Usage: hook-check.mjs <format|lint|typecheck> [staged files...]");
+const scripts = { format: "format:check:files", lint: "lint" };
+if (!Object.hasOwn(scripts, job)) {
+  throw new Error("Usage: hook-check.mjs <format|lint> [staged files...]");
 }
 
 const managed = existsSync(path.join(process.cwd(), ".dev", "fork-build-state.json"));

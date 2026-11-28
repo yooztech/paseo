@@ -1215,18 +1215,18 @@ test("update rejects missing tags, invalid options and stale committed source", 
   assert.deepEqual(snapshot(f), stale);
 });
 
-test("pre-commit typecheck selects the effective worktree and clears Git hook environment", (t) => {
+test("pre-commit forwards staged paths and clears Git hook environment", (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "fork-hook-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const hook = fileURLToPath(new URL("./hook-check.mjs", import.meta.url));
   mkdirSync(path.join(dir, "scripts/fork"), { recursive: true });
-  const record = `require('node:fs').writeFileSync('result.json', JSON.stringify({ args: process.argv.slice(2), git: process.env.GIT_INDEX_FILE }))`;
+  const record = `require('node:fs').writeFileSync('result.json', JSON.stringify({ args: process.argv.slice(2), git: process.env.GIT_INDEX_FILE, files: process.env.PASEO_HOOK_FILES }))`;
   writeFileSync(
     path.join(dir, "scripts/fork/upstream.mjs"),
     record.replace("require('node:fs')", "(await import('node:fs'))"),
   );
   const run = () =>
-    spawnSync(process.execPath, [hook, "typecheck"], {
+    spawnSync(process.execPath, [hook, "format", "package.json", "src/example.ts"], {
       cwd: dir,
       encoding: "utf8",
       env: { ...process.env, GIT_INDEX_FILE: "/invalid/hook-index" },
@@ -1234,17 +1234,21 @@ test("pre-commit typecheck selects the effective worktree and clears Git hook en
   let result = run();
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(readFileSync(path.join(dir, "result.json"))), {
-    args: ["run", "--", "node", "scripts/fork/hook-check.mjs", "typecheck"],
+    args: ["run", "--", "node", "scripts/fork/hook-check.mjs", "format"],
+    files: JSON.stringify([path.join(dir, "package.json"), "src/example.ts"]),
   });
 
   mkdirSync(path.join(dir, ".dev"));
   writeFileSync(path.join(dir, ".dev/fork-build-state.json"), "{}");
-  writeFileSync(path.join(dir, "record.cjs"), record);
   writeFileSync(
     path.join(dir, "package.json"),
-    JSON.stringify({ scripts: { typecheck: "node record.cjs" } }),
+    JSON.stringify({ scripts: { "format:check:files": "node record.cjs" } }),
   );
+  writeFileSync(path.join(dir, "record.cjs"), record);
+  rmSync(path.join(dir, "result.json"));
   result = run();
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, "result.json"))), { args: [] });
+  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, "result.json"))), {
+    args: ["package.json", "src/example.ts"],
+  });
 });

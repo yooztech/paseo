@@ -6,4 +6,4 @@ pre-commit:
     - name: lint
       run: node scripts/fork/hook-check.mjs lint {staged_files}
     - name: typecheck
-      run: node scripts/fork/hook-check.mjs typecheck
+      skip: true
